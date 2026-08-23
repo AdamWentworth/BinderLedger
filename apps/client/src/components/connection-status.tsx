@@ -34,8 +34,8 @@ export function ConnectionStatus() {
 const styles = StyleSheet.create({
   status: {
     alignItems: 'center',
-    backgroundColor: '#E4F1EB',
-    borderColor: '#BDD8CB',
+    backgroundColor: colors.onlineSurface,
+    borderColor: colors.onlineBorder,
     borderRadius: 6,
     borderWidth: 1,
     flexDirection: 'row',
@@ -44,8 +44,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   statusOffline: {
-    backgroundColor: '#F7E9EB',
-    borderColor: '#E5C2C8',
+    backgroundColor: colors.offlineSurface,
+    borderColor: colors.offlineBorder,
   },
   dot: {
     backgroundColor: colors.positive,
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     width: 8,
   },
   dotPending: {
-    backgroundColor: colors.brass,
+    backgroundColor: colors.warning,
   },
   dotOffline: {
     backgroundColor: colors.negative,

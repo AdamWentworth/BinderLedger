@@ -19,7 +19,9 @@ The future ML service will receive images through a narrow authenticated API and
 
 ## Data collection
 
-The existing JustTCG audit tool and its downloaded responses are preserved unchanged at first. The next ingestion milestone is to normalize that data into PostgreSQL and run a rate-aware scheduled collector. Durable job scheduling should use PostgreSQL-backed jobs so this machine does not need Redis merely to run background work.
+The existing JustTCG audit tool and its downloaded responses remain the durable raw source. `cmd/import-justtcg` normalizes collected set files into PostgreSQL sets, cards, exact printings, conditions, current prices, and daily price observations. The import uses stable provider IDs and conflict updates, so it is safe to rerun after collection.
+
+The next ingestion milestone is a rate-aware scheduled collector followed by this normalization step. Durable job scheduling should use PostgreSQL-backed jobs so this machine does not need Redis merely to run background work.
 
 ## Deployment posture
 

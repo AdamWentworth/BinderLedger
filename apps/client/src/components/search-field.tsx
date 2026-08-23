@@ -18,6 +18,7 @@ export function SearchField({ value, onChangeText, placeholder = 'Search cards' 
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
+        selectionColor={colors.brand}
         style={styles.input}
         value={value}
       />
@@ -28,7 +29,7 @@ export function SearchField({ value, onChangeText, placeholder = 'Search cards' 
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
     borderRadius: 6,
     borderWidth: 1,

@@ -5,13 +5,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConnectionStatus } from '@/components/connection-status';
 import { colors, contentMaxWidth, spacing } from '@/constants/theme';
+import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 
 type ScreenProps = PropsWithChildren<{
   title: string;
@@ -20,7 +20,7 @@ type ScreenProps = PropsWithChildren<{
 }>;
 
 export function Screen({ title, subtitle, toolbar, children }: ScreenProps) {
-  const { width } = useWindowDimensions();
+  const width = useHydratedWidth();
   const compact = width < 720;
 
   return (
@@ -94,8 +94,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   brandMark: {
-    height: 38,
-    width: 38,
+    height: 42,
+    width: 42,
   },
   brandName: {
     color: colors.text,

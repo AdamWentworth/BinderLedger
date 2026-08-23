@@ -20,6 +20,7 @@ Requirements: Go 1.26+, Node 24 LTS, npm, Docker Compose, and PostgreSQL 17.
 cp .env.example .env
 docker compose up -d postgres
 go run ./cmd/migrate
+go run ./cmd/import-justtcg
 go run ./cmd/api
 ```
 
@@ -32,6 +33,8 @@ npm run web
 ```
 
 The API listens on `http://127.0.0.1:4000` and Expo web on `http://localhost:8081` by default. For a physical phone, set `EXPO_PUBLIC_API_URL` to this computer's LAN address.
+
+`go run ./cmd/import-justtcg` is idempotent. It imports every collected set JSON file under `tools/justtcg-audit/output/collections` into normalized catalog, variant, and daily price tables. Rerun it after a collector pass to update the database.
 
 On this 8 GB server, prefer the static web preview so Metro does not remain resident:
 

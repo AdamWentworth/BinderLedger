@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "BinderLedger",
+    "slug": "binderledger",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/binderledger-mark.png",
+    "scheme": "binderledger",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "icon": "./assets/images/binderledger-mark.png",
+      "bundleIdentifier": "com.adamwentworth.binderledger"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F3F6F4",
+        "foregroundImage": "./assets/images/binderledger-mark.png"
+      },
+      "package": "com.adamwentworth.binderledger",
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/binderledger-mark.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F3F6F4",
+          "image": "./assets/images/binderledger-mark.png",
+          "imageWidth": 160
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

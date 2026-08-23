@@ -1,0 +1,11 @@
+{
+  "game": "pokemon",
+  "releaseDateFrom": "1999-01-01",
+  "releaseDateThrough": "2007-05-22",
+  "includeUndatedSets": false,
+  "excludeNamePatterns": [
+    "diamond & pearl"
+  ],
+  "manualIncludeSetIds": [],
+  "manualExcludeSetIds": []
+}

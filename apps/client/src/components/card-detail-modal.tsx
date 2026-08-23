@@ -1,7 +1,10 @@
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { X } from 'lucide-react-native';
-import { useMemo } from 'react';
+import { AlertTriangle, ChevronRight, LineChart, X } from 'lucide-react-native';
+import { useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  type LayoutChangeEvent,
   Modal,
   Pressable,
   ScrollView,
@@ -12,8 +15,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MarketPeriodControl } from '@/components/market-period-control';
+import { PriceHistoryChart } from '@/components/price-history-chart';
 import { colors, spacing } from '@/constants/theme';
-import { CatalogCard, CatalogVariant, formatCurrency } from '@/lib/api';
+import {
+  type CatalogCard,
+  type CatalogVariant,
+  formatCurrency,
+  formatPercent,
+  getVariantHistory,
+  type MarketPeriod,
+} from '@/lib/api';
 
 type CardDetailModalProps = {
   card: CatalogCard | null;
@@ -21,15 +33,62 @@ type CardDetailModalProps = {
 };
 
 export function CardDetailModal({ card, onClose }: CardDetailModalProps) {
+  if (!card) return null;
+  return <CardDetailContent card={card} key={card.id} onClose={onClose} />;
+}
+
+type CardDetailContentProps = {
+  card: CatalogCard;
+  onClose: () => void;
+};
+
+function CardDetailContent({ card, onClose }: CardDetailContentProps) {
   const { width } = useWindowDimensions();
   const compact = width < 680;
-  const groupedVariants = useMemo(() => groupVariants(card?.variants ?? []), [card]);
+  const groupedVariants = useMemo(() => groupVariants(card.variants), [card.variants]);
+  const [selectedVariantID, setSelectedVariantID] = useState('');
+  const [period, setPeriod] = useState<MarketPeriod>('1m');
+  const scrollViewRef = useRef<ScrollView>(null);
+  const historyOffset = useRef<number | null>(null);
+  const pendingHistoryScroll = useRef(false);
+  const selectedVariant = card.variants.find((variant) => variant.id === selectedVariantID);
 
-  if (!card) return null;
+  const historyQuery = useQuery({
+    queryKey: ['market', 'history', selectedVariantID, period],
+    queryFn: ({ signal }) => getVariantHistory(selectedVariantID, period, signal),
+    enabled: selectedVariantID !== '',
+    placeholderData: keepPreviousData,
+  });
+  const history = historyQuery.data;
+
+  const scrollToHistory = () => {
+    if (historyOffset.current === null) return;
+    scrollViewRef.current?.scrollTo({
+      animated: true,
+      y: Math.max(0, historyOffset.current - spacing.md),
+    });
+  };
+
+  const selectVariant = (variantID: string) => {
+    pendingHistoryScroll.current = true;
+    setSelectedVariantID(variantID);
+    if (historyOffset.current !== null) {
+      requestAnimationFrame(scrollToHistory);
+      pendingHistoryScroll.current = false;
+    }
+  };
+
+  const placeHistory = (event: LayoutChangeEvent) => {
+    historyOffset.current = event.nativeEvent.layout.y;
+    if (pendingHistoryScroll.current) {
+      pendingHistoryScroll.current = false;
+      requestAnimationFrame(scrollToHistory);
+    }
+  };
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible>
-      <SafeAreaView style={styles.overlay}>
+      <SafeAreaView style={[styles.overlay, compact && styles.overlayCompact]}>
         <View style={[styles.dialog, compact && styles.dialogCompact]}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeading}>
@@ -48,28 +107,115 @@ export function CardDetailModal({ card, onClose }: CardDetailModalProps) {
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={[styles.modalBody, compact && styles.modalBodyCompact]}>
-            <View style={[styles.detailImageFrame, compact && styles.detailImageFrameCompact]}>
-              {card.imageUrl ? (
-                <Image contentFit="contain" source={card.imageUrl} style={styles.detailImage} />
-              ) : null}
+          <ScrollView contentContainerStyle={styles.modalBody} ref={scrollViewRef}>
+            <View style={[styles.cardOverview, compact && styles.cardOverviewCompact]}>
+              <View style={[styles.detailImageFrame, compact && styles.detailImageFrameCompact]}>
+                {card.imageUrl ? (
+                  <Image contentFit="contain" source={card.imageUrl} style={styles.detailImage} />
+                ) : null}
+              </View>
+
+              <View style={styles.variantGroups}>
+                {groupedVariants.map(([printing, variants]) => (
+                  <View key={printing} style={styles.variantGroup}>
+                    <Text style={styles.printing}>{printing}</Text>
+                    {variants.map((variant) => {
+                      const selected = variant.id === selectedVariantID;
+                      return (
+                        <Pressable
+                          accessibilityLabel={`View ${printing} ${variant.condition} price history`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          key={variant.id}
+                          onPress={() => selectVariant(variant.id)}
+                          style={({ pressed }) => [
+                            styles.variantRow,
+                            selected && styles.variantRowSelected,
+                            pressed && styles.variantRowPressed,
+                          ]}>
+                          <Text style={[styles.condition, selected && styles.conditionSelected]}>
+                            {variant.condition}
+                          </Text>
+                          <View style={styles.variantValue}>
+                            <Text
+                              style={[
+                                styles.variantPrice,
+                                selected && styles.variantPriceSelected,
+                              ]}>
+                              {formatCurrency(variant.currentPrice)}
+                            </Text>
+                            <ChevronRight
+                              color={selected ? colors.brand : colors.textMuted}
+                              size={17}
+                            />
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
             </View>
 
-            <View style={styles.variantGroups}>
-              {groupedVariants.map(([printing, variants]) => (
-                <View key={printing} style={styles.variantGroup}>
-                  <Text style={styles.printing}>{printing}</Text>
-                  {variants.map((variant) => (
-                    <View key={variant.id} style={styles.variantRow}>
-                      <Text style={styles.condition}>{variant.condition}</Text>
-                      <Text style={styles.variantPrice}>
-                        {formatCurrency(variant.currentPrice)}
+            {selectedVariant ? (
+              <View onLayout={placeHistory} style={styles.historySection}>
+                <View style={[styles.historyHeader, compact && styles.historyHeaderCompact]}>
+                  <View style={styles.historyHeading}>
+                    <View style={styles.historyTitleRow}>
+                      <LineChart color={colors.brand} size={18} />
+                      <Text style={styles.historyTitle}>Market history</Text>
+                      {history && history.signal !== 'regular' ? (
+                        <View style={styles.historySignal}>
+                          <AlertTriangle color={colors.warning} size={13} />
+                          <Text style={styles.historySignalText}>
+                            {history.signal === 'volatile' ? 'High volatility' : 'Limited history'}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={styles.historyVariant}>
+                      {selectedVariant.printing} / {selectedVariant.condition}
+                    </Text>
+                  </View>
+                  {history ? (
+                    <View style={[styles.historyStats, compact && styles.historyStatsCompact]}>
+                      <Text style={styles.historyPrice}>{formatCurrency(history.endPrice)}</Text>
+                      <Text
+                        style={[
+                          styles.historyChange,
+                          {
+                            color:
+                              (history.changePercent ?? 0) >= 0
+                                ? colors.positive
+                                : colors.negative,
+                          },
+                        ]}>
+                        {formatPercent(history.changePercent)}
+                      </Text>
+                      <Text style={styles.observationCount}>
+                        {history.points.length} observations
                       </Text>
                     </View>
-                  ))}
+                  ) : null}
                 </View>
-              ))}
-            </View>
+
+                <View style={styles.periodControl}>
+                  <MarketPeriodControl onChange={setPeriod} period={period} />
+                </View>
+
+                {historyQuery.isError ? (
+                  <View style={styles.historyStatus}>
+                    <Text style={styles.historyStatusText}>Price history is unavailable.</Text>
+                  </View>
+                ) : historyQuery.isFetching || !history ? (
+                  <View style={styles.historyStatus}>
+                    <ActivityIndicator color={colors.brand} />
+                  </View>
+                ) : (
+                  <PriceHistoryChart points={history.points} />
+                )}
+              </View>
+            ) : null}
           </ScrollView>
         </View>
       </SafeAreaView>
@@ -95,27 +241,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
+  overlayCompact: {
+    padding: 0,
+  },
   dialog: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
-    maxHeight: '88%',
-    maxWidth: 820,
+    maxHeight: '92%',
+    maxWidth: 980,
     overflow: 'hidden',
     width: '100%',
   },
   dialogCompact: {
+    borderRadius: 0,
+    borderWidth: 0,
+    height: '100%',
     maxHeight: '100%',
   },
   modalHeader: {
     alignItems: 'flex-start',
+    backgroundColor: colors.surface,
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
     padding: spacing.md,
+    position: 'relative',
+    zIndex: 1,
   },
   modalHeading: {
     flex: 1,
@@ -141,11 +296,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceQuiet,
   },
   modalBody: {
-    flexDirection: 'row',
     gap: spacing.lg,
     padding: spacing.lg,
   },
-  modalBodyCompact: {
+  cardOverview: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  cardOverviewCompact: {
+    alignItems: 'stretch',
     flexDirection: 'column',
   },
   detailImageFrame: {
@@ -184,17 +344,121 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
+    borderLeftColor: 'transparent',
+    borderLeftWidth: 2,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 38,
+    minHeight: 42,
+    paddingHorizontal: spacing.sm,
+  },
+  variantRowSelected: {
+    backgroundColor: colors.surfaceRaised,
+    borderLeftColor: colors.brand,
+  },
+  variantRowPressed: {
+    backgroundColor: colors.surfaceQuiet,
   },
   condition: {
     color: colors.textMuted,
     fontSize: 13,
   },
+  conditionSelected: {
+    color: colors.text,
+    fontWeight: '700',
+  },
+  variantValue: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
   variantPrice: {
     color: colors.text,
     fontSize: 14,
     fontWeight: '700',
+  },
+  variantPriceSelected: {
+    color: colors.brand,
+  },
+  historySection: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    paddingTop: spacing.lg,
+  },
+  historyHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+  },
+  historyHeaderCompact: {
+    flexDirection: 'column',
+  },
+  historyHeading: {
+    flex: 1,
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  historyTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  historyTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  historyVariant: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  historySignal: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  historySignalText: {
+    color: colors.warning,
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  historyStats: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  historyStatsCompact: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  historyPrice: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  historyChange: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  observationCount: {
+    color: colors.textMuted,
+    fontSize: 10,
+  },
+  periodControl: {
+    alignSelf: 'flex-end',
+    marginTop: spacing.md,
+    maxWidth: 300,
+    width: '100%',
+  },
+  historyStatus: {
+    alignItems: 'center',
+    height: 250,
+    justifyContent: 'center',
+  },
+  historyStatusText: {
+    color: colors.textMuted,
+    fontSize: 13,
   },
 });

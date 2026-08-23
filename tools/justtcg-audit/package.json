@@ -1,0 +1,19 @@
+{
+  "name": "binder-ledger-justtcg-audit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Coverage and price-history audit tools for the JustTCG Pokemon API",
+  "scripts": {
+    "check-key": "node --env-file=.env src/cli.mjs check-key",
+    "discover": "node --env-file=.env src/cli.mjs discover",
+    "sample": "node --env-file=.env src/cli.mjs sample",
+    "collect-base": "node --env-file=.env src/cli.mjs collect-base",
+    "collect-kanto": "node --env-file=.env src/cli.mjs collect-kanto",
+    "audit": "node --env-file=.env src/cli.mjs audit",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}

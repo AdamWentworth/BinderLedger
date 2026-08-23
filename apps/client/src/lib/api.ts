@@ -7,6 +7,9 @@ export type CatalogSet = {
   id: string;
   name: string;
   releaseDate: string | null;
+  logoUrl: string | null;
+  symbolUrl: string | null;
+  editions: string[];
   cardCount: number;
   variantCount: number;
   minimumPrice: number | null;
@@ -16,6 +19,8 @@ export type CatalogSet = {
 export type CatalogVariant = {
   id: string;
   printing: string;
+  edition: string;
+  finish: string;
   condition: string;
   language: string;
   currentPrice: number | null;
@@ -121,6 +126,36 @@ export type VariantHistory = {
   points: PricePoint[];
 };
 
+export type SetPriceCard = {
+  id: string;
+  name: string;
+  number: string | null;
+  rarity: string | null;
+  imageUrl: string | null;
+  variantId: string | null;
+  printing: string | null;
+  finish: string | null;
+  currentPrice: number | null;
+};
+
+export type SetPricing = {
+  set: CatalogSet;
+  edition: string;
+  condition: MarketCondition;
+  period: MarketPeriod;
+  summary: {
+    totalValue: number;
+    averagePrice: number;
+    minimumPrice: number | null;
+    maximumPrice: number | null;
+    pricedCards: number;
+    cardCount: number;
+    complete: boolean;
+  };
+  cards: SetPriceCard[];
+  points: PricePoint[];
+};
+
 export const apiURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4000';
 
 export async function getHealth(signal?: AbortSignal): Promise<Health> {
@@ -167,6 +202,32 @@ export async function getCatalogCards({
     throw new Error(`Catalog cards returned ${response.status}`);
   }
   return response.json() as Promise<CatalogCardPage>;
+}
+
+type SetPricingRequest = {
+  setId: string;
+  edition: string;
+  condition: MarketCondition;
+  period: MarketPeriod;
+  signal?: AbortSignal;
+};
+
+export async function getSetPricing({
+  setId,
+  edition,
+  condition,
+  period,
+  signal,
+}: SetPricingRequest): Promise<SetPricing> {
+  const parameters = new URLSearchParams({ edition, condition, period });
+  const response = await fetch(
+    `${apiURL}/api/catalog/sets/${encodeURIComponent(setId)}/pricing?${parameters}`,
+    { signal },
+  );
+  if (!response.ok) {
+    throw new Error(`Set pricing returned ${response.status}`);
+  }
+  return response.json() as Promise<SetPricing>;
 }
 
 type MarketOverviewRequest = {

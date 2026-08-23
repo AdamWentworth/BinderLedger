@@ -2,11 +2,18 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
+	"time"
 
+	"github.com/AdamWentworth/BinderLedger/internal/market"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrEditionUnavailable = errors.New("edition is unavailable for this set")
 
 type Repository struct {
 	db *pgxpool.Pool
@@ -20,6 +27,9 @@ type Set struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
 	ReleaseDate  *string  `json:"releaseDate"`
+	LogoURL      *string  `json:"logoUrl"`
+	SymbolURL    *string  `json:"symbolUrl"`
+	Editions     []string `json:"editions"`
 	CardCount    int      `json:"cardCount"`
 	VariantCount int      `json:"variantCount"`
 	MinimumPrice *float64 `json:"minimumPrice"`
@@ -29,6 +39,8 @@ type Set struct {
 type Variant struct {
 	ID           string   `json:"id"`
 	Printing     string   `json:"printing"`
+	Edition      string   `json:"edition"`
+	Finish       string   `json:"finish"`
 	Condition    string   `json:"condition"`
 	Language     string   `json:"language"`
 	CurrentPrice *float64 `json:"currentPrice"`
@@ -60,12 +72,59 @@ type CardPage struct {
 	Offset int    `json:"offset"`
 }
 
+type SetPricingFilter struct {
+	SetID     string
+	Edition   string
+	Condition string
+	Period    market.Period
+}
+
+type SetPriceSummary struct {
+	TotalValue   float64  `json:"totalValue"`
+	AveragePrice float64  `json:"averagePrice"`
+	MinimumPrice *float64 `json:"minimumPrice"`
+	MaximumPrice *float64 `json:"maximumPrice"`
+	PricedCards  int      `json:"pricedCards"`
+	CardCount    int      `json:"cardCount"`
+	Complete     bool     `json:"complete"`
+}
+
+type SetPriceCard struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Number       *string  `json:"number"`
+	Rarity       *string  `json:"rarity"`
+	ImageURL     *string  `json:"imageUrl"`
+	VariantID    *string  `json:"variantId"`
+	Printing     *string  `json:"printing"`
+	Finish       *string  `json:"finish"`
+	CurrentPrice *float64 `json:"currentPrice"`
+}
+
+type SetPricePoint struct {
+	Date  string  `json:"date"`
+	Price float64 `json:"price"`
+}
+
+type SetPricing struct {
+	Set       Set             `json:"set"`
+	Edition   string          `json:"edition"`
+	Condition string          `json:"condition"`
+	Period    string          `json:"period"`
+	Summary   SetPriceSummary `json:"summary"`
+	Cards     []SetPriceCard  `json:"cards"`
+	Points    []SetPricePoint `json:"points"`
+}
+
 func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 	rows, err := repository.db.Query(ctx, `
 		SELECT
 			s.id,
 			s.name,
 			to_char(s.release_date, 'YYYY-MM-DD'),
+			s.logo_url,
+			s.symbol_url,
+			coalesce(array_agg(DISTINCT v.edition) FILTER (WHERE v.edition IS NOT NULL), '{}'),
 			count(DISTINCT c.id)::integer,
 			count(v.id)::integer,
 			min(v.current_price)::double precision,
@@ -88,6 +147,9 @@ func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 			&set.ID,
 			&set.Name,
 			&set.ReleaseDate,
+			&set.LogoURL,
+			&set.SymbolURL,
+			&set.Editions,
 			&set.CardCount,
 			&set.VariantCount,
 			&set.MinimumPrice,
@@ -95,6 +157,7 @@ func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 		); err != nil {
 			return nil, fmt.Errorf("scan catalog set: %w", err)
 		}
+		sortEditions(set.Editions)
 		sets = append(sets, set)
 	}
 	if err := rows.Err(); err != nil {
@@ -171,6 +234,8 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 				card_id,
 				id,
 				printing,
+				edition,
+				finish,
 				condition,
 				language,
 				current_price::double precision
@@ -200,6 +265,8 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 				&cardID,
 				&variant.ID,
 				&variant.Printing,
+				&variant.Edition,
+				&variant.Finish,
 				&variant.Condition,
 				&variant.Language,
 				&variant.CurrentPrice,
@@ -222,4 +289,252 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 		Limit:  filter.Limit,
 		Offset: filter.Offset,
 	}, nil
+}
+
+func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingFilter) (SetPricing, error) {
+	filter.SetID = strings.TrimSpace(filter.SetID)
+	filter.Edition = strings.TrimSpace(filter.Edition)
+	filter.Condition = strings.TrimSpace(filter.Condition)
+
+	pricing := SetPricing{
+		Condition: filter.Condition,
+		Period:    filter.Period.Key,
+		Cards:     make([]SetPriceCard, 0),
+		Points:    make([]SetPricePoint, 0),
+	}
+	if err := repository.db.QueryRow(ctx, `
+		SELECT
+			s.id,
+			s.name,
+			to_char(s.release_date, 'YYYY-MM-DD'),
+			s.logo_url,
+			s.symbol_url,
+			count(DISTINCT c.id)::integer,
+			count(v.id)::integer,
+			min(v.current_price)::double precision,
+			max(v.current_price)::double precision,
+			coalesce(array_agg(DISTINCT v.edition) FILTER (WHERE v.edition IS NOT NULL), '{}')
+		FROM catalog_sets s
+		LEFT JOIN catalog_cards c ON c.set_id = s.id
+		LEFT JOIN catalog_card_variants v ON v.card_id = c.id
+		WHERE s.id = $1
+		GROUP BY s.id
+	`, filter.SetID).Scan(
+		&pricing.Set.ID,
+		&pricing.Set.Name,
+		&pricing.Set.ReleaseDate,
+		&pricing.Set.LogoURL,
+		&pricing.Set.SymbolURL,
+		&pricing.Set.CardCount,
+		&pricing.Set.VariantCount,
+		&pricing.Set.MinimumPrice,
+		&pricing.Set.MaximumPrice,
+		&pricing.Set.Editions,
+	); err != nil {
+		return SetPricing{}, fmt.Errorf("query catalog set: %w", err)
+	}
+	sortEditions(pricing.Set.Editions)
+
+	if filter.Edition == "" {
+		filter.Edition = defaultEdition(pricing.Set.Editions)
+	}
+	if !contains(pricing.Set.Editions, filter.Edition) {
+		return SetPricing{}, ErrEditionUnavailable
+	}
+	pricing.Edition = filter.Edition
+
+	rows, err := repository.db.Query(ctx, `
+		SELECT
+			c.id,
+			c.name,
+			c.number,
+			c.rarity,
+			c.image_url,
+			selected.id,
+			selected.printing,
+			selected.finish,
+			selected.current_price::double precision
+		FROM catalog_cards c
+		LEFT JOIN LATERAL (
+			SELECT v.id, v.printing, v.finish, v.current_price
+			FROM catalog_card_variants v
+			WHERE v.card_id = c.id
+			  AND v.edition = $2
+			  AND v.condition = $3
+			ORDER BY
+				CASE v.finish
+					WHEN 'Normal' THEN 1
+					WHEN 'Holofoil' THEN 2
+					WHEN 'Reverse Holofoil' THEN 3
+					ELSE 4
+				END,
+				v.id
+			LIMIT 1
+		) selected ON true
+		WHERE c.set_id = $1
+		ORDER BY c.number_sort NULLS LAST, c.name
+	`, filter.SetID, filter.Edition, filter.Condition)
+	if err != nil {
+		return SetPricing{}, fmt.Errorf("query set card prices: %w", err)
+	}
+	defer rows.Close()
+
+	variantIDs := make([]string, 0, pricing.Set.CardCount)
+	var total float64
+	var minimum, maximum *float64
+	for rows.Next() {
+		var card SetPriceCard
+		if err := rows.Scan(
+			&card.ID,
+			&card.Name,
+			&card.Number,
+			&card.Rarity,
+			&card.ImageURL,
+			&card.VariantID,
+			&card.Printing,
+			&card.Finish,
+			&card.CurrentPrice,
+		); err != nil {
+			return SetPricing{}, fmt.Errorf("scan set card price: %w", err)
+		}
+		pricing.Cards = append(pricing.Cards, card)
+		if card.CurrentPrice != nil {
+			if card.VariantID != nil {
+				variantIDs = append(variantIDs, *card.VariantID)
+			}
+			total += *card.CurrentPrice
+			pricing.Summary.PricedCards++
+			if minimum == nil || *card.CurrentPrice < *minimum {
+				value := *card.CurrentPrice
+				minimum = &value
+			}
+			if maximum == nil || *card.CurrentPrice > *maximum {
+				value := *card.CurrentPrice
+				maximum = &value
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return SetPricing{}, fmt.Errorf("read set card prices: %w", err)
+	}
+
+	pricing.Summary.CardCount = len(pricing.Cards)
+	pricing.Summary.TotalValue = roundMoney(total)
+	pricing.Summary.MinimumPrice = minimum
+	pricing.Summary.MaximumPrice = maximum
+	pricing.Summary.Complete = pricing.Summary.CardCount > 0 && pricing.Summary.PricedCards == pricing.Summary.CardCount
+	if pricing.Summary.PricedCards > 0 {
+		pricing.Summary.AveragePrice = roundMoney(total / float64(pricing.Summary.PricedCards))
+	}
+
+	if len(variantIDs) > 0 {
+		points, err := repository.setPriceHistory(ctx, variantIDs, filter.Period)
+		if err != nil {
+			return SetPricing{}, err
+		}
+		pricing.Points = points
+	}
+
+	return pricing, nil
+}
+
+func (repository *Repository) setPriceHistory(ctx context.Context, variantIDs []string, period market.Period) ([]SetPricePoint, error) {
+	rows, err := repository.db.Query(ctx, `
+		WITH bounds AS (
+			SELECT min(observed_on) AS first_on, max(observed_on) AS as_of
+			FROM price_observations
+			WHERE variant_id = ANY($1)
+		), dates AS (
+			SELECT generate_series(
+				CASE
+					WHEN $2::integer = 0 THEN first_on
+					ELSE greatest(first_on, as_of - $2::integer)
+				END,
+				as_of,
+				interval '1 day'
+			)::date AS day
+			FROM bounds
+			WHERE first_on IS NOT NULL AND as_of IS NOT NULL
+		), selected AS (
+			SELECT unnest($1::text[]) AS variant_id
+		), daily AS (
+			SELECT
+				d.day,
+				count(price.price)::integer AS priced_variants,
+				sum(price.price)::double precision AS total_value
+			FROM dates d
+			CROSS JOIN selected s
+			LEFT JOIN LATERAL (
+				SELECT o.price
+				FROM price_observations o
+				WHERE o.variant_id = s.variant_id
+				  AND o.observed_on <= d.day
+				ORDER BY o.observed_on DESC
+				LIMIT 1
+			) price ON true
+			GROUP BY d.day
+		)
+		SELECT day, total_value
+		FROM daily
+		WHERE priced_variants = cardinality($1::text[])
+		ORDER BY day
+	`, variantIDs, period.Days)
+	if err != nil {
+		return nil, fmt.Errorf("query set price history: %w", err)
+	}
+	defer rows.Close()
+
+	points := make([]SetPricePoint, 0)
+	for rows.Next() {
+		var day time.Time
+		var point SetPricePoint
+		if err := rows.Scan(&day, &point.Price); err != nil {
+			return nil, fmt.Errorf("scan set price history: %w", err)
+		}
+		point.Date = day.Format(time.DateOnly)
+		point.Price = roundMoney(point.Price)
+		points = append(points, point)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read set price history: %w", err)
+	}
+	return points, nil
+}
+
+func sortEditions(editions []string) {
+	sort.Slice(editions, func(i, j int) bool {
+		if editions[i] == editions[j] {
+			return false
+		}
+		if editions[i] == "Unlimited" {
+			return true
+		}
+		if editions[j] == "Unlimited" {
+			return false
+		}
+		return editions[i] < editions[j]
+	})
+}
+
+func defaultEdition(editions []string) string {
+	if contains(editions, "Unlimited") {
+		return "Unlimited"
+	}
+	if len(editions) > 0 {
+		return editions[0]
+	}
+	return ""
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func roundMoney(value float64) float64 {
+	return math.Round(value*100) / 100
 }

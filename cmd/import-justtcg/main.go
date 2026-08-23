@@ -166,12 +166,13 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 	if declaredCount == 0 {
 		declaredCount = data.Set.Count
 	}
+	logoURL, symbolURL := pokemonTCGSetImages(data.Set.Name)
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO catalog_sets (
 			id, game, name, release_date, declared_card_count, provider,
-			source_file, source_collected_at, imported_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+			source_file, source_collected_at, logo_url, symbol_url, imported_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 		ON CONFLICT (id) DO UPDATE SET
 			game = EXCLUDED.game,
 			name = EXCLUDED.name,
@@ -180,9 +181,12 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 			provider = EXCLUDED.provider,
 			source_file = EXCLUDED.source_file,
 			source_collected_at = EXCLUDED.source_collected_at,
+			logo_url = coalesce(EXCLUDED.logo_url, catalog_sets.logo_url),
+			symbol_url = coalesce(EXCLUDED.symbol_url, catalog_sets.symbol_url),
 			imported_at = now()
 	`, data.Set.ID, valueOrDefault(data.Set.Game, "Pokemon"), data.Set.Name, releaseDate,
-		declaredCount, valueOrDefault(data.Provider, "JustTCG"), filepath.Base(filename), collectedAt)
+		declaredCount, valueOrDefault(data.Provider, "JustTCG"), filepath.Base(filename), collectedAt,
+		nullIfEmpty(logoURL), nullIfEmpty(symbolURL))
 	if err != nil {
 		return importStats{}, fmt.Errorf("upsert set: %w", err)
 	}
@@ -243,17 +247,21 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 		stats.Cards++
 
 		for _, variant := range card.Variants {
+			edition, finish := normalizePrinting(variant.Printing)
 			_, err := tx.Exec(ctx, `
 				INSERT INTO catalog_card_variants (
 					id, uuid, card_id, tcgplayer_sku_id, printing, condition,
-					language, current_price, price_change_24h, source_updated_at, imported_at
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+					edition, finish, language, current_price, price_change_24h,
+					source_updated_at, imported_at
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
 				ON CONFLICT (id) DO UPDATE SET
 					uuid = EXCLUDED.uuid,
 					card_id = EXCLUDED.card_id,
 					tcgplayer_sku_id = EXCLUDED.tcgplayer_sku_id,
 					printing = EXCLUDED.printing,
 					condition = EXCLUDED.condition,
+					edition = EXCLUDED.edition,
+					finish = EXCLUDED.finish,
 					language = EXCLUDED.language,
 					current_price = EXCLUDED.current_price,
 					price_change_24h = EXCLUDED.price_change_24h,
@@ -261,8 +269,8 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 					imported_at = now()
 			`, variant.ID, nullIfEmpty(variant.UUID), card.ID, parseInt64(variant.TCGPlayerSKUID),
 				valueOrDefault(variant.Printing, "Unknown"), valueOrDefault(variant.Condition, "Unknown"),
-				valueOrDefault(variant.Language, "Unknown"), variant.Price, variant.PriceChange24Hour,
-				parseUnixTime(variant.LastUpdated))
+				edition, finish, valueOrDefault(variant.Language, "Unknown"), variant.Price,
+				variant.PriceChange24Hour, parseUnixTime(variant.LastUpdated))
 			if err != nil {
 				return importStats{}, fmt.Errorf("upsert variant %s: %w", variant.ID, err)
 			}
@@ -373,4 +381,65 @@ func valueOrDefault(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func normalizePrinting(printing string) (string, string) {
+	normalized := strings.ToLower(strings.TrimSpace(printing))
+	edition := "Unlimited"
+	if strings.Contains(normalized, "1st edition") || strings.Contains(normalized, "first edition") {
+		edition = "First Edition"
+	}
+
+	finish := "Normal"
+	switch {
+	case strings.Contains(normalized, "reverse holo"):
+		finish = "Reverse Holofoil"
+	case strings.Contains(normalized, "holo"):
+		finish = "Holofoil"
+	}
+	return edition, finish
+}
+
+func pokemonTCGSetImages(setName string) (string, string) {
+	setID := map[string]string{
+		"Base Set":                   "base1",
+		"Base Set (Shadowless)":      "base1",
+		"Jungle":                     "base2",
+		"Fossil":                     "base3",
+		"Base Set 2":                 "base4",
+		"Team Rocket":                "base5",
+		"Gym Heroes":                 "gym1",
+		"Gym Challenge":              "gym2",
+		"Neo Genesis":                "neo1",
+		"Neo Discovery":              "neo2",
+		"Southern Islands":           "si1",
+		"Neo Revelation":             "neo3",
+		"Neo Destiny":                "neo4",
+		"Legendary Collection":       "base6",
+		"Expedition Base Set":        "ecard1",
+		"Aquapolis":                  "ecard2",
+		"Skyridge":                   "ecard3",
+		"Wizards Black Star Promos":  "basep",
+		"EX Ruby & Sapphire":         "ex1",
+		"EX Sandstorm":               "ex2",
+		"EX Dragon":                  "ex3",
+		"EX Team Magma vs Team Aqua": "ex4",
+		"EX Hidden Legends":          "ex5",
+		"EX FireRed & LeafGreen":     "ex6",
+		"EX Team Rocket Returns":     "ex7",
+		"EX Deoxys":                  "ex8",
+		"EX Emerald":                 "ex9",
+		"EX Unseen Forces":           "ex10",
+		"EX Delta Species":           "ex11",
+		"EX Legend Maker":            "ex12",
+		"EX Holon Phantoms":          "ex13",
+		"EX Crystal Guardians":       "ex14",
+		"EX Dragon Frontiers":        "ex15",
+		"EX Power Keepers":           "ex16",
+	}[strings.TrimSpace(setName)]
+	if setID == "" {
+		return "", ""
+	}
+	return fmt.Sprintf("https://images.pokemontcg.io/%s/logo.png", setID),
+		fmt.Sprintf("https://images.pokemontcg.io/%s/symbol.png", setID)
 }

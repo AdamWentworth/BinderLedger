@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Layers3 } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, CreditCard, Layers3, Library } from 'lucide-react-native';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,9 +12,11 @@ import {
 
 import { CardDetailModal } from '@/components/card-detail-modal';
 import { CatalogCardTile } from '@/components/catalog-card';
+import { CatalogSetTile } from '@/components/catalog-set';
 import { EmptyState } from '@/components/empty-state';
 import { Screen } from '@/components/screen';
 import { SearchField } from '@/components/search-field';
+import { SetDetailModal } from '@/components/set-detail-modal';
 import { colors, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import {
@@ -25,35 +27,44 @@ import {
 } from '@/lib/api';
 
 const pageSize = 24;
+type CatalogMode = 'cards' | 'sets';
 
 export default function CatalogScreen() {
   const width = useHydratedWidth();
   const compact = width < 760;
   const desktop = width >= 1040;
   const columns = width >= 1280 ? 3 : width >= 760 ? 2 : 1;
+  const setColumns = width >= 1040 ? 3 : width >= 620 ? 2 : 1;
+  const [mode, setMode] = useState<CatalogMode>('cards');
   const [selectedSet, setSelectedSet] = useState('');
-  const [search, setSearch] = useState('');
+  const [cardSearch, setCardSearch] = useState('');
+  const [setSearch, setSetSearch] = useState('');
   const [offset, setOffset] = useState(0);
   const [selectedCard, setSelectedCard] = useState<CatalogCard | null>(null);
+  const [selectedPricingSet, setSelectedPricingSet] = useState<CatalogSet | null>(null);
 
   const setsQuery = useQuery({
     queryKey: ['catalog', 'sets'],
     queryFn: ({ signal }) => getCatalogSets(signal),
   });
   const cardsQuery = useQuery({
-    queryKey: ['catalog', 'cards', selectedSet, search, offset],
+    queryKey: ['catalog', 'cards', selectedSet, cardSearch, offset],
     queryFn: ({ signal }) =>
       getCatalogCards({
         setId: selectedSet,
-        query: search,
+        query: cardSearch,
         limit: pageSize,
         offset,
         signal,
-      }),
+    }),
     placeholderData: keepPreviousData,
+    enabled: mode === 'cards',
   });
 
   const sets = setsQuery.data ?? [];
+  const filteredSets = sets.filter((set) =>
+    set.name.toLocaleLowerCase().includes(setSearch.trim().toLocaleLowerCase()),
+  );
   const cards = cardsQuery.data?.cards ?? [];
   const total = cardsQuery.data?.total ?? 0;
   const pageStart = total === 0 ? 0 : offset + 1;
@@ -69,8 +80,12 @@ export default function CatalogScreen() {
     setOffset(0);
   };
   const changeSearch = (value: string) => {
-    setSearch(value);
-    setOffset(0);
+    if (mode === 'cards') {
+      setCardSearch(value);
+      setOffset(0);
+    } else {
+      setSetSearch(value);
+    }
   };
 
   return (
@@ -78,88 +93,179 @@ export default function CatalogScreen() {
       title="Card catalog"
       subtitle={summary}
       toolbar={
-        <View style={styles.searchWrap}>
-          <SearchField onChangeText={changeSearch} placeholder="Search name or number" value={search} />
+        <View style={[styles.toolbar, compact && styles.toolbarCompact]}>
+          <View style={styles.searchWrap}>
+            <SearchField
+              onChangeText={changeSearch}
+              placeholder={mode === 'cards' ? 'Search name or number' : 'Search sets'}
+              value={mode === 'cards' ? cardSearch : setSearch}
+            />
+          </View>
+          <CatalogModeControl mode={mode} onChange={setMode} />
         </View>
       }>
-      {compact ? (
-        <SetStrip selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
-      ) : null}
-
-      <View style={styles.catalogLayout}>
-        {!compact ? (
-          <SetRail selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
-        ) : null}
-
+      {mode === 'sets' ? (
         <View style={styles.results}>
           <View style={styles.resultsHeader}>
             <View style={styles.resultCountWrap}>
-              <Layers3 color={colors.brass} size={17} />
+              <Library color={colors.brass} size={17} />
               <Text style={styles.resultCount}>
-                {cardsQuery.isPending ? 'Loading catalog' : `${total} cards`}
+                {setsQuery.isPending ? 'Loading sets' : `${filteredSets.length} sets`}
               </Text>
-              {total > 0 && (
-                <Text style={styles.pageRange}>
-                  {pageStart}-{pageEnd}
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.pager}>
-              <Pressable
-                accessibilityLabel="Previous catalog page"
-                accessibilityRole="button"
-                disabled={!hasPrevious}
-                onPress={() => setOffset(Math.max(0, offset - pageSize))}
-                style={[styles.pageButton, !hasPrevious && styles.pageButtonDisabled]}>
-                <ChevronLeft color={colors.text} size={19} />
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Next catalog page"
-                accessibilityRole="button"
-                disabled={!hasNext}
-                onPress={() => setOffset(offset + pageSize)}
-                style={[styles.pageButton, !hasNext && styles.pageButtonDisabled]}>
-                <ChevronRight color={colors.text} size={19} />
-              </Pressable>
             </View>
           </View>
-
-          {cardsQuery.isPending ? (
+          {setsQuery.isPending ? (
             <View style={styles.loading}>
               <ActivityIndicator color={colors.brand} size="large" />
             </View>
-          ) : cardsQuery.isError ? (
-            <EmptyState
-              message="The catalog API could not be reached. Check the API status and try again."
-              title="Catalog unavailable"
-            />
-          ) : cards.length === 0 ? (
-            <EmptyState
-              message="Try another card name, number, or collected set."
-              title="No matching cards"
-            />
+          ) : setsQuery.isError ? (
+            <EmptyState message="The set catalog could not be reached." title="Sets unavailable" />
+          ) : filteredSets.length === 0 ? (
+            <EmptyState message="Try another set name." title="No matching sets" />
           ) : (
             <View style={[styles.grid, desktop && styles.gridDesktop]}>
-              {cards.map((card) => (
+              {filteredSets.map((set) => (
                 <View
-                  key={card.id}
+                  key={set.id}
                   style={[
                     styles.gridItem,
-                    columns === 1 && styles.gridItemOne,
-                    columns === 2 && styles.gridItemTwo,
-                    columns === 3 && styles.gridItemThree,
+                    setColumns === 1 && styles.gridItemOne,
+                    setColumns === 2 && styles.gridItemTwo,
+                    setColumns === 3 && styles.gridItemThree,
                   ]}>
-                  <CatalogCardTile card={card} onPress={setSelectedCard} />
+                  <CatalogSetTile onPress={setSelectedPricingSet} set={set} />
                 </View>
               ))}
             </View>
           )}
         </View>
-      </View>
+      ) : (
+        <>
+          {compact ? (
+            <SetStrip selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
+          ) : null}
+
+          <View style={styles.catalogLayout}>
+            {!compact ? (
+              <SetRail selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
+            ) : null}
+
+            <View style={styles.results}>
+              <View style={styles.resultsHeader}>
+                <View style={styles.resultCountWrap}>
+                  <Layers3 color={colors.brass} size={17} />
+                  <Text style={styles.resultCount}>
+                    {cardsQuery.isPending ? 'Loading catalog' : `${total} cards`}
+                  </Text>
+                  {total > 0 && <Text style={styles.pageRange}>{pageStart}-{pageEnd}</Text>}
+                </View>
+
+                <View style={styles.pager}>
+                  <Pressable
+                    accessibilityLabel="Previous catalog page"
+                    accessibilityRole="button"
+                    disabled={!hasPrevious}
+                    onPress={() => setOffset(Math.max(0, offset - pageSize))}
+                    style={[styles.pageButton, !hasPrevious && styles.pageButtonDisabled]}>
+                    <ChevronLeft color={colors.text} size={19} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Next catalog page"
+                    accessibilityRole="button"
+                    disabled={!hasNext}
+                    onPress={() => setOffset(offset + pageSize)}
+                    style={[styles.pageButton, !hasNext && styles.pageButtonDisabled]}>
+                    <ChevronRight color={colors.text} size={19} />
+                  </Pressable>
+                </View>
+              </View>
+
+              {cardsQuery.isPending ? (
+                <View style={styles.loading}>
+                  <ActivityIndicator color={colors.brand} size="large" />
+                </View>
+              ) : cardsQuery.isError ? (
+                <EmptyState
+                  message="The catalog API could not be reached. Check the API status and try again."
+                  title="Catalog unavailable"
+                />
+              ) : cards.length === 0 ? (
+                <EmptyState
+                  message="Try another card name, number, or collected set."
+                  title="No matching cards"
+                />
+              ) : (
+                <View style={[styles.grid, desktop && styles.gridDesktop]}>
+                  {cards.map((card) => (
+                    <View
+                      key={card.id}
+                      style={[
+                        styles.gridItem,
+                        columns === 1 && styles.gridItemOne,
+                        columns === 2 && styles.gridItemTwo,
+                        columns === 3 && styles.gridItemThree,
+                      ]}>
+                      <CatalogCardTile card={card} onPress={setSelectedCard} />
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </>
+      )}
 
       <CardDetailModal card={selectedCard} onClose={() => setSelectedCard(null)} />
+      <SetDetailModal set={selectedPricingSet} onClose={() => setSelectedPricingSet(null)} />
     </Screen>
+  );
+}
+
+function CatalogModeControl({
+  mode,
+  onChange,
+}: {
+  mode: CatalogMode;
+  onChange: (mode: CatalogMode) => void;
+}) {
+  return (
+    <View accessibilityRole="tablist" style={styles.modeControl}>
+      <ModeButton
+        icon={<CreditCard color={mode === 'cards' ? colors.text : colors.textMuted} size={16} />}
+        label="Cards"
+        onPress={() => onChange('cards')}
+        selected={mode === 'cards'}
+      />
+      <ModeButton
+        icon={<Library color={mode === 'sets' ? colors.text : colors.textMuted} size={16} />}
+        label="Sets"
+        onPress={() => onChange('sets')}
+        selected={mode === 'sets'}
+      />
+    </View>
+  );
+}
+
+function ModeButton({
+  icon,
+  label,
+  selected,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[styles.modeButton, selected && styles.modeButtonSelected]}>
+      {icon}
+      <Text style={[styles.modeButtonText, selected && styles.modeButtonTextSelected]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -250,10 +356,53 @@ function SetChip({ label, selected, onPress }: SetChipProps) {
 }
 
 const styles = StyleSheet.create({
+  toolbar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'flex-end',
+    maxWidth: 560,
+    width: '100%',
+  },
+  toolbarCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    maxWidth: '100%',
+  },
   searchWrap: {
+    flex: 1,
     maxWidth: 360,
     minWidth: 260,
     width: '100%',
+  },
+  modeControl: {
+    backgroundColor: colors.surfaceQuiet,
+    borderRadius: 6,
+    flexDirection: 'row',
+    padding: 3,
+  },
+  modeButton: {
+    alignItems: 'center',
+    borderRadius: 4,
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    minHeight: 36,
+    minWidth: 84,
+    paddingHorizontal: spacing.sm,
+  },
+  modeButtonSelected: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  modeButtonText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modeButtonTextSelected: {
+    color: colors.text,
   },
   catalogLayout: {
     alignItems: 'flex-start',

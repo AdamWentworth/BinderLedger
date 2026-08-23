@@ -27,6 +27,7 @@ func New(db *pgxpool.Pool, allowedOrigins []string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", api.health)
 	mux.HandleFunc("GET /api/catalog/sets", api.catalogSets)
+	mux.HandleFunc("GET /api/catalog/sets/{setID}/pricing", api.catalogSetPricing)
 	mux.HandleFunc("GET /api/catalog/cards", api.catalogCards)
 	mux.HandleFunc("GET /api/market/overview", api.marketOverview)
 	mux.HandleFunc("GET /api/market/variants/{variantID}/history", api.marketVariantHistory)

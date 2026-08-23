@@ -2,11 +2,14 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/AdamWentworth/BinderLedger/internal/catalog"
+	"github.com/AdamWentworth/BinderLedger/internal/market"
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -51,6 +54,49 @@ func (api *API) catalogCards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, page)
+}
+
+func (api *API) catalogSetPricing(w http.ResponseWriter, r *http.Request) {
+	setID := strings.TrimSpace(r.PathValue("setID"))
+	if setID == "" || len(setID) > 200 {
+		writeError(w, http.StatusBadRequest, "set id is invalid")
+		return
+	}
+	edition := strings.TrimSpace(r.URL.Query().Get("edition"))
+	if len(edition) > 50 {
+		writeError(w, http.StatusBadRequest, "edition is invalid")
+		return
+	}
+	condition, ok := marketCondition(r.URL.Query().Get("condition"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "condition is not supported")
+		return
+	}
+	period, ok := market.ParsePeriod(r.URL.Query().Get("period"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "period must be 1d, 1w, 1m, 1y, or all")
+		return
+	}
+
+	pricing, err := api.catalog.SetPricing(r.Context(), catalog.SetPricingFilter{
+		SetID:     setID,
+		Edition:   edition,
+		Condition: condition,
+		Period:    period,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "catalog set was not found")
+		return
+	}
+	if errors.Is(err, catalog.ErrEditionUnavailable) {
+		writeError(w, http.StatusBadRequest, "edition is unavailable for this set")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "set pricing is unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, pricing)
 }
 
 func queryInteger(r *http.Request, key string, fallback, minimum, maximum int) (int, bool) {

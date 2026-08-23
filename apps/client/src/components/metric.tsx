@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flex: 1,
     gap: spacing.sm,
-    minWidth: 190,
+    minWidth: 160,
     padding: spacing.md,
   },
   labelRow: {

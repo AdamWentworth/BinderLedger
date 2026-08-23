@@ -5,12 +5,14 @@ import (
 	"slices"
 
 	"github.com/AdamWentworth/BinderLedger/internal/catalog"
+	"github.com/AdamWentworth/BinderLedger/internal/market"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type API struct {
 	db             *pgxpool.Pool
 	catalog        *catalog.Repository
+	market         *market.Repository
 	allowedOrigins []string
 }
 
@@ -18,6 +20,7 @@ func New(db *pgxpool.Pool, allowedOrigins []string) http.Handler {
 	api := &API{
 		db:             db,
 		catalog:        catalog.NewRepository(db),
+		market:         market.NewRepository(db),
 		allowedOrigins: allowedOrigins,
 	}
 
@@ -25,6 +28,8 @@ func New(db *pgxpool.Pool, allowedOrigins []string) http.Handler {
 	mux.HandleFunc("GET /api/health", api.health)
 	mux.HandleFunc("GET /api/catalog/sets", api.catalogSets)
 	mux.HandleFunc("GET /api/catalog/cards", api.catalogCards)
+	mux.HandleFunc("GET /api/market/overview", api.marketOverview)
+	mux.HandleFunc("GET /api/market/variants/{variantID}/history", api.marketVariantHistory)
 
 	return api.cors(mux)
 }

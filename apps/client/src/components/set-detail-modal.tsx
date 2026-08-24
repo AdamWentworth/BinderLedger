@@ -150,7 +150,7 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
                 <View style={styles.summaryStrip}>
                   <SummaryValue
                     label="Collection value"
-                    note={`${pricing.summary.currentCards} current / ${pricing.summary.historicalCards} historical`}
+                    note={`${pricing.summary.currentCards} current / ${pricing.summary.historicalCards} historical / ${pricing.summary.estimatedCards} estimated`}
                     value={formatCurrency(pricing.summary.totalValue)}
                   />
                   <SummaryValue
@@ -173,12 +173,17 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
                   />
                 </View>
 
-                {pricing.summary.historicalCards > 0 || pricing.summary.unavailableCards > 0 ? (
+                {pricing.summary.historicalCards > 0 ||
+                pricing.summary.estimatedCards > 0 ||
+                pricing.summary.unavailableCards > 0 ? (
                   <View style={styles.coverageNotice}>
                     <AlertTriangle color={colors.warning} size={16} />
                     <Text style={styles.coverageText}>
                       {pricing.summary.historicalCards > 0
                         ? `${pricing.summary.historicalCards} cards use their latest condition-consistent historical snapshot. `
+                        : ''}
+                      {pricing.summary.estimatedCards > 0
+                        ? `${pricing.summary.estimatedCards} cards use an exact-printing ungraded estimate in current totals and sorting, but not in history. `
                         : ''}
                       {pricing.summary.unavailableCards > 0
                         ? `${pricing.summary.unavailableCards} cards have no trustworthy price and are excluded.`
@@ -301,6 +306,7 @@ function SummaryValue({
 }
 
 function SetCardRow({ card }: { card: SetPriceCard }) {
+  const estimated = card.valuationKind === 'ungraded_reference';
   return (
     <View style={styles.cardRow}>
       <View style={styles.cardImageFrame}>
@@ -316,15 +322,15 @@ function SetCardRow({ card }: { card: SetPriceCard }) {
         <Text numberOfLines={1} style={styles.cardMeta}>
           {card.priceQuality?.status === 'historical' && card.priceQuality.asOf
             ? `Verified ${formatDate(card.priceQuality.asOf)}`
-            : card.priceQuality?.status === 'unavailable'
+            : estimated
+              ? 'Ungraded estimate'
+              : card.priceQuality?.status === 'unavailable'
               ? 'Price unavailable'
               : `${card.rarity ?? 'Unknown rarity'}${card.finish ? ` / ${card.finish}` : ''}`}
         </Text>
       </View>
       <Text style={[styles.cardPrice, card.currentPrice === null && styles.cardPriceMissing]}>
-        {card.priceQuality?.status === 'unavailable'
-          ? 'Unavailable'
-          : formatCurrency(card.currentPrice)}
+        {card.currentPrice === null ? 'Unavailable' : formatCurrency(card.currentPrice)}
       </Text>
     </View>
   );

@@ -80,6 +80,9 @@ const (
 	ListingSortPriceLow  ListingSort = "price_asc"
 	ListingSortNameAZ    ListingSort = "name_asc"
 	ListingSortNameZA    ListingSort = "name_desc"
+
+	ValuationKindCondition         = "condition"
+	ValuationKindUngradedReference = "ungraded_reference"
 )
 
 type Listing struct {
@@ -97,6 +100,7 @@ type Listing struct {
 	Language            string               `json:"language"`
 	SelectedVariantID   *string              `json:"selectedVariantId"`
 	CurrentPrice        *float64             `json:"currentPrice"`
+	ValuationKind       *string              `json:"valuationKind"`
 	PriceQuality        PriceQuality         `json:"priceQuality"`
 	Variants            []Variant            `json:"variants"`
 	ValuationReferences []ValuationReference `json:"valuationReferences"`
@@ -160,22 +164,24 @@ type SetPriceSummary struct {
 	PricedCards      int      `json:"pricedCards"`
 	CurrentCards     int      `json:"currentCards"`
 	HistoricalCards  int      `json:"historicalCards"`
+	EstimatedCards   int      `json:"estimatedCards"`
 	UnavailableCards int      `json:"unavailableCards"`
 	CardCount        int      `json:"cardCount"`
 	Complete         bool     `json:"complete"`
 }
 
 type SetPriceCard struct {
-	ID           string        `json:"id"`
-	Name         string        `json:"name"`
-	Number       *string       `json:"number"`
-	Rarity       *string       `json:"rarity"`
-	ImageURL     *string       `json:"imageUrl"`
-	VariantID    *string       `json:"variantId"`
-	Printing     *string       `json:"printing"`
-	Finish       *string       `json:"finish"`
-	CurrentPrice *float64      `json:"currentPrice"`
-	PriceQuality *PriceQuality `json:"priceQuality"`
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	Number        *string       `json:"number"`
+	Rarity        *string       `json:"rarity"`
+	ImageURL      *string       `json:"imageUrl"`
+	VariantID     *string       `json:"variantId"`
+	Printing      *string       `json:"printing"`
+	Finish        *string       `json:"finish"`
+	CurrentPrice  *float64      `json:"currentPrice"`
+	ValuationKind *string       `json:"valuationKind"`
+	PriceQuality  *PriceQuality `json:"priceQuality"`
 }
 
 type SetPricePoint struct {
@@ -405,13 +411,22 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				quality.finish,
 				quality.language,
 				selected.id AS selected_variant_id,
-				CASE $5
-					WHEN 'Damaged' THEN quality.damaged_price
-					WHEN 'Heavily Played' THEN quality.heavily_played_price
-					WHEN 'Moderately Played' THEN quality.moderately_played_price
-					WHEN 'Lightly Played' THEN quality.lightly_played_price
-					WHEN 'Near Mint' THEN quality.near_mint_price
+				CASE
+					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+						THEN fallback.amount
+					ELSE CASE $5
+						WHEN 'Damaged' THEN quality.damaged_price
+						WHEN 'Heavily Played' THEN quality.heavily_played_price
+						WHEN 'Moderately Played' THEN quality.moderately_played_price
+						WHEN 'Lightly Played' THEN quality.lightly_played_price
+						WHEN 'Near Mint' THEN quality.near_mint_price
+					END
 				END::double precision AS current_price,
+				CASE
+					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+						THEN 'ungraded_reference'
+					WHEN quality.status <> 'unavailable' THEN 'condition'
+				END AS valuation_kind,
 				quality.status AS price_status,
 				to_char(quality.as_of, 'YYYY-MM-DD') AS price_as_of,
 				quality.reason AS price_reason,
@@ -434,6 +449,17 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				ORDER BY v.id
 				LIMIT 1
 			) selected ON true
+			LEFT JOIN LATERAL (
+				SELECT reference.amount
+				FROM catalog_valuation_references reference
+				WHERE reference.tcgplayer_product_id = c.tcgplayer_product_id
+				  AND reference.edition = quality.edition
+				  AND reference.finish = quality.finish
+				  AND reference.language = quality.language
+				  AND reference.kind = 'ungraded'
+				ORDER BY reference.checked_on DESC, reference.sort_order, reference.id
+				LIMIT 1
+			) fallback ON true
 			WHERE ($1 = '' OR c.set_id = $1)
 			  AND ($2 = '' OR c.name ILIKE '%' || $2 || '%' OR c.number ILIKE '%' || $2 || '%')
 			  AND ($3 = '' OR quality.edition = $3)
@@ -454,6 +480,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			language,
 			selected_variant_id,
 			current_price,
+			valuation_kind,
 			price_status,
 			price_as_of,
 			price_reason,
@@ -507,6 +534,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			&listing.Language,
 			&listing.SelectedVariantID,
 			&listing.CurrentPrice,
+			&listing.ValuationKind,
 			&listing.PriceQuality.Status,
 			&listing.PriceQuality.AsOf,
 			&listing.PriceQuality.Reason,
@@ -750,6 +778,7 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			selected.printing,
 			selected.finish,
 			selected.current_price::double precision,
+			selected.valuation_kind,
 			selected.price_status,
 			selected.price_as_of,
 			selected.price_reason
@@ -759,13 +788,22 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 				variant.id,
 				variant.printing,
 				quality.finish,
-				CASE $3
-					WHEN 'Damaged' THEN quality.damaged_price
-					WHEN 'Heavily Played' THEN quality.heavily_played_price
-					WHEN 'Moderately Played' THEN quality.moderately_played_price
-					WHEN 'Lightly Played' THEN quality.lightly_played_price
-					WHEN 'Near Mint' THEN quality.near_mint_price
+				CASE
+					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+						THEN fallback.amount
+					ELSE CASE $3
+						WHEN 'Damaged' THEN quality.damaged_price
+						WHEN 'Heavily Played' THEN quality.heavily_played_price
+						WHEN 'Moderately Played' THEN quality.moderately_played_price
+						WHEN 'Lightly Played' THEN quality.lightly_played_price
+						WHEN 'Near Mint' THEN quality.near_mint_price
+					END
 				END AS current_price,
+				CASE
+					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+						THEN 'ungraded_reference'
+					WHEN quality.status <> 'unavailable' THEN 'condition'
+				END AS valuation_kind,
 				quality.status AS price_status,
 				to_char(quality.as_of, 'YYYY-MM-DD') AS price_as_of,
 				quality.reason AS price_reason
@@ -780,7 +818,18 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 				  AND v.condition = $3
 				ORDER BY v.id
 				LIMIT 1
-			) variant ON true
+				) variant ON true
+				LEFT JOIN LATERAL (
+					SELECT reference.amount
+					FROM catalog_valuation_references reference
+					WHERE reference.tcgplayer_product_id = c.tcgplayer_product_id
+					  AND reference.edition = quality.edition
+					  AND reference.finish = quality.finish
+					  AND reference.language = quality.language
+					  AND reference.kind = 'ungraded'
+					ORDER BY reference.checked_on DESC, reference.sort_order, reference.id
+					LIMIT 1
+				) fallback ON true
 			WHERE quality.card_id = c.id
 			  AND quality.edition = $2
 			ORDER BY
@@ -818,6 +867,7 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			&card.Printing,
 			&card.Finish,
 			&card.CurrentPrice,
+			&card.ValuationKind,
 			&qualityStatus,
 			&qualityAsOf,
 			&qualityReason,
@@ -836,7 +886,11 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			case "historical":
 				pricing.Summary.HistoricalCards++
 			case "unavailable":
-				pricing.Summary.UnavailableCards++
+				if card.ValuationKind != nil && *card.ValuationKind == ValuationKindUngradedReference {
+					pricing.Summary.EstimatedCards++
+				} else {
+					pricing.Summary.UnavailableCards++
+				}
 			}
 		} else {
 			pricing.Summary.UnavailableCards++

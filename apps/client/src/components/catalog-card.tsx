@@ -17,9 +17,7 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
   const [imageFailed, setImageFailed] = useState(false);
   const historical = listing.priceQuality.status === 'historical';
   const unavailable = listing.priceQuality.status === 'unavailable';
-  const ungradedReference = unavailable
-    ? listing.valuationReferences.find((reference) => reference.kind === 'ungraded')
-    : undefined;
+  const estimated = listing.valuationKind === 'ungraded_reference';
 
   return (
     <Pressable
@@ -71,18 +69,18 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
         <View style={styles.priceRow}>
           <View style={styles.priceLabelWrap}>
             {historical ? <History color={colors.warning} size={13} /> : null}
-            {unavailable && !ungradedReference ? (
+            {unavailable && !estimated ? (
               <CircleAlert color={colors.warning} size={13} />
             ) : null}
-            {ungradedReference ? <BadgeDollarSign color={colors.brass} size={14} /> : null}
+            {estimated ? <BadgeDollarSign color={colors.brass} size={14} /> : null}
             <Text
               style={[
                 styles.priceLabel,
-                (historical || (unavailable && !ungradedReference)) && styles.priceLabelFlagged,
-                ungradedReference && styles.priceLabelReference,
+                (historical || (unavailable && !estimated)) && styles.priceLabelFlagged,
+                estimated && styles.priceLabelReference,
               ]}>
-              {ungradedReference
-                ? 'Ungraded ref'
+              {estimated
+                ? 'Ungraded value'
                 : historical && listing.priceQuality.asOf
                 ? `${shortCondition(condition)} / ${formatShortDate(listing.priceQuality.asOf)}`
                 : shortCondition(condition)}
@@ -91,11 +89,11 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
           <Text
             style={[
               styles.price,
-              unavailable && !ungradedReference && styles.priceUnavailable,
-              ungradedReference && styles.priceReference,
+              unavailable && !estimated && styles.priceUnavailable,
+              estimated && styles.priceReference,
             ]}>
-            {ungradedReference
-              ? formatCurrency(ungradedReference.amount)
+            {estimated
+              ? formatCurrency(listing.currentPrice)
               : unavailable
                 ? 'Price unavailable'
                 : formatCurrency(listing.currentPrice)}

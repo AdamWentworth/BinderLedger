@@ -49,7 +49,9 @@ make dev-down
 ```
 
 The development database persists in the dedicated
-`binderledger_dev_postgres` Docker volume when the runtime is stopped.
+`binderledger_dev_postgres` Docker volume when the runtime is stopped. While
+the runtime is up, one Metro process serves both the browser app at
+`http://PRODUCTION_HOST:8082` and Expo Go at `exp://PRODUCTION_HOST:8082`.
 
 For Expo Go on the same trusted Wi-Fi network, bind the API to this computer's
 LAN address, place the same URL in `apps/client/.env.local`, and run:

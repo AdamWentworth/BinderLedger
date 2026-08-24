@@ -1,5 +1,5 @@
 [Unit]
-Description=BinderLedger Expo Go development server
+Description=BinderLedger Expo web and Expo Go development server
 After=network-online.target binderledger-api.service
 Wants=network-online.target
 
@@ -8,9 +8,10 @@ Type=simple
 WorkingDirectory=%h/src/BinderLedger/apps/client
 EnvironmentFile=%h/src/BinderLedger/apps/client/.env.local
 EnvironmentFile=%h/.config/binderledger/server.env
+Environment=BROWSER=none
 Environment=BINDERLEDGER_BIND_PORT=8082
 Environment=NODE_OPTIONS=--require=../../deploy/systemd/user/bind-server.cjs
-ExecStart=/usr/bin/npx expo start --offline --port 8082
+ExecStart=/usr/bin/npx expo start --web --offline --port 8082 --max-workers 1
 Restart=on-failure
 RestartSec=10s
 Nice=10
@@ -18,4 +19,4 @@ CPUWeight=25
 MemoryHigh=1G
 MemoryMax=1536M
 
-# Keep Metro opt-in on this server. Start it only while testing Expo Go.
+# Keep Metro tied to the development runtime so production can run alone.

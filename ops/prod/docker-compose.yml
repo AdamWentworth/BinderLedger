@@ -1,0 +1,152 @@
+name: binderledger
+
+services:
+  db:
+    image: postgres:17-bookworm
+    container_name: binderledger_db
+    restart: unless-stopped
+    cpus: "0.50"
+    cpu_shares: 128
+    mem_limit: 512m
+    memswap_limit: 768m
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-binderledger}
+      POSTGRES_USER: ${POSTGRES_USER:-binderledger}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=40
+    volumes:
+      - ${BINDERLEDGER_POSTGRES_DATA_DIR:-/mnt/storage/binderledger/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  migrate:
+    profiles: ["tools"]
+    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    entrypoint: ["/usr/local/bin/binderledger-migrate"]
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-binderledger}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-binderledger}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    container_name: binderledger_api
+    restart: unless-stopped
+    cpus: "0.50"
+    cpu_shares: 128
+    mem_limit: 256m
+    memswap_limit: 320m
+    pids_limit: 128
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    environment:
+      HTTP_ADDR: :4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-binderledger}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-binderledger}?sslmode=disable
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:8081}
+      CARD_IMAGE_DIR: /data/card-images
+      SCAN_IMAGE_DIR: /data/scan-images
+    ports:
+      - ${BINDERLEDGER_BIND_HOST:-127.0.0.1}:${BINDERLEDGER_API_PORT:-4000}:4000
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - ${BINDERLEDGER_CARD_IMAGE_DIR:-/mnt/storage/binderledger/card-images}:/data/card-images:ro
+      - ${BINDERLEDGER_SCAN_IMAGE_DIR:-/mnt/storage/binderledger/scan-images}:/data/scan-images
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/binderledger-healthcheck"]
+      interval: 20s
+      timeout: 4s
+      retries: 4
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  vision:
+    image: ${BINDERLEDGER_VISION_IMAGE:-ghcr.io/adamwentworth/binderledger-vision:latest}
+    container_name: binderledger_vision
+    restart: unless-stopped
+    cpus: "1.0"
+    cpu_shares: 64
+    mem_limit: 768m
+    memswap_limit: 1g
+    pids_limit: 128
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-binderledger}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-binderledger}?sslmode=disable
+      CARD_IMAGE_DIR: /data/card-images
+      SCAN_IMAGE_DIR: /data/scan-images
+      VISION_POLL_SECONDS: ${VISION_POLL_SECONDS:-3}
+      VISION_TESSERACT_ENABLED: ${VISION_TESSERACT_ENABLED:-true}
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    volumes:
+      - ${BINDERLEDGER_CARD_IMAGE_DIR:-/mnt/storage/binderledger/card-images}:/data/card-images:ro
+      - ${BINDERLEDGER_SCAN_IMAGE_DIR:-/mnt/storage/binderledger/scan-images}:/data/scan-images:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: ${BINDERLEDGER_WEB_IMAGE:-ghcr.io/adamwentworth/binderledger-web:latest}
+    container_name: binderledger_web
+    restart: unless-stopped
+    cpus: "0.25"
+    cpu_shares: 64
+    mem_limit: 96m
+    memswap_limit: 128m
+    pids_limit: 64
+    user: "101:101"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    ports:
+      - ${BINDERLEDGER_BIND_HOST:-127.0.0.1}:${BINDERLEDGER_WEB_PORT:-8081}:8080
+    tmpfs:
+      - /var/cache/nginx:size=16m,uid=101,gid=101
+      - /var/run:size=2m,uid=101,gid=101
+    depends_on:
+      api:
+        condition: service_healthy
+
+  record-valuations:
+    profiles: ["tools"]
+    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    entrypoint: ["/usr/local/bin/binderledger-record-valuations"]
+    restart: "no"
+    cpus: "0.25"
+    mem_limit: 128m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-binderledger}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-binderledger}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  default:
+    name: binderledger_private

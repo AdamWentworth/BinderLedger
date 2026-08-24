@@ -163,7 +163,10 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 			c.number,
 			s.id,
 			s.name,
-			c.image_url,
+			coalesce(
+				catalog_printing_image_url(c.id, v.edition, v.finish, v.language),
+				c.image_url
+			),
 			v.printing,
 			v.condition,
 			start_point.observed_on,
@@ -289,7 +292,10 @@ func (repository *Repository) VariantHistory(ctx context.Context, variantID stri
 			c.number,
 			s.id,
 			s.name,
-			c.image_url,
+			coalesce(
+				catalog_printing_image_url(c.id, v.edition, v.finish, v.language),
+				c.image_url
+			),
 			v.printing,
 			v.condition,
 			max(o.observed_on)

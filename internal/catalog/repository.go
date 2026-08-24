@@ -24,26 +24,31 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 type Set struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	ReleaseDate  *string  `json:"releaseDate"`
-	LogoURL      *string  `json:"logoUrl"`
-	SymbolURL    *string  `json:"symbolUrl"`
-	Editions     []string `json:"editions"`
-	CardCount    int      `json:"cardCount"`
-	VariantCount int      `json:"variantCount"`
-	MinimumPrice *float64 `json:"minimumPrice"`
-	MaximumPrice *float64 `json:"maximumPrice"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	ReleaseDate         *string  `json:"releaseDate"`
+	LogoURL             *string  `json:"logoUrl"`
+	SymbolURL           *string  `json:"symbolUrl"`
+	Editions            []string `json:"editions"`
+	DeclaredCardCount   *int     `json:"declaredCardCount"`
+	CardCount           int      `json:"cardCount"`
+	PrintingCount       int      `json:"printingCount"`
+	SharedCardCount     int      `json:"sharedCardCount"`
+	SharedPrintingCount int      `json:"sharedPrintingCount"`
+	VariantCount        int      `json:"variantCount"`
+	MinimumPrice        *float64 `json:"minimumPrice"`
+	MaximumPrice        *float64 `json:"maximumPrice"`
 }
 
 type Variant struct {
-	ID           string   `json:"id"`
-	Printing     string   `json:"printing"`
-	Edition      string   `json:"edition"`
-	Finish       string   `json:"finish"`
-	Condition    string   `json:"condition"`
-	Language     string   `json:"language"`
-	CurrentPrice *float64 `json:"currentPrice"`
+	ID             string   `json:"id"`
+	Printing       string   `json:"printing"`
+	Edition        string   `json:"edition"`
+	Finish         string   `json:"finish"`
+	Condition      string   `json:"condition"`
+	Language       string   `json:"language"`
+	SourceProvider string   `json:"sourceProvider"`
+	CurrentPrice   *float64 `json:"currentPrice"`
 }
 
 type Card struct {
@@ -118,17 +123,17 @@ type PriceQuality struct {
 }
 
 type ValuationReference struct {
-	ID         string  `json:"id"`
-	Kind       string  `json:"kind"`
-	Label      string  `json:"label"`
-	Grader     *string `json:"grader"`
-	Grade      *string `json:"grade"`
-	Amount     float64 `json:"amount"`
-	Currency   string  `json:"currency"`
-	SourceName string  `json:"sourceName"`
-	SourceURL  string  `json:"sourceUrl"`
-	CheckedOn  string  `json:"checkedOn"`
-	Note       *string `json:"note"`
+	ID         string   `json:"id"`
+	Kind       string   `json:"kind"`
+	Label      string   `json:"label"`
+	Grader     *string  `json:"grader"`
+	Grade      *string  `json:"grade"`
+	Amount     *float64 `json:"amount"`
+	Currency   string   `json:"currency"`
+	SourceName string   `json:"sourceName"`
+	SourceURL  string   `json:"sourceUrl"`
+	CheckedOn  string   `json:"checkedOn"`
+	Note       *string  `json:"note"`
 }
 
 type ListingFilter struct {
@@ -165,6 +170,7 @@ type SetPriceSummary struct {
 	CurrentCards     int      `json:"currentCards"`
 	HistoricalCards  int      `json:"historicalCards"`
 	EstimatedCards   int      `json:"estimatedCards"`
+	WarningCards     int      `json:"warningCards"`
 	UnavailableCards int      `json:"unavailableCards"`
 	CardCount        int      `json:"cardCount"`
 	Complete         bool     `json:"complete"`
@@ -208,7 +214,27 @@ func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 			s.logo_url,
 			s.symbol_url,
 			coalesce(array_agg(DISTINCT v.edition) FILTER (WHERE v.edition IS NOT NULL), '{}'),
+			s.declared_card_count,
 			count(DISTINCT c.id)::integer,
+			count(DISTINCT (c.id, v.edition, v.finish, v.language))
+				FILTER (WHERE v.id IS NOT NULL)::integer,
+			coalesce((
+				SELECT count(DISTINCT membership.card_id)::integer
+				FROM catalog_set_printing_memberships membership
+				WHERE membership.set_id = s.id
+			), 0),
+			coalesce((
+				SELECT count(DISTINCT (
+					membership.card_id,
+					variant.finish,
+					variant.language
+				))::integer
+				FROM catalog_set_printing_memberships membership
+				JOIN catalog_card_variants variant
+				  ON variant.card_id = membership.card_id
+				 AND variant.edition = membership.printing_edition
+				WHERE membership.set_id = s.id
+			), 0),
 			count(v.id)::integer,
 			min(v.current_price)::double precision,
 			max(v.current_price)::double precision
@@ -216,7 +242,7 @@ func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 		LEFT JOIN catalog_cards c ON c.set_id = s.id
 		LEFT JOIN catalog_card_variants v ON v.card_id = c.id
 		GROUP BY s.id
-		ORDER BY s.release_date NULLS LAST, s.name
+		ORDER BY s.release_date NULLS LAST, s.display_order, s.name
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query catalog sets: %w", err)
@@ -233,7 +259,11 @@ func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 			&set.LogoURL,
 			&set.SymbolURL,
 			&set.Editions,
+			&set.DeclaredCardCount,
 			&set.CardCount,
+			&set.PrintingCount,
+			&set.SharedCardCount,
+			&set.SharedPrintingCount,
 			&set.VariantCount,
 			&set.MinimumPrice,
 			&set.MaximumPrice,
@@ -257,7 +287,16 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 	if err := repository.db.QueryRow(ctx, `
 		SELECT count(*)::integer
 		FROM catalog_cards c
-		WHERE ($1 = '' OR c.set_id = $1)
+		WHERE (
+			$1 = ''
+			OR c.set_id = $1
+			OR EXISTS (
+				SELECT 1
+				FROM catalog_set_printing_memberships membership
+				WHERE membership.set_id = $1
+				  AND membership.card_id = c.id
+			)
+		)
 		  AND ($2 = '' OR c.name ILIKE '%' || $2 || '%' OR c.number ILIKE '%' || $2 || '%')
 	`, filter.SetID, filter.Query).Scan(&total); err != nil {
 		return CardPage{}, fmt.Errorf("count catalog cards: %w", err)
@@ -275,9 +314,18 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 			s.name
 		FROM catalog_cards c
 		JOIN catalog_sets s ON s.id = c.set_id
-		WHERE ($1 = '' OR c.set_id = $1)
+		WHERE (
+			$1 = ''
+			OR c.set_id = $1
+			OR EXISTS (
+				SELECT 1
+				FROM catalog_set_printing_memberships membership
+				WHERE membership.set_id = $1
+				  AND membership.card_id = c.id
+			)
+		)
 		  AND ($2 = '' OR c.name ILIKE '%' || $2 || '%' OR c.number ILIKE '%' || $2 || '%')
-		ORDER BY s.release_date NULLS LAST, s.name, c.number_sort NULLS LAST, c.name
+		ORDER BY s.release_date NULLS LAST, s.display_order, s.name, c.number_sort NULLS LAST, c.name
 		LIMIT $3 OFFSET $4
 	`, filter.SetID, filter.Query, filter.Limit, filter.Offset)
 	if err != nil {
@@ -321,6 +369,7 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 				finish,
 				condition,
 				language,
+				source_provider,
 				current_price::double precision
 			FROM catalog_card_variants
 			WHERE card_id = ANY($1)
@@ -352,6 +401,7 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 				&variant.Finish,
 				&variant.Condition,
 				&variant.Language,
+				&variant.SourceProvider,
 				&variant.CurrentPrice,
 			); err != nil {
 				return CardPage{}, fmt.Errorf("scan card variant: %w", err)
@@ -403,16 +453,31 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				c.number_sort,
 				c.rarity,
 				c.tcgplayer_product_id,
-				c.image_url,
+				coalesce(
+					catalog_printing_image_url(
+						c.id,
+						quality.edition,
+						quality.finish,
+						quality.language
+					),
+					c.image_url
+				) AS image_url,
 				s.id AS set_id,
 				s.name AS set_name,
 				s.release_date,
+				s.display_order AS set_display_order,
 				quality.edition,
 				quality.finish,
 				quality.language,
 				selected.id AS selected_variant_id,
 				CASE
-					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+					WHEN $5 = 'Near Mint' AND fallback.amount IS NOT NULL
+						THEN greatest(
+							coalesce(quality.near_mint_price, fallback.amount),
+							fallback.amount
+						)
+					WHEN (quality.status = 'unavailable' OR quality.reason IS NOT NULL)
+						AND fallback.amount IS NOT NULL
 						THEN fallback.amount
 					ELSE CASE $5
 						WHEN 'Damaged' THEN quality.damaged_price
@@ -423,7 +488,13 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 					END
 				END::double precision AS current_price,
 				CASE
-					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+					WHEN $5 = 'Near Mint'
+						AND fallback.amount IS NOT NULL
+						AND (quality.near_mint_price IS NULL OR fallback.amount > quality.near_mint_price)
+						THEN 'ungraded_reference'
+					WHEN $5 <> 'Near Mint'
+						AND (quality.status = 'unavailable' OR quality.reason IS NOT NULL)
+						AND fallback.amount IS NOT NULL
 						THEN 'ungraded_reference'
 					WHEN quality.status <> 'unavailable' THEN 'condition'
 				END AS valuation_kind,
@@ -460,9 +531,31 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				ORDER BY reference.checked_on DESC, reference.sort_order, reference.id
 				LIMIT 1
 			) fallback ON true
-			WHERE ($1 = '' OR c.set_id = $1)
+			WHERE (
+				$1 = ''
+				OR c.set_id = $1
+				OR EXISTS (
+					SELECT 1
+					FROM catalog_set_printing_memberships membership
+					WHERE membership.set_id = $1
+					  AND membership.card_id = c.id
+					  AND membership.printing_edition = quality.edition
+					  AND ($3 = '' OR membership.catalog_edition = $3)
+				)
+			)
 			  AND ($2 = '' OR c.name ILIKE '%' || $2 || '%' OR c.number ILIKE '%' || $2 || '%')
-			  AND ($3 = '' OR quality.edition = $3)
+			  AND (
+				$3 = ''
+				OR quality.edition = $3
+				OR EXISTS (
+					SELECT 1
+					FROM catalog_set_printing_memberships membership
+					WHERE membership.set_id = $1
+					  AND membership.card_id = c.id
+					  AND membership.catalog_edition = $3
+					  AND membership.printing_edition = quality.edition
+				)
+			)
 			  AND ($4 = '' OR quality.finish = $4)
 		)
 		SELECT
@@ -496,10 +589,11 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			CASE WHEN $6 = 'name_asc' THEN lower(name) END ASC,
 			CASE WHEN $6 = 'name_desc' THEN lower(name) END DESC,
 			release_date NULLS LAST,
+			set_display_order,
 			set_name,
 			number_sort NULLS LAST,
 			name,
-			CASE edition WHEN 'Unlimited' THEN 1 WHEN 'First Edition' THEN 2 ELSE 3 END,
+			CASE edition WHEN 'First Edition' THEN 1 WHEN 'Shadowless' THEN 2 WHEN 'Unlimited' THEN 3 ELSE 4 END,
 			finish,
 			language
 		LIMIT $7 OFFSET $8
@@ -573,6 +667,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			finish,
 			condition,
 			language,
+			source_provider,
 			current_price::double precision
 		FROM catalog_card_variants
 		WHERE card_id = ANY($1)
@@ -606,6 +701,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			&variant.Finish,
 			&variant.Condition,
 			&variant.Language,
+			&variant.SourceProvider,
 			&variant.CurrentPrice,
 		); err != nil {
 			return ListingPage{}, fmt.Errorf("scan listing variant: %w", err)
@@ -733,7 +829,27 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			to_char(s.release_date, 'YYYY-MM-DD'),
 			s.logo_url,
 			s.symbol_url,
+			s.declared_card_count,
 			count(DISTINCT c.id)::integer,
+			count(DISTINCT (c.id, v.edition, v.finish, v.language))
+				FILTER (WHERE v.id IS NOT NULL)::integer,
+			coalesce((
+				SELECT count(DISTINCT membership.card_id)::integer
+				FROM catalog_set_printing_memberships membership
+				WHERE membership.set_id = s.id
+			), 0),
+			coalesce((
+				SELECT count(DISTINCT (
+					membership.card_id,
+					variant.finish,
+					variant.language
+				))::integer
+				FROM catalog_set_printing_memberships membership
+				JOIN catalog_card_variants variant
+				  ON variant.card_id = membership.card_id
+				 AND variant.edition = membership.printing_edition
+				WHERE membership.set_id = s.id
+			), 0),
 			count(v.id)::integer,
 			min(v.current_price)::double precision,
 			max(v.current_price)::double precision,
@@ -749,7 +865,11 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 		&pricing.Set.ReleaseDate,
 		&pricing.Set.LogoURL,
 		&pricing.Set.SymbolURL,
+		&pricing.Set.DeclaredCardCount,
 		&pricing.Set.CardCount,
+		&pricing.Set.PrintingCount,
+		&pricing.Set.SharedCardCount,
+		&pricing.Set.SharedPrintingCount,
 		&pricing.Set.VariantCount,
 		&pricing.Set.MinimumPrice,
 		&pricing.Set.MaximumPrice,
@@ -773,7 +893,7 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			c.name,
 			c.number,
 			c.rarity,
-			c.image_url,
+			coalesce(selected.image_url, c.image_url),
 			selected.id,
 			selected.printing,
 			selected.finish,
@@ -788,8 +908,20 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 				variant.id,
 				variant.printing,
 				quality.finish,
+				catalog_printing_image_url(
+					quality.card_id,
+					quality.edition,
+					quality.finish,
+					quality.language
+				) AS image_url,
 				CASE
-					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+					WHEN $3 = 'Near Mint' AND fallback.amount IS NOT NULL
+						THEN greatest(
+							coalesce(quality.near_mint_price, fallback.amount),
+							fallback.amount
+						)
+					WHEN (quality.status = 'unavailable' OR quality.reason IS NOT NULL)
+						AND fallback.amount IS NOT NULL
 						THEN fallback.amount
 					ELSE CASE $3
 						WHEN 'Damaged' THEN quality.damaged_price
@@ -800,7 +932,13 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 					END
 				END AS current_price,
 				CASE
-					WHEN quality.status = 'unavailable' AND fallback.amount IS NOT NULL
+					WHEN $3 = 'Near Mint'
+						AND fallback.amount IS NOT NULL
+						AND (quality.near_mint_price IS NULL OR fallback.amount > quality.near_mint_price)
+						THEN 'ungraded_reference'
+					WHEN $3 <> 'Near Mint'
+						AND (quality.status = 'unavailable' OR quality.reason IS NOT NULL)
+						AND fallback.amount IS NOT NULL
 						THEN 'ungraded_reference'
 					WHEN quality.status <> 'unavailable' THEN 'condition'
 				END AS valuation_kind,
@@ -831,7 +969,17 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 					LIMIT 1
 				) fallback ON true
 			WHERE quality.card_id = c.id
-			  AND quality.edition = $2
+			  AND (
+				(c.set_id = $1 AND quality.edition = $2)
+				OR EXISTS (
+					SELECT 1
+					FROM catalog_set_printing_memberships membership
+					WHERE membership.set_id = $1
+					  AND membership.card_id = c.id
+					  AND membership.catalog_edition = $2
+					  AND membership.printing_edition = quality.edition
+				)
+			  )
 			ORDER BY
 				CASE quality.finish
 					WHEN 'Normal' THEN 1
@@ -843,6 +991,13 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			LIMIT 1
 		) selected ON true
 		WHERE c.set_id = $1
+		   OR EXISTS (
+			SELECT 1
+			FROM catalog_set_printing_memberships membership
+			WHERE membership.set_id = $1
+			  AND membership.card_id = c.id
+			  AND membership.catalog_edition = $2
+		   )
 		ORDER BY c.number_sort NULLS LAST, c.name
 	`, filter.SetID, filter.Edition, filter.Condition)
 	if err != nil {
@@ -880,15 +1035,18 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 				AsOf:   qualityAsOf,
 				Reason: qualityReason,
 			}
-			switch *qualityStatus {
-			case "current":
-				pricing.Summary.CurrentCards++
-			case "historical":
-				pricing.Summary.HistoricalCards++
-			case "unavailable":
-				if card.ValuationKind != nil && *card.ValuationKind == ValuationKindUngradedReference {
-					pricing.Summary.EstimatedCards++
-				} else {
+			if qualityReason != nil {
+				pricing.Summary.WarningCards++
+			}
+			if card.ValuationKind != nil && *card.ValuationKind == ValuationKindUngradedReference {
+				pricing.Summary.EstimatedCards++
+			} else {
+				switch *qualityStatus {
+				case "current":
+					pricing.Summary.CurrentCards++
+				case "historical":
+					pricing.Summary.HistoricalCards++
+				case "unavailable":
 					pricing.Summary.UnavailableCards++
 				}
 			}
@@ -938,12 +1096,22 @@ func (repository *Repository) setPriceHistory(ctx context.Context, filter SetPri
 		WITH selected_printings AS (
 			SELECT DISTINCT ON (quality.card_id)
 				quality.card_id,
+				quality.edition,
 				quality.finish,
 				quality.language
 			FROM catalog_price_quality quality
 			JOIN catalog_cards card ON card.id = quality.card_id
-			WHERE card.set_id = $1
-			  AND quality.edition = $2
+			WHERE (
+				(card.set_id = $1 AND quality.edition = $2)
+				OR EXISTS (
+					SELECT 1
+					FROM catalog_set_printing_memberships membership
+					WHERE membership.set_id = $1
+					  AND membership.card_id = card.id
+					  AND membership.catalog_edition = $2
+					  AND membership.printing_edition = quality.edition
+				)
+			)
 			ORDER BY
 				quality.card_id,
 				CASE quality.finish
@@ -965,12 +1133,12 @@ func (repository *Repository) setPriceHistory(ctx context.Context, filter SetPri
 			FROM selected_printings selected
 			JOIN catalog_card_variants variant
 			  ON variant.card_id = selected.card_id
-			 AND variant.edition = $2
+			 AND variant.edition = selected.edition
 			 AND variant.finish = selected.finish
 			 AND variant.language = selected.language
 			JOIN price_observations observation ON observation.variant_id = variant.id
 			GROUP BY selected.card_id, observation.observed_on
-		), coherent_snapshots AS (
+		), selected_snapshots AS (
 			SELECT
 				card_id,
 				observed_on,
@@ -982,20 +1150,26 @@ func (repository *Repository) setPriceHistory(ctx context.Context, filter SetPri
 					WHEN 'Near Mint' THEN near_mint_price
 				END AS selected_price
 			FROM daily_snapshots
-			WHERE damaged_price < heavily_played_price
-			  AND heavily_played_price < moderately_played_price
-			  AND moderately_played_price < lightly_played_price
-			  AND lightly_played_price < near_mint_price
 		), expected AS (
 			SELECT count(*)::integer AS card_count
-			FROM catalog_cards
-			WHERE set_id = $1
+			FROM selected_printings selected
+			WHERE EXISTS (
+				SELECT 1
+				FROM catalog_card_variants variant
+				JOIN price_observations observation ON observation.variant_id = variant.id
+				WHERE variant.card_id = selected.card_id
+				  AND variant.edition = selected.edition
+				  AND variant.finish = selected.finish
+				  AND variant.language = selected.language
+				  AND variant.condition = $3
+			)
 		), set_daily AS (
 			SELECT
-				coherent.observed_on,
-				sum(coherent.selected_price)::double precision AS total_value
-			FROM coherent_snapshots coherent
-			GROUP BY coherent.observed_on
+				selected.observed_on,
+				sum(selected.selected_price)::double precision AS total_value
+			FROM selected_snapshots selected
+			WHERE selected.selected_price IS NOT NULL
+			GROUP BY selected.observed_on
 			HAVING count(*) = (SELECT card_count FROM expected)
 		), bounds AS (
 			SELECT min(observed_on) AS first_on, max(observed_on) AS as_of
@@ -1031,15 +1205,22 @@ func (repository *Repository) setPriceHistory(ctx context.Context, filter SetPri
 }
 
 func sortEditions(editions []string) {
+	order := map[string]int{
+		"First Edition": 1,
+		"Shadowless":    2,
+		"Unlimited":     3,
+	}
 	sort.Slice(editions, func(i, j int) bool {
 		if editions[i] == editions[j] {
 			return false
 		}
-		if editions[i] == "Unlimited" {
-			return true
+		iOrder, iKnown := order[editions[i]]
+		jOrder, jKnown := order[editions[j]]
+		if iKnown && jKnown {
+			return iOrder < jOrder
 		}
-		if editions[j] == "Unlimited" {
-			return false
+		if iKnown != jKnown {
+			return iKnown
 		}
 		return editions[i] < editions[j]
 	})

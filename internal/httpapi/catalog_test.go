@@ -37,10 +37,11 @@ func TestOptionalCatalogValue(t *testing.T) {
 	}{
 		{value: "", want: true},
 		{value: "Unlimited", want: true},
+		{value: "Shadowless", want: true},
 		{value: "First Edition", want: true},
 		{value: "Limited Edition", want: false},
 	} {
-		if got := optionalCatalogValue(test.value, "Unlimited", "First Edition"); got != test.want {
+		if got := optionalCatalogValue(test.value, "Unlimited", "Shadowless", "First Edition"); got != test.want {
 			t.Fatalf("optionalCatalogValue(%q) = %v, want %v", test.value, got, test.want)
 		}
 	}

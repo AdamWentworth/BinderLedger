@@ -40,7 +40,7 @@ func run(logger *slog.Logger) error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.New(db, cfg.CORSAllowedOrigins),
+		Handler:           httpapi.New(db, cfg.CORSAllowedOrigins, cfg.CardImageDir),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

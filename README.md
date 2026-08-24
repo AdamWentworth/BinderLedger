@@ -8,6 +8,7 @@ BinderLedger is a condition-aware collection and market tracker for legacy tradi
 apps/client/          Expo + React Native client (web, iOS, Android)
 cmd/api/              Go JSON API
 cmd/migrate/          PostgreSQL migration command
+cmd/backfill-pricecharting-images/  Printing-specific image collector
 docs/                 Architecture and decisions
 tools/justtcg-audit/  Preserved JustTCG research collector
 ```
@@ -53,6 +54,13 @@ make client-preview
 
 Use `make client` on a development laptop when hot reloading is useful. A first Metro build briefly used about 1.4 GB here; the static preview used about 77 MB.
 
-The real JustTCG key belongs only in the ignored root `.env`. The collector reads it through `tools/justtcg-audit/.env`, which is a local symlink to that file.
+Real provider keys belong only in the ignored root `.env`. The JustTCG collector reads that file through `tools/justtcg-audit/.env`, which is a local symlink. PkmnPrices uses `PKMNPRICES_API_KEY` for historical backfills and as a fallback when JustTCG omits a card.
 
-See [docs/architecture.md](docs/architecture.md) for the system boundaries and deployment posture. The future personal-catalog import boundary is recorded in [docs/personal-catalog-inventory.md](docs/personal-catalog-inventory.md).
+Printing-specific card images live in the ignored `data/card-images` directory. `make pricecharting-images-status` reports coverage, and `make pricecharting-images-gallery` rebuilds the local visual-review pages. Back up the image directory separately from Git.
+
+See [docs/architecture.md](docs/architecture.md) for the system boundaries and deployment posture. The future personal-catalog import boundary is recorded in [docs/personal-catalog-inventory.md](docs/personal-catalog-inventory.md). Printing-specific image discovery and verification are documented in [docs/image-curation.md](docs/image-curation.md), with unresolved replacements tracked in [docs/image-upgrade-list.md](docs/image-upgrade-list.md).
+Provider quotas, retry rules, and data-use boundaries are recorded in [docs/provider-api-policy.md](docs/provider-api-policy.md). Review that policy before adding a collector or changing its schedule.
+
+Graded PriceCharting snapshots are retained as append-only observations. The
+manual review and recording workflow is documented in
+[docs/graded-price-monitoring.md](docs/graded-price-monitoring.md).

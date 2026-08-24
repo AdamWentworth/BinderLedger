@@ -22,6 +22,9 @@ npm-debug.log*
 /tools/justtcg-audit/output/
 /tools/justtcg-audit/node_modules/
 
+# Downloaded printing-specific card images and discovery cache.
+/data/
+
 # Editors and operating systems
 .DS_Store
 *.swp

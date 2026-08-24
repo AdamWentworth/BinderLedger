@@ -1,4 +1,4 @@
-.PHONY: api build-server client client-export client-preview db-up format migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify
+.PHONY: api build-server client client-export client-phone client-preview db-up format migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify
 
 api:
 	go run ./cmd/api
@@ -10,6 +10,9 @@ build-server:
 
 client:
 	cd apps/client && npm run web
+
+client-phone:
+	cd apps/client && npx expo start --lan --port 8082
 
 client-export:
 	cd apps/client && npm run export:web

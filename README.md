@@ -35,6 +35,17 @@ npm run web
 
 The API listens on `http://127.0.0.1:4000` and Expo web on `http://localhost:8081` by default. For a physical phone, set `EXPO_PUBLIC_API_URL` to this computer's LAN address.
 
+For Expo Go on the same trusted Wi-Fi network, bind the API to this computer's
+LAN address, place the same URL in `apps/client/.env.local`, and run:
+
+```bash
+make client-phone
+```
+
+The phone workflow currently uses Expo SDK 54 because that is the version in
+the public-store Expo Go client during the SDK 57 transition. Metro uses port
+8082 so it can coexist with the lightweight static preview on 8081.
+
 `go run ./cmd/import-justtcg` is idempotent. It imports every collected set JSON file under `tools/justtcg-audit/output/collections` into normalized catalog, variant, and daily price tables. Rerun it after a collector pass to update the database.
 
 The current API surface includes:
@@ -49,6 +60,8 @@ The current API surface includes:
 - `DELETE /api/watchlists/default/cards/{itemID}`
 - `POST /api/watchlists/default/sets`
 - `DELETE /api/watchlists/default/sets/{itemID}`
+- `POST /api/scans`
+- `GET /api/scans/{scanID}`
 
 Market periods are `1d`, `1w`, `1m`, `1y`, and `all`. Market rankings keep NM, LP, MP, HP, and Damaged variants separate, exclude price series more than seven days behind the latest market observation, and label thin or unusually volatile histories.
 
@@ -56,6 +69,12 @@ The MVP uses one database-backed local watchlist. Card entries identify an exact
 printing while inheriting the selected market condition; set entries identify a
 set and edition. The tables and routes are ready to receive ownership and named
 lists when accounts are introduced.
+
+The scanner MVP accepts one front and one back JPEG or PNG in a size-limited
+multipart request. It stores private originals under `data/scan-images` and
+records dimensions and checksums in PostgreSQL. Recognition and condition
+suggestions intentionally remain pending until the separate analysis service is
+built.
 
 On this 8 GB server, prefer the static web preview so Metro does not remain resident:
 

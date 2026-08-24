@@ -27,3 +27,25 @@ systemctl --user enable --now binderledger-pkmnprices-backfill.timer
 
 Both collectors are resumable and quota-aware. Disable a timer after its
 backfill completes rather than leaving a no-op network job scheduled.
+
+For phone access, keep machine-specific network settings outside the repository:
+
+```bash
+mkdir -p ~/.config/binderledger
+cp deploy/systemd/user/binderledger-server.env.example ~/.config/binderledger/server.env
+```
+
+Set `HTTP_ADDR` and `CORS_ALLOWED_ORIGINS` in that local file to the trusted LAN
+addresses required by the phone, then enable the API at boot:
+
+```bash
+systemctl --user enable --now binderledger-api.service
+```
+
+Metro is intentionally opt-in because it is considerably heavier than the API.
+Start it while testing the Expo Go client and stop it when finished:
+
+```bash
+systemctl --user start binderledger-expo.service
+systemctl --user stop binderledger-expo.service
+```

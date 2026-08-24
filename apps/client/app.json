@@ -32,11 +32,17 @@
           "image": "./assets/images/binderledger-mark.png",
           "imageWidth": 160
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow BinderLedger to photograph cards for cataloging and condition review.",
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     }
   }
 }

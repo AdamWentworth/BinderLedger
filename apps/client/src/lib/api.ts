@@ -312,6 +312,32 @@ export type WatchlistMemberships = {
   sets: WatchlistSetMembership[];
 };
 
+export type ScanCapture = {
+  format: 'jpg' | 'png';
+  height: number;
+  uri: string;
+  width: number;
+};
+
+export type ScanImage = {
+  id: number;
+  side: 'front' | 'back';
+  mimeType: 'image/jpeg' | 'image/png';
+  byteSize: number;
+  width: number;
+  height: number;
+  sha256: string;
+};
+
+export type ScanSession = {
+  id: string;
+  status: 'captured' | 'processing' | 'complete' | 'failed';
+  clientPlatform: 'android' | 'ios' | 'web' | 'unknown';
+  createdAt: string;
+  updatedAt: string;
+  images: ScanImage[];
+};
+
 export const defaultWatchlistID = 'default';
 
 export const apiURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4000';
@@ -575,6 +601,49 @@ export async function removeWatchlistSet(
   if (!response.ok) {
     throw new Error(`Watchlist set removal returned ${response.status}`);
   }
+}
+
+export async function createScanSession(
+  front: ScanCapture,
+  back: ScanCapture,
+  platform: string,
+): Promise<ScanSession> {
+  const formData = new FormData();
+  formData.append('platform', platform);
+  await appendScanCapture(formData, 'front', front);
+  await appendScanCapture(formData, 'back', back);
+
+  const response = await fetch(`${apiURL}/api/scans`, {
+    body: formData,
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `Scan upload returned ${response.status}`);
+  }
+  return response.json() as Promise<ScanSession>;
+}
+
+async function appendScanCapture(
+  formData: FormData,
+  side: 'front' | 'back',
+  capture: ScanCapture,
+): Promise<void> {
+  const mimeType = capture.format === 'png' ? 'image/png' : 'image/jpeg';
+  const filename = `${side}.${capture.format}`;
+  if (capture.uri.startsWith('data:') || capture.uri.startsWith('blob:')) {
+    const response = await fetch(capture.uri);
+    formData.append(side, await response.blob(), filename);
+    return;
+  }
+  formData.append(
+    side,
+    {
+      name: filename,
+      type: mimeType,
+      uri: capture.uri,
+    } as unknown as Blob,
+  );
 }
 
 export function formatCurrency(value: number | null): string {

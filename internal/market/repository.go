@@ -103,6 +103,25 @@ type PricePoint struct {
 	Price float64 `json:"price"`
 }
 
+type Movement struct {
+	Amount  float64
+	Percent float64
+	Signal  string
+}
+
+func CalculateMovement(period Period, startPrice, endPrice float64, observations int) Movement {
+	amount := roundMoney(endPrice - startPrice)
+	percent := 0.0
+	if startPrice > 0 {
+		percent = roundPercent(amount / startPrice * 100)
+	}
+	return Movement{
+		Amount:  amount,
+		Percent: percent,
+		Signal:  historySignal(period, observations, percent),
+	}
+}
+
 type VariantHistory struct {
 	VariantID     string       `json:"variantId"`
 	CardID        string       `json:"cardId"`
@@ -249,9 +268,15 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 		}
 		mover.StartDate = startDate.Format(time.DateOnly)
 		mover.EndDate = endDate.Format(time.DateOnly)
-		mover.ChangeAmount = roundMoney(mover.EndPrice - mover.StartPrice)
-		mover.ChangePercent = roundPercent(mover.ChangeAmount / mover.StartPrice * 100)
-		mover.Signal = historySignal(filter.Period, mover.ObservationCount, mover.ChangePercent)
+		movement := CalculateMovement(
+			filter.Period,
+			mover.StartPrice,
+			mover.EndPrice,
+			mover.ObservationCount,
+		)
+		mover.ChangeAmount = movement.Amount
+		mover.ChangePercent = movement.Percent
+		mover.Signal = movement.Signal
 		movers = append(movers, mover)
 	}
 	if err := rows.Err(); err != nil {
@@ -368,14 +393,13 @@ func (repository *Repository) VariantHistory(ctx context.Context, variantID stri
 	if len(history.Points) > 0 {
 		startPrice := history.Points[0].Price
 		endPrice := history.Points[len(history.Points)-1].Price
-		changeAmount := roundMoney(endPrice - startPrice)
+		movement := CalculateMovement(period, startPrice, endPrice, len(history.Points))
 		history.StartPrice = &startPrice
 		history.EndPrice = &endPrice
-		history.ChangeAmount = &changeAmount
+		history.ChangeAmount = &movement.Amount
 		if startPrice > 0 {
-			changePercent := roundPercent(changeAmount / startPrice * 100)
-			history.ChangePercent = &changePercent
-			history.Signal = historySignal(period, len(history.Points), changePercent)
+			history.ChangePercent = &movement.Percent
+			history.Signal = movement.Signal
 		} else {
 			history.Signal = "limited"
 		}

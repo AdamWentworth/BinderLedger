@@ -43,8 +43,19 @@ The current API surface includes:
 - `GET /api/catalog/cards`
 - `GET /api/market/overview?period=1m&condition=Near%20Mint`
 - `GET /api/market/variants/{variantID}/history?period=1m`
+- `GET /api/watchlists/default?period=1m&condition=Near%20Mint`
+- `GET /api/watchlists/default/items`
+- `POST /api/watchlists/default/cards`
+- `DELETE /api/watchlists/default/cards/{itemID}`
+- `POST /api/watchlists/default/sets`
+- `DELETE /api/watchlists/default/sets/{itemID}`
 
 Market periods are `1d`, `1w`, `1m`, `1y`, and `all`. Market rankings keep NM, LP, MP, HP, and Damaged variants separate, exclude price series more than seven days behind the latest market observation, and label thin or unusually volatile histories.
+
+The MVP uses one database-backed local watchlist. Card entries identify an exact
+printing while inheriting the selected market condition; set entries identify a
+set and edition. The tables and routes are ready to receive ownership and named
+lists when accounts are introduced.
 
 On this 8 GB server, prefer the static web preview so Metro does not remain resident:
 

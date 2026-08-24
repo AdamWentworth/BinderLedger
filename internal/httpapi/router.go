@@ -8,6 +8,7 @@ import (
 
 	"github.com/AdamWentworth/BinderLedger/internal/catalog"
 	"github.com/AdamWentworth/BinderLedger/internal/market"
+	"github.com/AdamWentworth/BinderLedger/internal/watchlist"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -15,6 +16,7 @@ type API struct {
 	db             *pgxpool.Pool
 	catalog        *catalog.Repository
 	market         *market.Repository
+	watchlists     *watchlist.Repository
 	allowedOrigins []string
 }
 
@@ -23,6 +25,7 @@ func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir string) http.Ha
 		db:             db,
 		catalog:        catalog.NewRepository(db),
 		market:         market.NewRepository(db),
+		watchlists:     watchlist.NewRepository(db),
 		allowedOrigins: allowedOrigins,
 	}
 
@@ -35,6 +38,12 @@ func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir string) http.Ha
 	mux.HandleFunc("GET /api/catalog/images/{filename}", cardImage(cardImageDir))
 	mux.HandleFunc("GET /api/market/overview", api.marketOverview)
 	mux.HandleFunc("GET /api/market/variants/{variantID}/history", api.marketVariantHistory)
+	mux.HandleFunc("GET /api/watchlists/{watchlistID}", api.watchlistOverview)
+	mux.HandleFunc("GET /api/watchlists/{watchlistID}/items", api.watchlistMemberships)
+	mux.HandleFunc("POST /api/watchlists/{watchlistID}/cards", api.watchlistAddCard)
+	mux.HandleFunc("DELETE /api/watchlists/{watchlistID}/cards/{itemID}", api.watchlistRemoveCard)
+	mux.HandleFunc("POST /api/watchlists/{watchlistID}/sets", api.watchlistAddSet)
+	mux.HandleFunc("DELETE /api/watchlists/{watchlistID}/sets/{itemID}", api.watchlistRemoveSet)
 
 	return api.cors(mux)
 }

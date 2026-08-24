@@ -1,4 +1,4 @@
-.PHONY: api build-server client client-export client-phone client-preview db-up format migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify
+.PHONY: api build-server client client-export client-phone client-preview db-up format migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify vision-test
 
 api:
 	go run ./cmd/api
@@ -47,6 +47,8 @@ pricecharting-images-status:
 
 test:
 	go test ./cmd/... ./internal/...
+	docker build --target test -t binderledger-vision:test -f services/vision/Dockerfile .
+	docker run --rm binderledger-vision:test
 	cd tools/justtcg-audit && npm test
 	cd apps/client && npm run typecheck
 	cd apps/client && npm run lint
@@ -55,3 +57,7 @@ verify: test
 	go vet ./cmd/... ./internal/...
 	go mod tidy -diff
 	cd apps/client && npx expo-doctor
+
+vision-test:
+	docker build --target test -t binderledger-vision:test -f services/vision/Dockerfile .
+	docker run --rm binderledger-vision:test

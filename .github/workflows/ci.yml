@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  pull_request: {}
+  push:
+    branches: ["main"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.0"
+          cache: true
+      - name: Test
+        run: go test ./cmd/... ./internal/...
+      - name: Vet
+        run: go vet ./cmd/... ./internal/...
+      - name: Verify module files
+        run: go mod tidy -diff
+
+  client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/client/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npx expo-doctor
+      - run: npm run export:web
+
+  collectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - run: npm test
+        working-directory: tools/justtcg-audit
+
+  vision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build deployed test environment
+        run: docker build --pull --target test -t binderledger-vision:test -f services/vision/Dockerfile .
+      - name: Test matcher
+        run: docker run --rm binderledger-vision:test
+
+  images:
+    if: github.event_name != 'pull_request'
+    needs: [go, client, collectors, vision]
+    runs-on: ubuntu-latest
+    env:
+      CORE_IMAGE: ghcr.io/adamwentworth/binderledger-core
+      VISION_IMAGE: ghcr.io/adamwentworth/binderledger-vision
+      WEB_IMAGE: ghcr.io/adamwentworth/binderledger-web
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate production Compose
+        run: >-
+          docker compose
+          --project-directory ops/prod
+          -f ops/prod/docker-compose.yml
+          --env-file ops/prod/binderledger.env.example
+          --env-file ops/prod/images.env.example
+          config >/dev/null
+
+      - name: Build images
+        run: |
+          docker build --pull -t binderledger-core:ci -f Dockerfile .
+          docker build --pull --target runtime -t binderledger-vision:ci -f services/vision/Dockerfile .
+          docker build --pull -t binderledger-web:ci -f apps/client/Dockerfile .
+
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Publish SHA and latest tags
+        run: |
+          for spec in \
+            "binderledger-core:ci ${CORE_IMAGE}" \
+            "binderledger-vision:ci ${VISION_IMAGE}" \
+            "binderledger-web:ci ${WEB_IMAGE}"; do
+            set -- ${spec}
+            docker tag "$1" "$2:sha-${GITHUB_SHA}"
+            docker tag "$1" "$2:latest"
+            docker push "$2:sha-${GITHUB_SHA}"
+            docker push "$2:latest"
+          done

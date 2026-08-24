@@ -1,0 +1,178 @@
+name: deploy-prod
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy; blank uses the selected commit SHA"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: [self-hosted, linux, x64, prod, binderledger]
+    environment: production
+    concurrency:
+      group: deploy-binderledger-prod
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Select images
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          requested="${{ inputs.image_tag }}"
+          tag="${requested:-sha-${sha}}"
+          echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
+
+      - name: Prepare deployment state
+        shell: bash
+        env:
+          DEPLOY_ROOT: /srv/binderledger
+          STORAGE_ROOT: /mnt/storage/binderledger
+          IMAGE_TAG: ${{ steps.images.outputs.tag }}
+        run: |
+          set -euo pipefail
+          env_file="${DEPLOY_ROOT}/.env"
+          if ! findmnt /mnt/storage >/dev/null 2>&1; then
+            echo "/mnt/storage is not mounted; refusing to deploy." >&2
+            exit 1
+          fi
+          if [[ ! -f "${env_file}" ]]; then
+            echo "Missing server environment: ${env_file}" >&2
+            exit 1
+          fi
+          for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD BINDERLEDGER_BIND_HOST; do
+            if ! grep -qE "^${key}=.+" "${env_file}"; then
+              echo "Missing ${key} in ${env_file}" >&2
+              exit 1
+            fi
+          done
+          password="$(grep '^POSTGRES_PASSWORD=' "${env_file}" | tail -1 | cut -d= -f2-)"
+          if [[ ! "${password}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+            echo "POSTGRES_PASSWORD must be URL-safe." >&2
+            exit 1
+          fi
+
+          mkdir -p "${DEPLOY_ROOT}/deployments" "${STORAGE_ROOT}"/{postgres,card-images,scan-images,backups}
+          install -m 0644 ops/prod/docker-compose.yml "${DEPLOY_ROOT}/docker-compose.yml"
+          cat >"${DEPLOY_ROOT}/images.env" <<EOF
+          BINDERLEDGER_CORE_IMAGE=ghcr.io/adamwentworth/binderledger-core:${IMAGE_TAG}
+          BINDERLEDGER_VISION_IMAGE=ghcr.io/adamwentworth/binderledger-vision:${IMAGE_TAG}
+          BINDERLEDGER_WEB_IMAGE=ghcr.io/adamwentworth/binderledger-web:${IMAGE_TAG}
+          EOF
+          docker run --rm -v "${STORAGE_ROOT}/postgres:/target" alpine chown -R 999:999 /target
+          docker run --rm \
+            -v "${STORAGE_ROOT}/card-images:/cards" \
+            -v "${STORAGE_ROOT}/scan-images:/scans" \
+            alpine sh -c 'chown -R 10001:10001 /cards /scans && chmod 750 /cards /scans'
+
+          docker compose \
+            --project-directory "${DEPLOY_ROOT}" \
+            -f "${DEPLOY_ROOT}/docker-compose.yml" \
+            --env-file "${env_file}" \
+            --env-file "${DEPLOY_ROOT}/images.env" \
+            config >/dev/null
+
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Deploy and migrate
+        shell: bash
+        env:
+          DEPLOY_ROOT: /srv/binderledger
+        run: |
+          set -euo pipefail
+          compose() {
+            docker compose \
+              --project-directory "${DEPLOY_ROOT}" \
+              -f "${DEPLOY_ROOT}/docker-compose.yml" \
+              --env-file "${DEPLOY_ROOT}/.env" \
+              --env-file "${DEPLOY_ROOT}/images.env" \
+              "$@"
+          }
+
+          compose pull db api vision web migrate
+          compose up -d db
+          compose --profile tools run --rm migrate
+          compose up -d --no-deps --force-recreate api
+
+          api_ok=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://192.168.1.77:4000/api/health >/dev/null; then
+              api_ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${api_ok}" -ne 1 ]]; then
+            compose logs --tail 200 api
+            exit 1
+          fi
+
+          compose up -d --no-deps --force-recreate vision web
+          web_ok=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://192.168.1.77:8081/ >/dev/null; then
+              web_ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${web_ok}" -ne 1 ]]; then
+            compose logs --tail 200 web
+            exit 1
+          fi
+
+          vision_ok=0
+          for _ in $(seq 1 30); do
+            if compose logs --no-color vision 2>&1 | grep -q 'worker ready'; then
+              vision_ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${vision_ok}" -ne 1 ]]; then
+            compose logs --tail 200 vision
+            exit 1
+          fi
+
+      - name: Smoke test and record deployment
+        shell: bash
+        env:
+          DEPLOY_ROOT: /srv/binderledger
+          IMAGE_TAG: ${{ steps.images.outputs.tag }}
+        run: |
+          set -euo pipefail
+          curl -fsS http://192.168.1.77:4000/api/health | python3 -m json.tool >/dev/null
+          curl -fsS 'http://192.168.1.77:4000/api/catalog/sets' | python3 -m json.tool >/dev/null
+          curl -fsS http://192.168.1.77:8081/scan >/dev/null
+          for container in binderledger_db binderledger_api binderledger_vision binderledger_web; do
+            [[ "$(docker inspect --format '{{.State.Status}}' "${container}")" == "running" ]]
+          done
+          cat >"${DEPLOY_ROOT}/deployments/current.json" <<EOF
+          {
+            "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "gitSha": "${{ github.event.workflow_run.head_sha || github.sha }}",
+            "imageTag": "${IMAGE_TAG}",
+            "runId": "${GITHUB_RUN_ID}"
+          }
+          EOF
+          docker image prune --force --filter 'until=168h'

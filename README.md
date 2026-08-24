@@ -36,8 +36,8 @@ npm run web
 ```
 
 Development uses its own Compose project, PostgreSQL volume, and ports. The
-database listens only on `127.0.0.1:55432`, the API uses `4001`, Expo uses
-`8082`, and the optional static development preview uses `8083`. These are
+database listens only on `127.0.0.1:55432`, the API uses `4001`, Expo Go uses
+`8082`, and the static development web preview uses `8083`. These are
 separate from every production app stack on the server.
 
 Start or stop the complete development runtime without affecting production:
@@ -50,8 +50,11 @@ make dev-down
 
 The development database persists in the dedicated
 `binderledger_dev_postgres` Docker volume when the runtime is stopped. While
-the runtime is up, one Metro process serves both the browser app at
-`http://192.168.1.77:8082` and Expo Go at `exp://192.168.1.77:8082`.
+the runtime is up, the exported browser app is available at
+`http://192.168.1.77:8083` and the phone-only Metro server is available to
+Expo Go at `exp://192.168.1.77:8082`. Keeping web out of Metro prevents the two
+bundles from exhausting memory on this server. Run `make client-export` and
+refresh the browser after changing client code.
 
 For Expo Go on the same trusted Wi-Fi network, bind the API to this computer's
 LAN address, place the same URL in `apps/client/.env.local`, and run:
@@ -99,14 +102,16 @@ exact-printing candidates. The user must confirm or reject those candidates.
 Condition suggestions remain pending until a trustworthy labeled photograph set
 exists.
 
-On this 8 GB server, stop Metro when development is finished. The optional
-static development preview is available with:
+On this 8 GB server, stop Metro when phone development is finished. The static
+development preview can also be rebuilt and run directly with:
 
 ```bash
 make client-preview
 ```
 
-Use `make client` on a development laptop when hot reloading is useful. A first Metro build briefly used about 1.4 GB here; the static preview used about 77 MB.
+Use `make client` on a development laptop when web hot reloading is useful. The
+combined web and Android Metro workload exceeded Node's heap on this machine;
+the static preview uses a small fraction of that memory.
 
 Production runs independently from this checkout. Compose configuration and
 deployment metadata live under `/srv/binderledger`; PostgreSQL, curated card

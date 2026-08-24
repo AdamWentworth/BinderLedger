@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the quota-safe BinderLedger PkmnPrices history backfill
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/binderledger/src/BinderLedger
+EnvironmentFile=/srv/binderledger/src/BinderLedger/.env
+ExecStart=/srv/binderledger/src/BinderLedger/bin/binderledger-pkmnprices-backfill
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=10
+MemoryHigh=192M
+MemoryMax=256M
+TimeoutStartSec=20min

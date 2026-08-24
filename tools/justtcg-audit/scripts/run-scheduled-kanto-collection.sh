@@ -1,19 +1,32 @@
 #!/usr/bin/env bash
 set -u
 
-project_dir=/srv/binderledger/src/BinderLedger/tools/justtcg-audit
+root_dir=/srv/binderledger/src/BinderLedger
+project_dir="$root_dir/tools/justtcg-audit"
 manifest="$project_dir/output/kanto-collection.json"
 timer=pokemon-card-kanto-collection.timer
 
 cd "$project_dir" || exit 1
 
-if [[ -f "$manifest" ]] && jq -e '.status == "complete"' "$manifest" >/dev/null; then
-  systemctl --user disable --now "$timer" >/dev/null 2>&1 || true
+npm run collect-machamp
+machamp_status=$?
+if [[ $machamp_status -eq 2 ]]; then
   exit 0
 fi
+if [[ $machamp_status -ne 0 ]]; then
+  exit "$machamp_status"
+fi
 
-npm run collect-kanto
-status=$?
+status=0
+if ! [[ -f "$manifest" ]] || ! jq -e '.status == "complete"' "$manifest" >/dev/null; then
+  npm run collect-kanto
+  status=$?
+fi
+
+if [[ $status -eq 0 || $status -eq 2 ]]; then
+  cd "$root_dir" || exit 1
+  go run ./cmd/import-justtcg || exit $?
+fi
 
 if [[ -f "$manifest" ]] && jq -e '.status == "complete"' "$manifest" >/dev/null; then
   systemctl --user disable --now "$timer" >/dev/null 2>&1 || true

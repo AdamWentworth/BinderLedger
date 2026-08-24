@@ -210,3 +210,21 @@ export function planPrefixQueries(cards, coveredCardIds = new Set(), maximumResu
 
   return queries;
 }
+
+export function selectExactCardsByTCGPlayerID(cards, productIds) {
+  const wanted = productIds.map(String);
+  const matches = new Map();
+  for (const card of cards) {
+    const productId = String(card.tcgplayerId ?? "");
+    if (!wanted.includes(productId)) continue;
+    if (matches.has(productId)) {
+      throw new Error(`JustTCG returned duplicate TCGplayer product ID ${productId}`);
+    }
+    matches.set(productId, card);
+  }
+  const missing = wanted.filter((productId) => !matches.has(productId));
+  if (missing.length > 0) {
+    throw new Error(`JustTCG did not return TCGplayer product ID(s): ${missing.join(", ")}`);
+  }
+  return wanted.map((productId) => matches.get(productId));
+}

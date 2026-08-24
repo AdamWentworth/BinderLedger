@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   analyzeCard,
   planPrefixQueries,
+  selectExactCardsByTCGPlayerID,
   selectSets,
   summarizeCards,
 } from "./analysis.mjs";
@@ -23,11 +24,12 @@ const commands = new Set([
   "sample",
   "collect-base",
   "collect-kanto",
+  "collect-machamp",
   "audit",
 ]);
 if (!commands.has(command)) {
   console.error(
-    "Usage: node src/cli.mjs <check-key|discover|sample|collect-base|collect-kanto|audit> [--fresh]",
+    "Usage: node src/cli.mjs <check-key|discover|sample|collect-base|collect-kanto|collect-machamp|audit> [--fresh]",
   );
   process.exit(1);
 }
@@ -39,8 +41,14 @@ if (!apiKey || apiKey === "tcg_replace_me") {
 }
 
 const requestIntervalMs = Number(process.env.JUSTTCG_REQUEST_INTERVAL_MS ?? 6500);
-if (!Number.isFinite(requestIntervalMs) || requestIntervalMs < 0) {
-  console.error("JUSTTCG_REQUEST_INTERVAL_MS must be a non-negative number.");
+if (!Number.isFinite(requestIntervalMs) || requestIntervalMs < 6000) {
+  console.error("JUSTTCG_REQUEST_INTERVAL_MS must be at least 6000 on the Free plan.");
+  process.exit(1);
+}
+
+const dailyRequestReserve = Number(process.env.JUSTTCG_DAILY_REQUEST_RESERVE ?? 5);
+if (!Number.isInteger(dailyRequestReserve) || dailyRequestReserve < 1) {
+  console.error("JUSTTCG_DAILY_REQUEST_RESERVE must be a positive integer.");
   process.exit(1);
 }
 
@@ -49,6 +57,7 @@ const client = new JustTcgClient({
   baseUrl: process.env.JUSTTCG_BASE_URL ?? "https://api.justtcg.com/v1",
   cacheDirectory,
   requestIntervalMs,
+  dailyRequestReserve,
 });
 
 const readJson = async (filename) => JSON.parse(await readFile(filename, "utf8"));
@@ -262,6 +271,81 @@ const conditionOrder = [
   "Heavily Played",
   "Damaged",
 ];
+
+const machampProductIds = ["107004", "42425"];
+
+async function collectMachampAliases() {
+  const filename = path.join(outputDirectory, "specials", "base-set-machamp.json");
+  if (!fresh) {
+    try {
+      const completed = await readJson(filename);
+      if (completed.collectionComplete === true) {
+        console.log("Reusing completed Base Set Machamp exact-ID collection.");
+        return;
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+
+  const response = await client.get(
+    "/cards",
+    {
+      game: "pokemon",
+      set: "deck-exclusives-pokemon",
+      q: "Machamp",
+      limit: 20,
+      include_null_prices: true,
+      include_price_history: true,
+      priceHistoryDuration: "1y",
+    },
+    { cache: !fresh },
+  );
+  const cards = selectExactCardsByTCGPlayerID(response.data ?? [], machampProductIds);
+  for (const card of cards) {
+    const analyzed = analyzeCard(card);
+    const variants = analyzed.variants.filter(
+      (variant) =>
+        variant.printing === "1st Edition Holofoil" && variant.language === "English",
+    );
+    const conditions = new Set(variants.map((variant) => variant.condition));
+    const missingConditions = conditionOrder.filter((condition) => !conditions.has(condition));
+    if (variants.length !== conditionOrder.length || missingConditions.length > 0) {
+      throw new Error(
+        `${card.name} exact-ID response has incomplete condition coverage: ` +
+          (missingConditions.join(", ") || `${variants.length} variants`),
+      );
+    }
+    const incompleteHistory = variants.filter(
+      (variant) => variant.history.calendarSpanDays < 365,
+    );
+    if (incompleteHistory.length > 0) {
+      throw new Error(`${card.name} exact-ID response does not span the requested year`);
+    }
+  }
+
+  const report = {
+    provider: "JustTCG",
+    apiVersion: "v1",
+    collectionComplete: true,
+    collectedAt: new Date().toISOString(),
+    request: {
+      game: "pokemon",
+      set: "deck-exclusives-pokemon",
+      query: "Machamp",
+      tcgplayerProductIds: machampProductIds,
+      priceHistoryDuration: "1y",
+    },
+    summary: summarizeCards(cards.map(analyzeCard)),
+    cards,
+  };
+  await writeJson(filename, report);
+  console.log(
+    `Saved both Base Set Machamps with ${report.summary.variants} variants and ` +
+      `${report.summary.variantsSpanningFullYear} full-year series.`,
+  );
+  console.log(formatMetadata(client.latestMetadata));
+}
 
 function qualityFindings(cards) {
   const findings = [];
@@ -929,8 +1013,9 @@ try {
   if (command === "sample") await sampleHistory();
   if (command === "collect-base") await collectBaseSets();
   if (command === "collect-kanto") await collectKantoSets();
+  if (command === "collect-machamp") await collectMachampAliases();
   if (command === "audit") await auditScope();
 } catch (error) {
   console.error(error.message);
-  process.exitCode = 1;
+  process.exitCode = error instanceof JustTcgQuotaError ? 2 : 1;
 }

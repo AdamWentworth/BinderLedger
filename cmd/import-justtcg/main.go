@@ -19,13 +19,45 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const priceCopyBatchSize = 5_000
+const (
+	priceCopyBatchSize      = 5_000
+	machampSpecialFilename  = "base-set-machamp.json"
+	baseSetID               = "base-set-pokemon"
+	baseSetShadowlessID     = "base-set-shadowless-pokemon"
+	baseSetFirstEditionID   = "base-set-first-edition-pokemon"
+	baseSetShadowlessPrefix = "pokemon-base-set-shadowless-"
+	baseSetFirstPrefix      = "pokemon-base-set-first-edition-"
+)
+
+var excludedProviderCardIDs = map[string]struct{}{
+	"pokemon-base-set-charizard-black-dot-error-holo-rare": {},
+}
+
+var machampCardIDsByProduct = map[string]string{
+	"107004": "pokemon-base-set-shadowless-machamp-holo-rare",
+	"42425":  "pokemon-base-set-machamp-first-edition-holo-rare",
+}
+
+var conditionCodes = map[string]string{
+	"Near Mint":         "near-mint",
+	"Lightly Played":    "lightly-played",
+	"Moderately Played": "moderately-played",
+	"Heavily Played":    "heavily-played",
+	"Damaged":           "damaged",
+}
 
 type collection struct {
 	Provider    string         `json:"provider"`
 	CollectedAt string         `json:"collectedAt"`
 	Set         providerSet    `json:"set"`
 	Cards       []providerCard `json:"cards"`
+}
+
+type specialCollection struct {
+	Provider           string         `json:"provider"`
+	CollectedAt        string         `json:"collectedAt"`
+	CollectionComplete bool           `json:"collectionComplete"`
+	Cards              []providerCard `json:"cards"`
 }
 
 type providerSet struct {
@@ -96,7 +128,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer pool.Close()
 
-	files, err := filepath.Glob(filepath.Join(*directory, "*.json"))
+	files, err := filepath.Glob(filepath.Join(*directory, "*-pokemon.json"))
 	if err != nil {
 		return fmt.Errorf("find collection files: %w", err)
 	}
@@ -121,6 +153,28 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			"observations", stats.Observations,
 		)
 	}
+	specialFilename := filepath.Join(
+		filepath.Dir(*directory),
+		"specials",
+		machampSpecialFilename,
+	)
+	if _, err := os.Stat(specialFilename); err == nil {
+		stats, err := importMachampAliases(ctx, pool, specialFilename)
+		if err != nil {
+			return fmt.Errorf("import %s: %w", specialFilename, err)
+		}
+		total.Cards += stats.Cards
+		total.Variants += stats.Variants
+		total.Observations += stats.Observations
+		logger.Info("special collection imported",
+			"file", filepath.Base(specialFilename),
+			"cards", stats.Cards,
+			"variants", stats.Variants,
+			"observations", stats.Observations,
+		)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check special collection: %w", err)
+	}
 	if _, err := pool.Exec(ctx, "SELECT refresh_catalog_price_quality()"); err != nil {
 		return fmt.Errorf("refresh catalog price quality: %w", err)
 	}
@@ -132,6 +186,202 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		"observations", total.Observations,
 	)
 	return nil
+}
+
+func importMachampAliases(
+	ctx context.Context,
+	pool databasePool,
+	filename string,
+) (importStats, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return importStats{}, fmt.Errorf("open file: %w", err)
+	}
+	defer file.Close()
+
+	var data specialCollection
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&data); err != nil {
+		return importStats{}, fmt.Errorf("decode JSON: %w", err)
+	}
+	if err := ensureJSONEnd(decoder); err != nil {
+		return importStats{}, err
+	}
+	if !data.CollectionComplete {
+		return importStats{}, errors.New("Machamp special collection is incomplete")
+	}
+
+	cardsByProduct := make(map[string]providerCard, len(data.Cards))
+	for _, card := range data.Cards {
+		if _, wanted := machampCardIDsByProduct[card.TCGPlayerID]; !wanted {
+			continue
+		}
+		if _, duplicate := cardsByProduct[card.TCGPlayerID]; duplicate {
+			return importStats{}, fmt.Errorf("duplicate Machamp product %s", card.TCGPlayerID)
+		}
+		cardsByProduct[card.TCGPlayerID] = card
+	}
+	for productID := range machampCardIDsByProduct {
+		if _, ok := cardsByProduct[productID]; !ok {
+			return importStats{}, fmt.Errorf("Machamp product %s is missing", productID)
+		}
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return importStats{}, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE import_machamp_observations (
+			variant_id text NOT NULL,
+			observed_on date NOT NULL,
+			price numeric(12, 2) NOT NULL
+		) ON COMMIT DROP
+	`); err != nil {
+		return importStats{}, fmt.Errorf("create Machamp observation staging table: %w", err)
+	}
+
+	stats := importStats{Cards: len(cardsByProduct)}
+	priceRows := make([][]any, 0, len(cardsByProduct)*5*365)
+	for productID, cardID := range machampCardIDsByProduct {
+		card := cardsByProduct[productID]
+		var storedProductID string
+		if err := tx.QueryRow(ctx, `
+			SELECT tcgplayer_product_id::text
+			FROM catalog_cards
+			WHERE id = $1
+		`, cardID).Scan(&storedProductID); err != nil {
+			return importStats{}, fmt.Errorf("find canonical Machamp %s: %w", cardID, err)
+		}
+		if storedProductID != productID {
+			return importStats{}, fmt.Errorf(
+				"canonical Machamp %s has TCGplayer ID %s, want %s",
+				cardID,
+				storedProductID,
+				productID,
+			)
+		}
+
+		seenConditions := make(map[string]struct{}, len(conditionCodes))
+		for _, variant := range card.Variants {
+			if variant.Printing != "1st Edition Holofoil" || variant.Language != "English" {
+				continue
+			}
+			variantID, err := machampVariantID(productID, variant.Condition)
+			if err != nil {
+				return importStats{}, err
+			}
+			if _, duplicate := seenConditions[variant.Condition]; duplicate {
+				return importStats{}, fmt.Errorf(
+					"Machamp product %s has duplicate %s variant",
+					productID,
+					variant.Condition,
+				)
+			}
+			seenConditions[variant.Condition] = struct{}{}
+
+			command, err := tx.Exec(ctx, `
+				UPDATE catalog_card_variants
+				SET
+					uuid = $3,
+					tcgplayer_sku_id = $4,
+					printing = $5,
+					condition = $6,
+					edition = 'First Edition',
+					finish = 'Holofoil',
+					language = 'English',
+					current_price = $7,
+					price_change_24h = $8,
+					source_updated_at = $9,
+					source_provider = 'JustTCG',
+					imported_at = now()
+				WHERE id = $1 AND card_id = $2
+			`,
+				variantID,
+				cardID,
+				nullIfEmpty(variant.UUID),
+				parseInt64(variant.TCGPlayerSKUID),
+				variant.Printing,
+				variant.Condition,
+				variant.Price,
+				variant.PriceChange24Hour,
+				parseUnixTime(variant.LastUpdated),
+			)
+			if err != nil {
+				return importStats{}, fmt.Errorf("update Machamp variant %s: %w", variantID, err)
+			}
+			if command.RowsAffected() != 1 {
+				return importStats{}, fmt.Errorf("canonical Machamp variant %s is missing", variantID)
+			}
+			stats.Variants++
+
+			for _, point := range variant.PriceHistory {
+				if point.Price == nil || *point.Price < 0 || point.Timestamp <= 0 {
+					continue
+				}
+				priceRows = append(priceRows, []any{
+					variantID,
+					time.Unix(point.Timestamp, 0).UTC().Format(time.DateOnly),
+					*point.Price,
+				})
+				stats.Observations++
+			}
+		}
+		if len(seenConditions) != len(conditionCodes) {
+			return importStats{}, fmt.Errorf(
+				"Machamp product %s has %d conditions, want %d",
+				productID,
+				len(seenConditions),
+				len(conditionCodes),
+			)
+		}
+	}
+
+	if _, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"import_machamp_observations"},
+		[]string{"variant_id", "observed_on", "price"},
+		pgx.CopyFromRows(priceRows),
+	); err != nil {
+		return importStats{}, fmt.Errorf("stage Machamp observations: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO price_observations (
+			variant_id, observed_on, price, source_provider, imported_at
+		)
+		SELECT DISTINCT ON (variant_id, observed_on)
+			variant_id, observed_on, price, 'JustTCG', now()
+		FROM import_machamp_observations
+		ORDER BY variant_id, observed_on
+		ON CONFLICT (variant_id, observed_on) DO UPDATE SET
+			price = EXCLUDED.price,
+			source_provider = EXCLUDED.source_provider,
+			imported_at = now()
+	`); err != nil {
+		return importStats{}, fmt.Errorf("merge Machamp observations: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return importStats{}, fmt.Errorf("commit Machamp import: %w", err)
+	}
+	return stats, nil
+}
+
+func machampVariantID(productID string, condition string) (string, error) {
+	if _, ok := machampCardIDsByProduct[productID]; !ok {
+		return "", fmt.Errorf("unsupported Machamp product %s", productID)
+	}
+	conditionCode, ok := conditionCodes[condition]
+	if !ok {
+		return "", fmt.Errorf("unsupported Machamp condition %q", condition)
+	}
+	return fmt.Sprintf(
+		"curated-%s-first-edition-holofoil-%s",
+		productID,
+		conditionCode,
+	), nil
 }
 
 type databasePool interface {
@@ -170,28 +420,42 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 		declaredCount = data.Set.Count
 	}
 	logoURL, symbolURL := pokemonTCGSetImages(data.Set.Name)
+	setName := catalogSetName(data.Set.ID, data.Set.Name)
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO catalog_sets (
-			id, game, name, release_date, declared_card_count, provider,
-			source_file, source_collected_at, logo_url, symbol_url, imported_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-		ON CONFLICT (id) DO UPDATE SET
-			game = EXCLUDED.game,
-			name = EXCLUDED.name,
-			release_date = EXCLUDED.release_date,
-			declared_card_count = EXCLUDED.declared_card_count,
-			provider = EXCLUDED.provider,
-			source_file = EXCLUDED.source_file,
-			source_collected_at = EXCLUDED.source_collected_at,
-			logo_url = coalesce(EXCLUDED.logo_url, catalog_sets.logo_url),
-			symbol_url = coalesce(EXCLUDED.symbol_url, catalog_sets.symbol_url),
-			imported_at = now()
-	`, data.Set.ID, valueOrDefault(data.Set.Game, "Pokemon"), data.Set.Name, releaseDate,
-		declaredCount, valueOrDefault(data.Provider, "JustTCG"), filepath.Base(filename), collectedAt,
-		nullIfEmpty(logoURL), nullIfEmpty(symbolURL))
-	if err != nil {
+	if err := upsertCatalogSet(ctx, tx, catalogSet{
+		ID:                data.Set.ID,
+		Game:              valueOrDefault(data.Set.Game, "Pokemon"),
+		Name:              setName,
+		ReleaseDate:       releaseDate,
+		DeclaredCount:     declaredCount,
+		Provider:          valueOrDefault(data.Provider, "JustTCG"),
+		SourceFile:        filepath.Base(filename),
+		SourceCollectedAt: collectedAt,
+		LogoURL:           logoURL,
+		SymbolURL:         symbolURL,
+		DisplayOrder:      catalogSetDisplayOrder(data.Set.ID),
+	}); err != nil {
 		return importStats{}, fmt.Errorf("upsert set: %w", err)
+	}
+
+	stats := importStats{Sets: 1}
+	if data.Set.ID == baseSetShadowlessID {
+		if err := upsertCatalogSet(ctx, tx, catalogSet{
+			ID:                baseSetFirstEditionID,
+			Game:              valueOrDefault(data.Set.Game, "Pokemon"),
+			Name:              "Base Set First Edition",
+			ReleaseDate:       releaseDate,
+			DeclaredCount:     declaredCount,
+			Provider:          valueOrDefault(data.Provider, "JustTCG"),
+			SourceFile:        filepath.Base(filename),
+			SourceCollectedAt: collectedAt,
+			LogoURL:           logoURL,
+			SymbolURL:         symbolURL,
+			DisplayOrder:      catalogSetDisplayOrder(baseSetFirstEditionID),
+		}); err != nil {
+			return importStats{}, fmt.Errorf("upsert First Edition set: %w", err)
+		}
+		stats.Sets++
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -204,7 +468,6 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 		return importStats{}, fmt.Errorf("create observation staging table: %w", err)
 	}
 
-	stats := importStats{Sets: 1}
 	priceRows := make([][]any, 0, priceCopyBatchSize)
 	flushPrices := func() error {
 		if len(priceRows) == 0 {
@@ -221,36 +484,31 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 	}
 
 	for _, card := range data.Cards {
+		if providerCardExcluded(card.ID) {
+			continue
+		}
 		productID := parseInt64(card.TCGPlayerID)
 		imageURL := ""
 		if productID != nil {
 			imageURL = fmt.Sprintf("https://product-images.tcgplayer.com/fit-in/437x437/%d.jpg", *productID)
 		}
 
-		_, err := tx.Exec(ctx, `
-			INSERT INTO catalog_cards (
-				id, uuid, set_id, tcgplayer_product_id, name, number,
-				number_sort, rarity, image_url, imported_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-			ON CONFLICT (id) DO UPDATE SET
-				uuid = EXCLUDED.uuid,
-				set_id = EXCLUDED.set_id,
-				tcgplayer_product_id = EXCLUDED.tcgplayer_product_id,
-				name = EXCLUDED.name,
-				number = EXCLUDED.number,
-				number_sort = EXCLUDED.number_sort,
-				rarity = EXCLUDED.rarity,
-				image_url = EXCLUDED.image_url,
-				imported_at = now()
-		`, card.ID, nullIfEmpty(card.UUID), data.Set.ID, productID, card.Name,
-			nullIfEmpty(card.Number), numberSort(card.Number), nullIfEmpty(card.Rarity), nullIfEmpty(imageURL))
-		if err != nil {
+		if err := upsertCatalogCard(ctx, tx, card, card.ID, data.Set.ID, card.UUID, productID, imageURL); err != nil {
 			return importStats{}, fmt.Errorf("upsert card %s: %w", card.ID, err)
 		}
 		stats.Cards++
 
+		if data.Set.ID == baseSetShadowlessID && cardHasEdition(card, "First Edition") {
+			firstEditionID := firstEditionCardID(card.ID)
+			if err := upsertCatalogCard(ctx, tx, card, firstEditionID, baseSetFirstEditionID, "", productID, imageURL); err != nil {
+				return importStats{}, fmt.Errorf("upsert First Edition card %s: %w", firstEditionID, err)
+			}
+			stats.Cards++
+		}
+
 		for _, variant := range card.Variants {
 			edition, finish := normalizePrinting(variant.Printing)
+			targetCardID, storedEdition := catalogVariantTarget(data.Set.ID, card.ID, edition)
 			_, err := tx.Exec(ctx, `
 				INSERT INTO catalog_card_variants (
 					id, uuid, card_id, tcgplayer_sku_id, printing, condition,
@@ -270,9 +528,9 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 					price_change_24h = EXCLUDED.price_change_24h,
 					source_updated_at = EXCLUDED.source_updated_at,
 					imported_at = now()
-			`, variant.ID, nullIfEmpty(variant.UUID), card.ID, parseInt64(variant.TCGPlayerSKUID),
+			`, variant.ID, nullIfEmpty(variant.UUID), targetCardID, parseInt64(variant.TCGPlayerSKUID),
 				valueOrDefault(variant.Printing, "Unknown"), valueOrDefault(variant.Condition, "Unknown"),
-				edition, finish, valueOrDefault(variant.Language, "Unknown"), variant.Price,
+				storedEdition, finish, valueOrDefault(variant.Language, "Unknown"), variant.Price,
 				variant.PriceChange24Hour, parseUnixTime(variant.LastUpdated))
 			if err != nil {
 				return importStats{}, fmt.Errorf("upsert variant %s: %w", variant.ID, err)
@@ -318,6 +576,123 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 		return importStats{}, fmt.Errorf("commit transaction: %w", err)
 	}
 	return stats, nil
+}
+
+type catalogSet struct {
+	ID                string
+	Game              string
+	Name              string
+	ReleaseDate       *string
+	DeclaredCount     int
+	Provider          string
+	SourceFile        string
+	SourceCollectedAt *time.Time
+	LogoURL           string
+	SymbolURL         string
+	DisplayOrder      int
+}
+
+func upsertCatalogSet(ctx context.Context, tx pgx.Tx, set catalogSet) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO catalog_sets (
+			id, game, name, release_date, declared_card_count, provider,
+			source_file, source_collected_at, logo_url, symbol_url, display_order, imported_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+		ON CONFLICT (id) DO UPDATE SET
+			game = EXCLUDED.game,
+			name = EXCLUDED.name,
+			release_date = EXCLUDED.release_date,
+			declared_card_count = EXCLUDED.declared_card_count,
+			provider = EXCLUDED.provider,
+			source_file = EXCLUDED.source_file,
+			source_collected_at = EXCLUDED.source_collected_at,
+			logo_url = coalesce(EXCLUDED.logo_url, catalog_sets.logo_url),
+			symbol_url = coalesce(EXCLUDED.symbol_url, catalog_sets.symbol_url),
+			display_order = EXCLUDED.display_order,
+			imported_at = now()
+	`, set.ID, set.Game, set.Name, set.ReleaseDate, set.DeclaredCount, set.Provider,
+		set.SourceFile, set.SourceCollectedAt, nullIfEmpty(set.LogoURL), nullIfEmpty(set.SymbolURL),
+		set.DisplayOrder)
+	return err
+}
+
+func upsertCatalogCard(
+	ctx context.Context,
+	tx pgx.Tx,
+	card providerCard,
+	cardID string,
+	setID string,
+	uuid string,
+	productID *int64,
+	imageURL string,
+) error {
+	_, err := tx.Exec(ctx, `
+			INSERT INTO catalog_cards (
+				id, uuid, set_id, tcgplayer_product_id, name, number,
+				number_sort, rarity, image_url, imported_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+			ON CONFLICT (id) DO UPDATE SET
+				uuid = EXCLUDED.uuid,
+				set_id = EXCLUDED.set_id,
+				tcgplayer_product_id = EXCLUDED.tcgplayer_product_id,
+				name = EXCLUDED.name,
+				number = EXCLUDED.number,
+				number_sort = EXCLUDED.number_sort,
+				rarity = EXCLUDED.rarity,
+				image_url = EXCLUDED.image_url,
+				imported_at = now()
+		`, cardID, nullIfEmpty(uuid), setID, productID, card.Name,
+		nullIfEmpty(card.Number), numberSort(card.Number), nullIfEmpty(card.Rarity), nullIfEmpty(imageURL))
+	return err
+}
+
+func providerCardExcluded(cardID string) bool {
+	_, excluded := excludedProviderCardIDs[cardID]
+	return excluded
+}
+
+func catalogSetName(setID, providerName string) string {
+	if setID == baseSetShadowlessID {
+		return "Base Set Shadowless"
+	}
+	return providerName
+}
+
+func catalogSetDisplayOrder(setID string) int {
+	switch setID {
+	case baseSetFirstEditionID:
+		return 10
+	case baseSetShadowlessID:
+		return 20
+	case baseSetID:
+		return 30
+	default:
+		return 100
+	}
+}
+
+func firstEditionCardID(cardID string) string {
+	return strings.Replace(cardID, baseSetShadowlessPrefix, baseSetFirstPrefix, 1)
+}
+
+func cardHasEdition(card providerCard, wantedEdition string) bool {
+	for _, variant := range card.Variants {
+		edition, _ := normalizePrinting(variant.Printing)
+		if edition == wantedEdition {
+			return true
+		}
+	}
+	return false
+}
+
+func catalogVariantTarget(setID, cardID, edition string) (string, string) {
+	if setID != baseSetShadowlessID {
+		return cardID, edition
+	}
+	if edition == "First Edition" {
+		return firstEditionCardID(cardID), edition
+	}
+	return cardID, "Shadowless"
 }
 
 func ensureJSONEnd(decoder *json.Decoder) error {

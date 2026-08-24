@@ -48,35 +48,72 @@ const (
 type targetSpec struct {
 	Key         string
 	SetID       string
-	Edition     string
+	Editions    []string
 	ConsolePath string
+	CacheKey    string
 }
 
 var availableTargets = map[string]targetSpec{
+	"base-first-edition": {
+		Key:         "base-first-edition",
+		SetID:       "base-set-first-edition-pokemon",
+		Editions:    []string{"First Edition"},
+		ConsolePath: "/console/pokemon-base-set?sort=model-number",
+		CacheKey:    "base-shadowless",
+	},
 	"base-shadowless": {
 		Key:         "base-shadowless",
 		SetID:       "base-set-shadowless-pokemon",
-		Edition:     "Shadowless",
+		Editions:    []string{"Shadowless"},
 		ConsolePath: "/console/pokemon-base-set?sort=model-number",
+		CacheKey:    "base-shadowless",
+	},
+	"base-unlimited": {
+		Key:         "base-unlimited",
+		SetID:       "base-set-pokemon",
+		Editions:    []string{"Unlimited", "First Edition"},
+		ConsolePath: "/console/pokemon-base-set?sort=model-number",
+		CacheKey:    "base-shadowless",
 	},
 	"jungle-unlimited": {
 		Key:         "jungle-unlimited",
 		SetID:       "jungle-pokemon",
-		Edition:     "Unlimited",
+		Editions:    []string{"Unlimited"},
 		ConsolePath: "/console/pokemon-jungle?sort=model-number",
 	},
 	"fossil-unlimited": {
 		Key:         "fossil-unlimited",
 		SetID:       "fossil-pokemon",
-		Edition:     "Unlimited",
+		Editions:    []string{"Unlimited"},
 		ConsolePath: "/console/pokemon-fossil?sort=model-number",
 	},
 	"team-rocket-unlimited": {
 		Key:         "team-rocket-unlimited",
 		SetID:       "team-rocket-pokemon",
-		Edition:     "Unlimited",
+		Editions:    []string{"Unlimited"},
 		ConsolePath: "/console/pokemon-team-rocket?sort=model-number",
 	},
+}
+
+var baseUnlimitedOverrides = map[string]product{
+	"pokemon-base-set-machamp-first-edition-holo-rare": tcgplayerProduct(
+		"Machamp [Later Stamped] #8", 8, "42425", "machamp",
+	),
+	"pokemon-base-set-computer-search-rare": tcgplayerProduct(
+		"Computer Search #71", 71, "42417", "computer-search",
+	),
+	"pokemon-base-set-item-finder-rare": tcgplayerProduct(
+		"Item Finder #74", 74, "42420", "item-finder",
+	),
+	"pokemon-base-set-lass-rare": tcgplayerProduct(
+		"Lass #75", 75, "42421", "lass",
+	),
+	"pokemon-base-set-pokemon-trader-rare": tcgplayerProduct(
+		"Pokemon Trader #77", 77, "108648", "pokemon-trader",
+	),
+	"pokemon-base-set-super-energy-removal-rare": tcgplayerProduct(
+		"Super Energy Removal #79", 79, "42424", "super-energy-removal",
+	),
 }
 
 type catalogTarget struct {
@@ -89,6 +126,7 @@ type catalogTarget struct {
 }
 
 type product struct {
+	Source   string
 	Title    string
 	PageURL  string
 	ImageURL string
@@ -149,7 +187,7 @@ func main() {
 func run(ctx context.Context, logger *slog.Logger) error {
 	targetNames := flag.String(
 		"targets",
-		"base-shadowless,jungle-unlimited,fossil-unlimited,team-rocket-unlimited",
+		"base-first-edition,base-shadowless,base-unlimited,jungle-unlimited,fossil-unlimited,team-rocket-unlimited",
 		"comma-separated image target groups",
 	)
 	cacheDir := flag.String("cache-dir", "data/pricecharting-cache", "directory for cached index pages")
@@ -305,9 +343,9 @@ func loadCatalogTargets(ctx context.Context, db *pgxpool.Pool, spec targetSpec) 
 		FROM catalog_cards card
 		JOIN catalog_price_quality quality ON quality.card_id = card.id
 		WHERE card.set_id = $1
-		  AND quality.edition = $2
+		  AND quality.edition = ANY($2)
 		ORDER BY card.number_sort, card.name, quality.finish, quality.language
-	`, spec.SetID, spec.Edition)
+	`, spec.SetID, spec.Editions)
 	if err != nil {
 		return nil, fmt.Errorf("load %s catalog targets: %w", spec.Key, err)
 	}
@@ -386,7 +424,11 @@ func (c *collector) indexPage(
 	releaseDate string,
 	refresh bool,
 ) ([]byte, error) {
-	cacheName := spec.Key + "-cursor-" + cursor
+	cacheKey := spec.CacheKey
+	if cacheKey == "" {
+		cacheKey = spec.Key
+	}
+	cacheName := cacheKey + "-cursor-" + cursor
 	if cursor == "" {
 		cacheName += "start"
 	}
@@ -498,13 +540,24 @@ func productFromRow(row *html.Node) (product, bool) {
 	if title == "" || pageURL == "" || imageURL == "" || !ok {
 		return product{}, false
 	}
-	return product{Title: title, PageURL: pageURL, ImageURL: imageURL, Number: number}, true
+	return product{
+		Source:   "PriceCharting",
+		Title:    title,
+		PageURL:  pageURL,
+		ImageURL: imageURL,
+		Number:   number,
+	}, true
 }
 
 func productBelongsToTarget(spec targetSpec, item product) bool {
 	switch spec.Key {
+	case "base-first-edition":
+		return strings.Contains(item.Title, "[1st Edition]") ||
+			item.Title == "Pikachu [1st Edition Red Cheeks] #58"
 	case "base-shadowless":
 		return strings.Contains(item.Title, "[Shadowless")
+	case "base-unlimited":
+		return !strings.Contains(item.Title, "[")
 	case "jungle-unlimited", "fossil-unlimited":
 		return !strings.Contains(item.Title, "[")
 	case "team-rocket-unlimited":
@@ -525,8 +578,12 @@ func matchTargets(
 	}
 	result := make(map[string]product, len(targets))
 	for _, target := range targets {
+		if override, ok := baseUnlimitedOverrides[target.CardID]; spec.Key == "base-unlimited" && ok {
+			result[target.CardID] = override
+			continue
+		}
 		candidates := byNumber[target.Number]
-		if spec.Key == "base-shadowless" && target.Number == 58 {
+		if (spec.Key == "base-shadowless" || spec.Key == "base-first-edition") && target.Number == 58 {
 			wantsRedCheeks := strings.Contains(strings.ToLower(target.Name), "red cheeks")
 			candidates = filterProducts(candidates, func(item product) bool {
 				return strings.Contains(strings.ToLower(item.Title), "red cheeks") == wantsRedCheeks
@@ -549,6 +606,16 @@ func matchTargets(
 		result[target.CardID] = candidates[0]
 	}
 	return result, nil
+}
+
+func tcgplayerProduct(title string, number int, productID string, slug string) product {
+	return product{
+		Source:   "TCGplayer",
+		Title:    title,
+		PageURL:  "https://www.tcgplayer.com/product/" + productID + "/pokemon-base-set-" + slug,
+		ImageURL: "https://product-images.tcgplayer.com/fit-in/437x437/" + productID + ".jpg",
+		Number:   number,
+	}
 }
 
 func filterProducts(items []product, keep func(product) bool) []product {
@@ -650,7 +717,7 @@ func (c *collector) collectImage(
 			verified_at,
 			collected_at
 		)
-		VALUES ($1, $2, $3, $4, $5, 'PriceCharting', $6, $7, $8, $9, $10, NULL, now())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, now())
 		ON CONFLICT (card_id, edition, finish, language) DO UPDATE SET
 			filename = EXCLUDED.filename,
 			source_name = EXCLUDED.source_name,
@@ -671,6 +738,7 @@ func (c *collector) collectImage(
 		target.Finish,
 		target.Language,
 		filename,
+		item.Source,
 		item.PageURL,
 		item.ImageURL,
 		sha,
@@ -715,9 +783,9 @@ func writeGallery(
 				image.verified_at IS NOT NULL
 			FROM catalog_printing_images image
 			JOIN catalog_cards card ON card.id = image.card_id
-			WHERE card.set_id = $1 AND image.edition = $2
+			WHERE card.set_id = $1 AND image.edition = ANY($2)
 			ORDER BY card.number_sort, card.name, image.finish, image.language
-		`, spec.SetID, spec.Edition)
+		`, spec.SetID, spec.Editions)
 		if err != nil {
 			return err
 		}
@@ -827,8 +895,8 @@ func approveTargets(
 			FROM catalog_cards card
 			WHERE card.id = image.card_id
 			  AND card.set_id = $1
-			  AND image.edition = $2
-		`, spec.SetID, spec.Edition)
+			  AND image.edition = ANY($2)
+		`, spec.SetID, spec.Editions)
 		if err != nil {
 			return err
 		}
@@ -861,8 +929,8 @@ func logStatus(
 				AND image.edition = quality.edition
 				AND image.finish = quality.finish
 				AND image.language = quality.language
-			WHERE card.set_id = $1 AND quality.edition = $2
-		`, spec.SetID, spec.Edition).Scan(&catalogCount, &collectedCount, &verifiedCount)
+			WHERE card.set_id = $1 AND quality.edition = ANY($2)
+		`, spec.SetID, spec.Editions).Scan(&catalogCount, &collectedCount, &verifiedCount)
 		if err != nil {
 			return fmt.Errorf("load %s status: %w", spec.Key, err)
 		}

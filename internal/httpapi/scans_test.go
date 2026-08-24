@@ -13,6 +13,17 @@ func TestValidScanPlatform(t *testing.T) {
 	}
 }
 
+func TestValidScanPurpose(t *testing.T) {
+	for _, value := range []string{"identify", "condition"} {
+		if !validScanPurpose(value) {
+			t.Fatalf("purpose %q should be valid", value)
+		}
+	}
+	if validScanPurpose("grade") {
+		t.Fatal("unsupported purpose should be invalid")
+	}
+}
+
 func TestValidScanID(t *testing.T) {
 	if !validScanID("34a0d2ac-b96a-41e0-a6b8-b3e57e412990") {
 		t.Fatal("UUID should be valid")

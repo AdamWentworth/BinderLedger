@@ -223,6 +223,97 @@ export type SetPricing = {
   points: PricePoint[];
 };
 
+export type WatchlistPriceMovement = {
+  startPrice: number | null;
+  endPrice: number | null;
+  changeAmount: number | null;
+  changePercent: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  observationCount: number;
+  signal: MarketSignal;
+};
+
+export type WatchedCard = WatchlistPriceMovement & {
+  itemId: number;
+  cardId: string;
+  cardName: string;
+  cardNumber: string | null;
+  setId: string;
+  setName: string;
+  imageUrl: string | null;
+  edition: string;
+  finish: string;
+  language: string;
+  variantId: string | null;
+  printing: string | null;
+  condition: MarketCondition;
+  currentPrice: number | null;
+  valuationKind: 'condition' | 'ungraded_reference' | null;
+  priceQuality: PriceQuality;
+};
+
+export type WatchedSet = WatchlistPriceMovement & {
+  itemId: number;
+  setId: string;
+  setName: string;
+  symbolUrl: string | null;
+  edition: string;
+  condition: MarketCondition;
+  currentValue: number | null;
+  cardCount: number;
+  pricedCards: number;
+  warningCards: number;
+  estimatedCards: number;
+};
+
+export type WatchlistOverview = {
+  id: string;
+  name: string;
+  period: MarketPeriod;
+  condition: MarketCondition;
+  summary: {
+    asOf: string;
+    cardCount: number;
+    setCount: number;
+    pricedCardCount: number;
+    currentCardValue: number;
+    risingItems: number;
+    fallingItems: number;
+    unchangedItems: number;
+  };
+  cards: WatchedCard[];
+  sets: WatchedSet[];
+};
+
+export type WatchlistCardTarget = {
+  cardId: string;
+  edition: string;
+  finish: string;
+  language: string;
+};
+
+export type WatchlistCardMembership = WatchlistCardTarget & {
+  itemId: number;
+};
+
+export type WatchlistSetTarget = {
+  setId: string;
+  edition: string;
+};
+
+export type WatchlistSetMembership = WatchlistSetTarget & {
+  itemId: number;
+};
+
+export type WatchlistMemberships = {
+  id: string;
+  cards: WatchlistCardMembership[];
+  sets: WatchlistSetMembership[];
+};
+
+export const defaultWatchlistID = 'default';
+
 export const apiURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4000';
 
 export function resolveImageURL(value: string | null): string | null {
@@ -386,6 +477,104 @@ export async function getVariantHistory(
     throw new Error(`Variant history returned ${response.status}`);
   }
   return response.json() as Promise<VariantHistory>;
+}
+
+export async function getWatchlistMemberships(
+  watchlistId = defaultWatchlistID,
+  signal?: AbortSignal,
+): Promise<WatchlistMemberships> {
+  const response = await fetch(
+    `${apiURL}/api/watchlists/${encodeURIComponent(watchlistId)}/items`,
+    { signal },
+  );
+  if (!response.ok) {
+    throw new Error(`Watchlist items returned ${response.status}`);
+  }
+  return response.json() as Promise<WatchlistMemberships>;
+}
+
+export async function getWatchlistOverview({
+  watchlistId = defaultWatchlistID,
+  condition,
+  period,
+  signal,
+}: {
+  watchlistId?: string;
+  condition: MarketCondition;
+  period: MarketPeriod;
+  signal?: AbortSignal;
+}): Promise<WatchlistOverview> {
+  const parameters = new URLSearchParams({ condition, period });
+  const response = await fetch(
+    `${apiURL}/api/watchlists/${encodeURIComponent(watchlistId)}?${parameters}`,
+    { signal },
+  );
+  if (!response.ok) {
+    throw new Error(`Watchlist returned ${response.status}`);
+  }
+  return response.json() as Promise<WatchlistOverview>;
+}
+
+export async function addWatchlistCard(
+  target: WatchlistCardTarget,
+  watchlistId = defaultWatchlistID,
+): Promise<WatchlistCardMembership> {
+  const response = await fetch(
+    `${apiURL}/api/watchlists/${encodeURIComponent(watchlistId)}/cards`,
+    {
+      body: JSON.stringify(target),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Watchlist card returned ${response.status}`);
+  }
+  return response.json() as Promise<WatchlistCardMembership>;
+}
+
+export async function removeWatchlistCard(
+  itemId: number,
+  watchlistId = defaultWatchlistID,
+): Promise<void> {
+  const response = await fetch(
+    `${apiURL}/api/watchlists/${encodeURIComponent(watchlistId)}/cards/${itemId}`,
+    { method: 'DELETE' },
+  );
+  if (!response.ok) {
+    throw new Error(`Watchlist card removal returned ${response.status}`);
+  }
+}
+
+export async function addWatchlistSet(
+  target: WatchlistSetTarget,
+  watchlistId = defaultWatchlistID,
+): Promise<WatchlistSetMembership> {
+  const response = await fetch(
+    `${apiURL}/api/watchlists/${encodeURIComponent(watchlistId)}/sets`,
+    {
+      body: JSON.stringify(target),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Watchlist set returned ${response.status}`);
+  }
+  return response.json() as Promise<WatchlistSetMembership>;
+}
+
+export async function removeWatchlistSet(
+  itemId: number,
+  watchlistId = defaultWatchlistID,
+): Promise<void> {
+  const response = await fetch(
+    `${apiURL}/api/watchlists/${encodeURIComponent(watchlistId)}/sets/${itemId}`,
+    { method: 'DELETE' },
+  );
+  if (!response.ok) {
+    throw new Error(`Watchlist set removal returned ${response.status}`);
+  }
 }
 
 export function formatCurrency(value: number | null): string {

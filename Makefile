@@ -37,8 +37,8 @@ install-user-services:
 	cp deploy/systemd/user/*.service deploy/systemd/user/*.timer $(HOME)/.config/systemd/user/
 	systemctl --user daemon-reload
 
-dev-up: db-up build-server install-user-services
-	systemctl --user start binderledger-api.service binderledger-expo.service
+dev-up: db-up build-server client-export install-user-services
+	systemctl --user start binderledger-api.service binderledger-client-preview.service binderledger-expo.service
 
 dev-down:
 	-systemctl --user stop binderledger-expo.service binderledger-client-preview.service binderledger-api.service

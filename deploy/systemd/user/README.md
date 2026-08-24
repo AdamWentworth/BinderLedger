@@ -36,20 +36,23 @@ cp deploy/systemd/user/binderledger-server.env.example ~/.config/binderledger/se
 ```
 
 Set `HTTP_ADDR` to the machine's trusted LAN address on development port `4001`
-and set `CORS_ALLOWED_ORIGINS` for Expo on `8082`. Start the dedicated
-development database before enabling the API:
+and set `CORS_ALLOWED_ORIGINS` for Expo on `8082` and the static preview on
+`8083`. Start the dedicated development database before enabling the API:
 
 ```bash
 make db-up
 systemctl --user enable --now binderledger-api.service
 ```
 
-The Expo service runs one Metro process for both the live browser frontend and
-Expo Go. Start or stop it independently when needed:
+The Expo service runs phone-only Metro for Expo Go. The browser uses an exported
+static build so Metro does not retain both web and Android bundles on this
+memory-constrained server. Start or stop them independently when needed:
 
 ```bash
 systemctl --user start binderledger-expo.service
+systemctl --user start binderledger-client-preview.service
 systemctl --user stop binderledger-expo.service
+systemctl --user stop binderledger-client-preview.service
 ```
 
 From the repository root, `make dev-up`, `make dev-status`, and `make dev-down`

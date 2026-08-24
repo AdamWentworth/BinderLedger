@@ -39,3 +39,11 @@ func TestHistorySignal(t *testing.T) {
 		t.Fatalf("historySignal() = %q, want regular", got)
 	}
 }
+
+func TestCalculateMovement(t *testing.T) {
+	period, _ := ParsePeriod("1m")
+	movement := CalculateMovement(period, 80, 92, 30)
+	if movement.Amount != 12 || movement.Percent != 15 || movement.Signal != "regular" {
+		t.Fatalf("CalculateMovement() = %+v", movement)
+	}
+}

@@ -17,6 +17,13 @@ The Expo client owns presentation, device capabilities, local interaction state,
 
 The future ML service will receive images through a narrow authenticated API and return a prediction with confidence and evidence. It will not own user catalogs or prices. Condition results remain suggestions that a user can accept or edit.
 
+The first personal feature is a local default watchlist. It stores exact card
+printings and set editions rather than condition-specific variants, so the same
+saved item follows the user's NM, LP, MP, HP, or Damaged market preference. The
+watchlist overview composes these identities with existing catalog quality rules
+and market history. Future account work will add ownership and named lists
+without changing the saved-item identities.
+
 ## Data collection
 
 The existing JustTCG audit tool and its downloaded responses remain the durable raw source. `cmd/import-justtcg` normalizes collected set files into PostgreSQL sets, cards, exact printings, conditions, current prices, and daily price observations. The import uses stable provider IDs and conflict updates, so it is safe to rerun after collection.

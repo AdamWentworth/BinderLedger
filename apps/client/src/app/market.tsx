@@ -8,9 +8,10 @@ import {
   LineChart,
 } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
+import { MarketConditionControl } from '@/components/market-condition-control';
 import { MarketPeriodControl } from '@/components/market-period-control';
 import { MarketMoverRow } from '@/components/market-mover-row';
 import { Metric } from '@/components/metric';
@@ -18,6 +19,7 @@ import { PriceHistoryChart } from '@/components/price-history-chart';
 import { Screen } from '@/components/screen';
 import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
+import { useCatalogPreferences } from '@/providers/catalog-preferences';
 import {
   formatCurrency,
   formatPercent,
@@ -28,21 +30,13 @@ import {
   type MarketPeriod,
 } from '@/lib/api';
 
-const conditions: { key: MarketCondition; short: string }[] = [
-  { key: 'Near Mint', short: 'NM' },
-  { key: 'Lightly Played', short: 'LP' },
-  { key: 'Moderately Played', short: 'MP' },
-  { key: 'Heavily Played', short: 'HP' },
-  { key: 'Damaged', short: 'DMG' },
-];
-
 export default function MarketScreen() {
   const width = useHydratedWidth();
   const pageWidth = getUsablePageWidth(width);
   const desktop = pageWidth >= 980;
   const abbreviateConditions = pageWidth < 620;
   const [period, setPeriod] = useState<MarketPeriod>('1m');
-  const [condition, setCondition] = useState<MarketCondition>('Near Mint');
+  const { condition, setCondition } = useCatalogPreferences();
   const [selectedVariantID, setSelectedVariantID] = useState('');
 
   const overviewQuery = useQuery({
@@ -74,23 +68,12 @@ export default function MarketScreen() {
       title="Market"
       subtitle="Condition-specific movement across collected legacy sets and printings."
       toolbar={<MarketPeriodControl period={period} onChange={setPeriod} />}>
-      <View accessibilityRole="tablist" style={styles.conditions}>
-        {conditions.map((option) => {
-          const selected = option.key === condition;
-          return (
-            <Pressable
-              accessibilityLabel={option.key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              key={option.key}
-              onPress={() => changeCondition(option.key)}
-              style={[styles.condition, selected && styles.conditionSelected]}>
-              <Text style={[styles.conditionText, selected && styles.conditionTextSelected]}>
-                {abbreviateConditions ? option.short : option.key}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.conditionControl}>
+        <MarketConditionControl
+          abbreviate={abbreviateConditions}
+          condition={condition}
+          onChange={changeCondition}
+        />
       </View>
 
       {overviewQuery.isPending ? (
@@ -312,36 +295,9 @@ function formatMarketDate(value: string): string {
 }
 
 const styles = StyleSheet.create({
-  conditions: {
-    backgroundColor: colors.surfaceQuiet,
-    borderRadius: 6,
-    flexDirection: 'row',
+  conditionControl: {
     marginBottom: spacing.md,
-    padding: 3,
     width: '100%',
-  },
-  condition: {
-    alignItems: 'center',
-    borderRadius: 4,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 38,
-    minWidth: 0,
-    paddingHorizontal: spacing.xs,
-  },
-  conditionSelected: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-  },
-  conditionText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  conditionTextSelected: {
-    color: colors.brand,
   },
   loading: {
     alignItems: 'center',

@@ -1,46 +1,40 @@
 import { Image } from 'expo-image';
 import { ImageOff } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { shortCondition } from '@/components/market-condition-control';
 import { colors, spacing } from '@/constants/theme';
-import { CatalogCard, formatCurrency } from '@/lib/api';
+import { type CatalogListing, formatCurrency, type MarketCondition } from '@/lib/api';
 
 type CatalogCardTileProps = {
-  card: CatalogCard;
-  onPress: (card: CatalogCard) => void;
+  condition: MarketCondition;
+  listing: CatalogListing;
+  onPress: (listing: CatalogListing) => void;
 };
 
-export function CatalogCardTile({ card, onPress }: CatalogCardTileProps) {
+export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTileProps) {
   const [imageFailed, setImageFailed] = useState(false);
-  const printings = useMemo(
-    () => [...new Set(card.variants.map((variant) => variant.printing))],
-    [card.variants],
-  );
-  const nearMintPrices = card.variants
-    .filter((variant) => variant.condition === 'Near Mint' && variant.currentPrice !== null)
-    .map((variant) => variant.currentPrice as number);
-  const nearMintFrom = nearMintPrices.length ? Math.min(...nearMintPrices) : null;
 
   return (
     <Pressable
-      accessibilityLabel={`Open ${card.name}, ${card.setName}`}
+      accessibilityLabel={`Open ${listing.name}, ${listing.setName}, ${listing.edition}, ${listing.finish}`}
       accessibilityRole="button"
-      onPress={() => onPress(card)}
+      onPress={() => onPress(listing)}
       style={({ pressed }) => [styles.container, pressed && styles.pressed]}>
       <View style={styles.imageFrame}>
-        {card.imageUrl && !imageFailed ? (
+        {listing.imageUrl && !imageFailed ? (
           <Image
             contentFit="contain"
             onError={() => setImageFailed(true)}
-            source={card.imageUrl}
+            source={listing.imageUrl}
             style={styles.image}
             transition={180}
           />
         ) : (
           <View style={styles.imageFallback}>
             <ImageOff color={colors.textMuted} size={30} />
-            <Text style={styles.fallbackNumber}>{card.number ?? 'No image'}</Text>
+            <Text style={styles.fallbackNumber}>{listing.number ?? 'No image'}</Text>
           </View>
         )}
       </View>
@@ -48,28 +42,30 @@ export function CatalogCardTile({ card, onPress }: CatalogCardTileProps) {
       <View style={styles.body}>
         <View style={styles.titleRow}>
           <Text numberOfLines={2} style={styles.name}>
-            {card.name}
+            {listing.name}
           </Text>
-          <Text style={styles.number}>{card.number}</Text>
+          <Text style={styles.number}>{listing.number}</Text>
         </View>
         <Text numberOfLines={1} style={styles.setName}>
-          {card.setName}
+          {listing.setName}
         </Text>
 
         <View style={styles.tags}>
-          {printings.slice(0, 2).map((printing) => (
-            <View key={printing} style={styles.tag}>
-              <Text numberOfLines={1} style={styles.tagText}>
-                {printing}
-              </Text>
-            </View>
-          ))}
-          {printings.length > 2 && <Text style={styles.moreTag}>+{printings.length - 2}</Text>}
+          <View style={[styles.tag, listing.edition === 'First Edition' && styles.editionTag]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.tagText, listing.edition === 'First Edition' && styles.editionTagText]}>
+              {listing.edition}
+            </Text>
+          </View>
+          <View style={styles.tag}>
+            <Text numberOfLines={1} style={styles.tagText}>{listing.finish}</Text>
+          </View>
         </View>
 
         <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>NM from</Text>
-          <Text style={styles.price}>{formatCurrency(nearMintFrom)}</Text>
+          <Text style={styles.priceLabel}>{shortCondition(condition)}</Text>
+          <Text style={styles.price}>{formatCurrency(listing.currentPrice)}</Text>
         </View>
       </View>
     </Pressable>
@@ -112,12 +108,14 @@ const styles = StyleSheet.create({
   },
   body: {
     gap: spacing.sm,
+    minHeight: 154,
     padding: spacing.md,
   },
   titleRow: {
     alignItems: 'flex-start',
     flexDirection: 'row',
     gap: spacing.sm,
+    minHeight: 40,
   },
   name: {
     color: colors.text,
@@ -145,19 +143,22 @@ const styles = StyleSheet.create({
   tag: {
     backgroundColor: colors.surfaceRaised,
     borderRadius: 4,
-    maxWidth: 130,
+    maxWidth: '52%',
     paddingHorizontal: 7,
     paddingVertical: 4,
+  },
+  editionTag: {
+    backgroundColor: colors.warningSurface,
+    borderColor: colors.warningBorder,
+    borderWidth: 1,
   },
   tagText: {
     color: colors.burgundy,
     fontSize: 10,
     fontWeight: '700',
   },
-  moreTag: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontWeight: '700',
+  editionTagText: {
+    color: colors.brass,
   },
   priceRow: {
     alignItems: 'flex-end',
@@ -171,6 +172,7 @@ const styles = StyleSheet.create({
   priceLabel: {
     color: colors.textMuted,
     fontSize: 11,
+    fontWeight: '800',
   },
   price: {
     color: colors.brand,

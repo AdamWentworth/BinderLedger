@@ -29,3 +29,19 @@ func TestQueryInteger(t *testing.T) {
 		})
 	}
 }
+
+func TestOptionalCatalogValue(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  bool
+	}{
+		{value: "", want: true},
+		{value: "Unlimited", want: true},
+		{value: "First Edition", want: true},
+		{value: "Limited Edition", want: false},
+	} {
+		if got := optionalCatalogValue(test.value, "Unlimited", "First Edition"); got != test.want {
+			t.Fatalf("optionalCatalogValue(%q) = %v, want %v", test.value, got, test.want)
+		}
+	}
+}

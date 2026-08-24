@@ -27,7 +27,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MarketPeriodControl } from '@/components/market-period-control';
 import { PriceHistoryChart } from '@/components/price-history-chart';
+import { WatchButton } from '@/components/watch-button';
 import { colors, spacing } from '@/constants/theme';
+import { useWatchlistCardMembership } from '@/hooks/use-watchlist-membership';
 import {
   type CatalogListing,
   formatCurrency,
@@ -79,6 +81,12 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
   const conditionSource = listing.variants[0]?.sourceProvider ?? 'Unknown provider';
   const hasQualityWarning =
     listing.priceQuality.status !== 'current' || listing.priceQuality.reason !== null;
+  const watchlist = useWatchlistCardMembership({
+    cardId: listing.cardId,
+    edition: listing.edition,
+    finish: listing.finish,
+    language: listing.language,
+  });
 
   const historyQuery = useQuery({
     queryKey: ['market', 'history', selectedVariantID, period],
@@ -124,14 +132,23 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                 {listing.setName} / {listing.number} / {listing.rarity ?? 'Unknown rarity'}
               </Text>
             </View>
-            <Pressable
-              accessibilityLabel="Close card details"
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={onClose}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}>
-              <X color={colors.text} size={21} />
-            </Pressable>
+            <View style={styles.headerActions}>
+              <WatchButton
+                error={watchlist.error}
+                loading={watchlist.loading}
+                noun="card"
+                onPress={watchlist.toggle}
+                watched={watchlist.watched}
+              />
+              <Pressable
+                accessibilityLabel="Close card details"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={onClose}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}>
+                <X color={colors.text} size={21} />
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView contentContainerStyle={styles.modalBody} ref={scrollViewRef}>
@@ -408,6 +425,11 @@ const styles = StyleSheet.create({
   modalHeading: {
     flex: 1,
     gap: spacing.xs,
+  },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   cardName: {
     color: colors.text,

@@ -16,7 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MarketPeriodControl } from '@/components/market-period-control';
 import { PriceHistoryChart } from '@/components/price-history-chart';
+import { WatchButton } from '@/components/watch-button';
 import { colors, spacing } from '@/constants/theme';
+import { useWatchlistSetMembership } from '@/hooks/use-watchlist-membership';
 import { useCatalogPreferences } from '@/providers/catalog-preferences';
 import {
   type CatalogSet,
@@ -56,6 +58,7 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
   const [edition, setEdition] = useState(defaultEdition(set.editions));
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const [sort, setSort] = useState<SetSort>('number');
+  const watchlist = useWatchlistSetMembership({ setId: set.id, edition });
 
   const pricingQuery = useQuery({
     queryKey: ['catalog', 'set-pricing', set.id, edition, condition, period],
@@ -92,14 +95,24 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
                 </Text>
               </View>
             </View>
-            <Pressable
-              accessibilityLabel="Close set details"
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={onClose}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}>
-              <X color={colors.text} size={21} />
-            </Pressable>
+            <View style={styles.headerActions}>
+              <WatchButton
+                disabled={edition === ''}
+                error={watchlist.error}
+                loading={watchlist.loading}
+                noun="set"
+                onPress={watchlist.toggle}
+                watched={watchlist.watched}
+              />
+              <Pressable
+                accessibilityLabel="Close set details"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={onClose}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}>
+                <X color={colors.text} size={21} />
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView contentContainerStyle={styles.modalBody}>
@@ -405,6 +418,7 @@ const styles = StyleSheet.create({
   headerIdentity: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.md, minWidth: 0 },
   headerSymbol: { height: 30, width: 30 },
   headerCopy: { flex: 1, gap: 2, minWidth: 0 },
+  headerActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   setName: { color: colors.text, fontSize: 21, fontWeight: '800' },
   setMeta: { color: colors.textMuted, fontSize: 11 },
   closeButton: { alignItems: 'center', borderRadius: 4, height: 36, justifyContent: 'center', width: 36 },

@@ -9,6 +9,9 @@ services:
     cpu_shares: 128
     mem_limit: 512m
     memswap_limit: 768m
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-binderledger}
       POSTGRES_USER: ${POSTGRES_USER:-binderledger}

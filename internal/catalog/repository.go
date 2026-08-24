@@ -83,21 +83,48 @@ const (
 )
 
 type Listing struct {
-	ID                 string    `json:"id"`
-	CardID             string    `json:"cardId"`
-	Name               string    `json:"name"`
-	Number             *string   `json:"number"`
-	Rarity             *string   `json:"rarity"`
-	TCGPlayerProductID *int64    `json:"tcgplayerProductId"`
-	ImageURL           *string   `json:"imageUrl"`
-	SetID              string    `json:"setId"`
-	SetName            string    `json:"setName"`
-	Edition            string    `json:"edition"`
-	Finish             string    `json:"finish"`
-	Language           string    `json:"language"`
-	SelectedVariantID  *string   `json:"selectedVariantId"`
-	CurrentPrice       *float64  `json:"currentPrice"`
-	Variants           []Variant `json:"variants"`
+	ID                  string               `json:"id"`
+	CardID              string               `json:"cardId"`
+	Name                string               `json:"name"`
+	Number              *string              `json:"number"`
+	Rarity              *string              `json:"rarity"`
+	TCGPlayerProductID  *int64               `json:"tcgplayerProductId"`
+	ImageURL            *string              `json:"imageUrl"`
+	SetID               string               `json:"setId"`
+	SetName             string               `json:"setName"`
+	Edition             string               `json:"edition"`
+	Finish              string               `json:"finish"`
+	Language            string               `json:"language"`
+	SelectedVariantID   *string              `json:"selectedVariantId"`
+	CurrentPrice        *float64             `json:"currentPrice"`
+	PriceQuality        PriceQuality         `json:"priceQuality"`
+	Variants            []Variant            `json:"variants"`
+	ValuationReferences []ValuationReference `json:"valuationReferences"`
+	trustedDamaged      *float64
+	trustedHP           *float64
+	trustedMP           *float64
+	trustedLP           *float64
+	trustedNM           *float64
+}
+
+type PriceQuality struct {
+	Status string  `json:"status"`
+	AsOf   *string `json:"asOf"`
+	Reason *string `json:"reason"`
+}
+
+type ValuationReference struct {
+	ID         string  `json:"id"`
+	Kind       string  `json:"kind"`
+	Label      string  `json:"label"`
+	Grader     *string `json:"grader"`
+	Grade      *string `json:"grade"`
+	Amount     float64 `json:"amount"`
+	Currency   string  `json:"currency"`
+	SourceName string  `json:"sourceName"`
+	SourceURL  string  `json:"sourceUrl"`
+	CheckedOn  string  `json:"checkedOn"`
+	Note       *string `json:"note"`
 }
 
 type ListingFilter struct {
@@ -126,25 +153,29 @@ type SetPricingFilter struct {
 }
 
 type SetPriceSummary struct {
-	TotalValue   float64  `json:"totalValue"`
-	AveragePrice float64  `json:"averagePrice"`
-	MinimumPrice *float64 `json:"minimumPrice"`
-	MaximumPrice *float64 `json:"maximumPrice"`
-	PricedCards  int      `json:"pricedCards"`
-	CardCount    int      `json:"cardCount"`
-	Complete     bool     `json:"complete"`
+	TotalValue       float64  `json:"totalValue"`
+	AveragePrice     float64  `json:"averagePrice"`
+	MinimumPrice     *float64 `json:"minimumPrice"`
+	MaximumPrice     *float64 `json:"maximumPrice"`
+	PricedCards      int      `json:"pricedCards"`
+	CurrentCards     int      `json:"currentCards"`
+	HistoricalCards  int      `json:"historicalCards"`
+	UnavailableCards int      `json:"unavailableCards"`
+	CardCount        int      `json:"cardCount"`
+	Complete         bool     `json:"complete"`
 }
 
 type SetPriceCard struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Number       *string  `json:"number"`
-	Rarity       *string  `json:"rarity"`
-	ImageURL     *string  `json:"imageUrl"`
-	VariantID    *string  `json:"variantId"`
-	Printing     *string  `json:"printing"`
-	Finish       *string  `json:"finish"`
-	CurrentPrice *float64 `json:"currentPrice"`
+	ID           string        `json:"id"`
+	Name         string        `json:"name"`
+	Number       *string       `json:"number"`
+	Rarity       *string       `json:"rarity"`
+	ImageURL     *string       `json:"imageUrl"`
+	VariantID    *string       `json:"variantId"`
+	Printing     *string       `json:"printing"`
+	Finish       *string       `json:"finish"`
+	CurrentPrice *float64      `json:"currentPrice"`
+	PriceQuality *PriceQuality `json:"priceQuality"`
 }
 
 type SetPricePoint struct {
@@ -358,10 +389,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 	filter.Condition = strings.TrimSpace(filter.Condition)
 
 	rows, err := repository.db.Query(ctx, `
-		WITH printings AS (
-			SELECT DISTINCT card_id, edition, finish, language
-			FROM catalog_card_variants
-		), listings AS (
+		WITH listings AS (
 			SELECT
 				c.id AS card_id,
 				c.name,
@@ -373,29 +401,43 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				s.id AS set_id,
 				s.name AS set_name,
 				s.release_date,
-				p.edition,
-				p.finish,
-				p.language,
+				quality.edition,
+				quality.finish,
+				quality.language,
 				selected.id AS selected_variant_id,
-				selected.current_price::double precision AS current_price
-			FROM printings p
-			JOIN catalog_cards c ON c.id = p.card_id
+				CASE $5
+					WHEN 'Damaged' THEN quality.damaged_price
+					WHEN 'Heavily Played' THEN quality.heavily_played_price
+					WHEN 'Moderately Played' THEN quality.moderately_played_price
+					WHEN 'Lightly Played' THEN quality.lightly_played_price
+					WHEN 'Near Mint' THEN quality.near_mint_price
+				END::double precision AS current_price,
+				quality.status AS price_status,
+				to_char(quality.as_of, 'YYYY-MM-DD') AS price_as_of,
+				quality.reason AS price_reason,
+				quality.damaged_price::double precision,
+				quality.heavily_played_price::double precision,
+				quality.moderately_played_price::double precision,
+				quality.lightly_played_price::double precision,
+				quality.near_mint_price::double precision
+			FROM catalog_price_quality quality
+			JOIN catalog_cards c ON c.id = quality.card_id
 			JOIN catalog_sets s ON s.id = c.set_id
 			LEFT JOIN LATERAL (
-				SELECT v.id, v.current_price
+				SELECT v.id
 				FROM catalog_card_variants v
-				WHERE v.card_id = p.card_id
-				  AND v.edition = p.edition
-				  AND v.finish = p.finish
-				  AND v.language = p.language
+				WHERE v.card_id = quality.card_id
+				  AND v.edition = quality.edition
+				  AND v.finish = quality.finish
+				  AND v.language = quality.language
 				  AND v.condition = $5
 				ORDER BY v.id
 				LIMIT 1
 			) selected ON true
 			WHERE ($1 = '' OR c.set_id = $1)
 			  AND ($2 = '' OR c.name ILIKE '%' || $2 || '%' OR c.number ILIKE '%' || $2 || '%')
-			  AND ($3 = '' OR p.edition = $3)
-			  AND ($4 = '' OR p.finish = $4)
+			  AND ($3 = '' OR quality.edition = $3)
+			  AND ($4 = '' OR quality.finish = $4)
 		)
 		SELECT
 			count(*) OVER()::integer,
@@ -411,7 +453,15 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			finish,
 			language,
 			selected_variant_id,
-			current_price
+			current_price,
+			price_status,
+			price_as_of,
+			price_reason,
+			damaged_price,
+			heavily_played_price,
+			moderately_played_price,
+			lightly_played_price,
+			near_mint_price
 		FROM listings
 		ORDER BY
 			CASE WHEN $6 = 'price_desc' THEN current_price END DESC NULLS LAST,
@@ -457,11 +507,20 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			&listing.Language,
 			&listing.SelectedVariantID,
 			&listing.CurrentPrice,
+			&listing.PriceQuality.Status,
+			&listing.PriceQuality.AsOf,
+			&listing.PriceQuality.Reason,
+			&listing.trustedDamaged,
+			&listing.trustedHP,
+			&listing.trustedMP,
+			&listing.trustedLP,
+			&listing.trustedNM,
 		); err != nil {
 			return ListingPage{}, fmt.Errorf("scan catalog listing: %w", err)
 		}
 		listing.ID = listingKey(listing.CardID, listing.Edition, listing.Finish, listing.Language)
 		listing.Variants = make([]Variant, 0, 5)
+		listing.ValuationReferences = make([]ValuationReference, 0)
 		listingIndex[listing.ID] = len(page.Listings)
 		if _, seen := seenCardIDs[listing.CardID]; !seen {
 			seenCardIDs[listing.CardID] = struct{}{}
@@ -525,6 +584,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 		}
 		index, ok := listingIndex[listingKey(cardID, variant.Edition, variant.Finish, variant.Language)]
 		if ok {
+			variant.CurrentPrice = trustedConditionPrice(page.Listings[index], variant.Condition)
 			page.Listings[index].Variants = append(page.Listings[index].Variants, variant)
 		}
 	}
@@ -532,11 +592,99 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 		return ListingPage{}, fmt.Errorf("read listing variants: %w", err)
 	}
 
+	if err := repository.attachValuationReferences(ctx, cardIDs, listingIndex, page.Listings); err != nil {
+		return ListingPage{}, err
+	}
+
 	return page, nil
+}
+
+func (repository *Repository) attachValuationReferences(
+	ctx context.Context,
+	cardIDs []string,
+	listingIndex map[string]int,
+	listings []Listing,
+) error {
+	rows, err := repository.db.Query(ctx, `
+		SELECT
+			card.id,
+			reference.edition,
+			reference.finish,
+			reference.language,
+			reference.id,
+			reference.kind,
+			reference.label,
+			reference.grader,
+			reference.grade,
+			reference.amount::double precision,
+			reference.currency,
+			reference.source_name,
+			reference.source_url,
+			to_char(reference.checked_on, 'YYYY-MM-DD'),
+			reference.note
+		FROM catalog_valuation_references reference
+		JOIN catalog_cards card
+		  ON card.tcgplayer_product_id = reference.tcgplayer_product_id
+		WHERE card.id = ANY($1)
+		ORDER BY reference.kind DESC, reference.sort_order, reference.label
+	`, cardIDs)
+	if err != nil {
+		return fmt.Errorf("query listing valuation references: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cardID, edition, finish, language string
+		var reference ValuationReference
+		if err := rows.Scan(
+			&cardID,
+			&edition,
+			&finish,
+			&language,
+			&reference.ID,
+			&reference.Kind,
+			&reference.Label,
+			&reference.Grader,
+			&reference.Grade,
+			&reference.Amount,
+			&reference.Currency,
+			&reference.SourceName,
+			&reference.SourceURL,
+			&reference.CheckedOn,
+			&reference.Note,
+		); err != nil {
+			return fmt.Errorf("scan listing valuation reference: %w", err)
+		}
+		index, ok := listingIndex[listingKey(cardID, edition, finish, language)]
+		if ok {
+			listings[index].ValuationReferences = append(listings[index].ValuationReferences, reference)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read listing valuation references: %w", err)
+	}
+	return nil
 }
 
 func listingKey(cardID, edition, finish, language string) string {
 	return strings.Join([]string{cardID, edition, finish, language}, ":")
+}
+
+func trustedConditionPrice(listing Listing, condition string) *float64 {
+	switch condition {
+	case "Damaged":
+		return listing.trustedDamaged
+	case "Heavily Played":
+		return listing.trustedHP
+	case "Moderately Played":
+		return listing.trustedMP
+	case "Lightly Played":
+		return listing.trustedLP
+	case "Near Mint":
+		return listing.trustedNM
+	default:
+		return nil
+	}
 }
 
 func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingFilter) (SetPricing, error) {
@@ -601,22 +749,48 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			selected.id,
 			selected.printing,
 			selected.finish,
-			selected.current_price::double precision
+			selected.current_price::double precision,
+			selected.price_status,
+			selected.price_as_of,
+			selected.price_reason
 		FROM catalog_cards c
 		LEFT JOIN LATERAL (
-			SELECT v.id, v.printing, v.finish, v.current_price
-			FROM catalog_card_variants v
-			WHERE v.card_id = c.id
-			  AND v.edition = $2
-			  AND v.condition = $3
+			SELECT
+				variant.id,
+				variant.printing,
+				quality.finish,
+				CASE $3
+					WHEN 'Damaged' THEN quality.damaged_price
+					WHEN 'Heavily Played' THEN quality.heavily_played_price
+					WHEN 'Moderately Played' THEN quality.moderately_played_price
+					WHEN 'Lightly Played' THEN quality.lightly_played_price
+					WHEN 'Near Mint' THEN quality.near_mint_price
+				END AS current_price,
+				quality.status AS price_status,
+				to_char(quality.as_of, 'YYYY-MM-DD') AS price_as_of,
+				quality.reason AS price_reason
+			FROM catalog_price_quality quality
+			LEFT JOIN LATERAL (
+				SELECT v.id, v.printing
+				FROM catalog_card_variants v
+				WHERE v.card_id = quality.card_id
+				  AND v.edition = quality.edition
+				  AND v.finish = quality.finish
+				  AND v.language = quality.language
+				  AND v.condition = $3
+				ORDER BY v.id
+				LIMIT 1
+			) variant ON true
+			WHERE quality.card_id = c.id
+			  AND quality.edition = $2
 			ORDER BY
-				CASE v.finish
+				CASE quality.finish
 					WHEN 'Normal' THEN 1
 					WHEN 'Holofoil' THEN 2
 					WHEN 'Reverse Holofoil' THEN 3
 					ELSE 4
 				END,
-				v.id
+				quality.language
 			LIMIT 1
 		) selected ON true
 		WHERE c.set_id = $1
@@ -627,11 +801,13 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 	}
 	defer rows.Close()
 
-	variantIDs := make([]string, 0, pricing.Set.CardCount)
 	var total float64
 	var minimum, maximum *float64
 	for rows.Next() {
 		var card SetPriceCard
+		var qualityStatus *string
+		var qualityAsOf *string
+		var qualityReason *string
 		if err := rows.Scan(
 			&card.ID,
 			&card.Name,
@@ -642,14 +818,31 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 			&card.Printing,
 			&card.Finish,
 			&card.CurrentPrice,
+			&qualityStatus,
+			&qualityAsOf,
+			&qualityReason,
 		); err != nil {
 			return SetPricing{}, fmt.Errorf("scan set card price: %w", err)
 		}
+		if qualityStatus != nil {
+			card.PriceQuality = &PriceQuality{
+				Status: *qualityStatus,
+				AsOf:   qualityAsOf,
+				Reason: qualityReason,
+			}
+			switch *qualityStatus {
+			case "current":
+				pricing.Summary.CurrentCards++
+			case "historical":
+				pricing.Summary.HistoricalCards++
+			case "unavailable":
+				pricing.Summary.UnavailableCards++
+			}
+		} else {
+			pricing.Summary.UnavailableCards++
+		}
 		pricing.Cards = append(pricing.Cards, card)
 		if card.CurrentPrice != nil {
-			if card.VariantID != nil {
-				variantIDs = append(variantIDs, *card.VariantID)
-			}
 			total += *card.CurrentPrice
 			pricing.Summary.PricedCards++
 			if minimum == nil || *card.CurrentPrice < *minimum {
@@ -675,8 +868,8 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 		pricing.Summary.AveragePrice = roundMoney(total / float64(pricing.Summary.PricedCards))
 	}
 
-	if len(variantIDs) > 0 {
-		points, err := repository.setPriceHistory(ctx, variantIDs, filter.Period)
+	if pricing.Summary.CardCount > 0 {
+		points, err := repository.setPriceHistory(ctx, filter)
 		if err != nil {
 			return SetPricing{}, err
 		}
@@ -686,47 +879,81 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 	return pricing, nil
 }
 
-func (repository *Repository) setPriceHistory(ctx context.Context, variantIDs []string, period market.Period) ([]SetPricePoint, error) {
+func (repository *Repository) setPriceHistory(ctx context.Context, filter SetPricingFilter) ([]SetPricePoint, error) {
 	rows, err := repository.db.Query(ctx, `
-		WITH bounds AS (
-			SELECT min(observed_on) AS first_on, max(observed_on) AS as_of
-			FROM price_observations
-			WHERE variant_id = ANY($1)
-		), dates AS (
-			SELECT generate_series(
-				CASE
-					WHEN $2::integer = 0 THEN first_on
-					ELSE greatest(first_on, as_of - $2::integer)
+		WITH selected_printings AS (
+			SELECT DISTINCT ON (quality.card_id)
+				quality.card_id,
+				quality.finish,
+				quality.language
+			FROM catalog_price_quality quality
+			JOIN catalog_cards card ON card.id = quality.card_id
+			WHERE card.set_id = $1
+			  AND quality.edition = $2
+			ORDER BY
+				quality.card_id,
+				CASE quality.finish
+					WHEN 'Normal' THEN 1
+					WHEN 'Holofoil' THEN 2
+					WHEN 'Reverse Holofoil' THEN 3
+					ELSE 4
 				END,
-				as_of,
-				interval '1 day'
-			)::date AS day
-			FROM bounds
-			WHERE first_on IS NOT NULL AND as_of IS NOT NULL
-		), selected AS (
-			SELECT unnest($1::text[]) AS variant_id
-		), daily AS (
+				quality.language
+		), daily_snapshots AS (
 			SELECT
-				d.day,
-				count(price.price)::integer AS priced_variants,
-				sum(price.price)::double precision AS total_value
-			FROM dates d
-			CROSS JOIN selected s
-			LEFT JOIN LATERAL (
-				SELECT o.price
-				FROM price_observations o
-				WHERE o.variant_id = s.variant_id
-				  AND o.observed_on <= d.day
-				ORDER BY o.observed_on DESC
-				LIMIT 1
-			) price ON true
-			GROUP BY d.day
+				selected.card_id,
+				observation.observed_on,
+				max(observation.price) FILTER (WHERE variant.condition = 'Damaged') AS damaged_price,
+				max(observation.price) FILTER (WHERE variant.condition = 'Heavily Played') AS heavily_played_price,
+				max(observation.price) FILTER (WHERE variant.condition = 'Moderately Played') AS moderately_played_price,
+				max(observation.price) FILTER (WHERE variant.condition = 'Lightly Played') AS lightly_played_price,
+				max(observation.price) FILTER (WHERE variant.condition = 'Near Mint') AS near_mint_price
+			FROM selected_printings selected
+			JOIN catalog_card_variants variant
+			  ON variant.card_id = selected.card_id
+			 AND variant.edition = $2
+			 AND variant.finish = selected.finish
+			 AND variant.language = selected.language
+			JOIN price_observations observation ON observation.variant_id = variant.id
+			GROUP BY selected.card_id, observation.observed_on
+		), coherent_snapshots AS (
+			SELECT
+				card_id,
+				observed_on,
+				CASE $3
+					WHEN 'Damaged' THEN damaged_price
+					WHEN 'Heavily Played' THEN heavily_played_price
+					WHEN 'Moderately Played' THEN moderately_played_price
+					WHEN 'Lightly Played' THEN lightly_played_price
+					WHEN 'Near Mint' THEN near_mint_price
+				END AS selected_price
+			FROM daily_snapshots
+			WHERE damaged_price < heavily_played_price
+			  AND heavily_played_price < moderately_played_price
+			  AND moderately_played_price < lightly_played_price
+			  AND lightly_played_price < near_mint_price
+		), expected AS (
+			SELECT count(*)::integer AS card_count
+			FROM catalog_cards
+			WHERE set_id = $1
+		), set_daily AS (
+			SELECT
+				coherent.observed_on,
+				sum(coherent.selected_price)::double precision AS total_value
+			FROM coherent_snapshots coherent
+			GROUP BY coherent.observed_on
+			HAVING count(*) = (SELECT card_count FROM expected)
+		), bounds AS (
+			SELECT min(observed_on) AS first_on, max(observed_on) AS as_of
+			FROM set_daily
 		)
-		SELECT day, total_value
-		FROM daily
-		WHERE priced_variants = cardinality($1::text[])
-		ORDER BY day
-	`, variantIDs, period.Days)
+		SELECT daily.observed_on, daily.total_value
+		FROM set_daily daily
+		CROSS JOIN bounds
+		WHERE $4::integer = 0
+		   OR daily.observed_on >= greatest(bounds.first_on, bounds.as_of - $4::integer)
+		ORDER BY daily.observed_on
+	`, filter.SetID, filter.Edition, filter.Condition, filter.Period.Days)
 	if err != nil {
 		return nil, fmt.Errorf("query set price history: %w", err)
 	}

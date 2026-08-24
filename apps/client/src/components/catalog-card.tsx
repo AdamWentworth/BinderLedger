@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { ImageOff } from 'lucide-react-native';
+import { BadgeDollarSign, CircleAlert, History, ImageOff } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -15,6 +15,11 @@ type CatalogCardTileProps = {
 
 export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTileProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const historical = listing.priceQuality.status === 'historical';
+  const unavailable = listing.priceQuality.status === 'unavailable';
+  const ungradedReference = unavailable
+    ? listing.valuationReferences.find((reference) => reference.kind === 'ungraded')
+    : undefined;
 
   return (
     <Pressable
@@ -64,8 +69,37 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
         </View>
 
         <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>{shortCondition(condition)}</Text>
-          <Text style={styles.price}>{formatCurrency(listing.currentPrice)}</Text>
+          <View style={styles.priceLabelWrap}>
+            {historical ? <History color={colors.warning} size={13} /> : null}
+            {unavailable && !ungradedReference ? (
+              <CircleAlert color={colors.warning} size={13} />
+            ) : null}
+            {ungradedReference ? <BadgeDollarSign color={colors.brass} size={14} /> : null}
+            <Text
+              style={[
+                styles.priceLabel,
+                (historical || (unavailable && !ungradedReference)) && styles.priceLabelFlagged,
+                ungradedReference && styles.priceLabelReference,
+              ]}>
+              {ungradedReference
+                ? 'Ungraded ref'
+                : historical && listing.priceQuality.asOf
+                ? `${shortCondition(condition)} / ${formatShortDate(listing.priceQuality.asOf)}`
+                : shortCondition(condition)}
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.price,
+              unavailable && !ungradedReference && styles.priceUnavailable,
+              ungradedReference && styles.priceReference,
+            ]}>
+            {ungradedReference
+              ? formatCurrency(ungradedReference.amount)
+              : unavailable
+                ? 'Price unavailable'
+                : formatCurrency(listing.currentPrice)}
+          </Text>
         </View>
       </View>
     </Pressable>
@@ -174,9 +208,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
+  priceLabelWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  priceLabelFlagged: {
+    color: colors.warning,
+  },
+  priceLabelReference: {
+    color: colors.brass,
+  },
   price: {
     color: colors.brand,
     fontSize: 15,
     fontWeight: '800',
   },
+  priceUnavailable: {
+    color: colors.warning,
+    fontSize: 12,
+  },
+  priceReference: {
+    color: colors.brass,
+  },
 });
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: '2-digit' }).format(
+    new Date(`${value}T00:00:00`),
+  );
+}

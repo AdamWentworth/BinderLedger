@@ -130,6 +130,12 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 		SELECT max(o.observed_on)
 		FROM price_observations o
 		JOIN catalog_card_variants v ON v.id = o.variant_id
+		JOIN catalog_price_quality quality
+		  ON quality.card_id = v.card_id
+		 AND quality.edition = v.edition
+		 AND quality.finish = v.finish
+		 AND quality.language = v.language
+		 AND quality.status = 'current'
 		JOIN catalog_cards c ON c.id = v.card_id
 		WHERE v.condition = $1
 		  AND ($2 = '' OR c.set_id = $2)
@@ -171,6 +177,12 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 				  AND counted.observed_on BETWEEN start_point.observed_on AND end_point.observed_on
 			)
 		FROM catalog_card_variants v
+		JOIN catalog_price_quality quality
+		  ON quality.card_id = v.card_id
+		 AND quality.edition = v.edition
+		 AND quality.finish = v.finish
+		 AND quality.language = v.language
+		 AND quality.status = 'current'
 		JOIN catalog_cards c ON c.id = v.card_id
 		JOIN catalog_sets s ON s.id = c.set_id
 		JOIN LATERAL (

@@ -45,6 +45,26 @@ export type CatalogCardPage = {
   offset: number;
 };
 
+export type PriceQuality = {
+  status: 'current' | 'historical' | 'unavailable';
+  asOf: string | null;
+  reason: 'missing_conditions' | 'condition_order' | null;
+};
+
+export type CatalogValuationReference = {
+  id: string;
+  kind: 'ungraded' | 'graded';
+  label: string;
+  grader: string | null;
+  grade: string | null;
+  amount: number;
+  currency: string;
+  sourceName: string;
+  sourceUrl: string;
+  checkedOn: string;
+  note: string | null;
+};
+
 export type CatalogListing = {
   id: string;
   cardId: string;
@@ -60,7 +80,9 @@ export type CatalogListing = {
   language: string;
   selectedVariantId: string | null;
   currentPrice: number | null;
+  priceQuality: PriceQuality;
   variants: CatalogVariant[];
+  valuationReferences: CatalogValuationReference[];
 };
 
 export type CatalogListingPage = {
@@ -168,6 +190,7 @@ export type SetPriceCard = {
   printing: string | null;
   finish: string | null;
   currentPrice: number | null;
+  priceQuality: PriceQuality | null;
 };
 
 export type SetPricing = {
@@ -181,6 +204,9 @@ export type SetPricing = {
     minimumPrice: number | null;
     maximumPrice: number | null;
     pricedCards: number;
+    currentCards: number;
+    historicalCards: number;
+    unavailableCards: number;
     cardCount: number;
     complete: boolean;
   };

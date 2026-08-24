@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
-root_dir=/home/adam/src/BinderLedger
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+root_dir=$(cd -- "$script_dir/../../.." && pwd)
 project_dir="$root_dir/tools/justtcg-audit"
 manifest="$project_dir/output/kanto-collection.json"
 timer=pokemon-card-kanto-collection.timer

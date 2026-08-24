@@ -1,7 +1,12 @@
-.PHONY: api client client-export client-preview db-up format migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify
+.PHONY: api build-server client client-export client-preview db-up format migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify
 
 api:
 	go run ./cmd/api
+
+build-server:
+	mkdir -p bin
+	go build -o bin/binderledger-api ./cmd/api
+	go build -o bin/binderledger-pkmnprices-backfill ./cmd/backfill-pkmnprices
 
 client:
 	cd apps/client && npm run web
@@ -39,8 +44,11 @@ pricecharting-images-status:
 
 test:
 	go test ./cmd/... ./internal/...
+	cd tools/justtcg-audit && npm test
+	cd apps/client && npm run typecheck
 	cd apps/client && npm run lint
 
 verify: test
 	go vet ./cmd/... ./internal/...
+	go mod tidy -diff
 	cd apps/client && npx expo-doctor

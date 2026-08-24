@@ -5,8 +5,8 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/adam/src/BinderLedger/tools/justtcg-audit
-ExecStart=/home/adam/src/BinderLedger/tools/justtcg-audit/scripts/run-scheduled-kanto-collection.sh
+WorkingDirectory=%h/src/BinderLedger/tools/justtcg-audit
+ExecStart=%h/src/BinderLedger/tools/justtcg-audit/scripts/run-scheduled-kanto-collection.sh
 Nice=10
 IOSchedulingClass=idle
 CPUWeight=10

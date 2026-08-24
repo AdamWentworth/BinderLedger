@@ -9,7 +9,7 @@ original era through the end of the EX era, excluding Diamond & Pearl.
 Requires Node.js 20.6 or newer. No `npm install` is needed.
 
 ```bash
-cd /home/adam/src/BinderLedger/tools/justtcg-audit
+cd ~/src/BinderLedger/tools/justtcg-audit
 ln -s ../../.env .env
 ```
 

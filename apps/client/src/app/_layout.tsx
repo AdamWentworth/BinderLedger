@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import { Eye, LayoutGrid, LibraryBig, TrendingUp } from 'lucide-react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { colors } from '@/constants/theme';
+import { colors, desktopNavigationBreakpoint } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import '@/global.css';
 
@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const width = useHydratedWidth();
-  const desktop = width >= 900;
+  const desktop = width >= desktopNavigationBreakpoint;
 
   return (
     <SafeAreaProvider>

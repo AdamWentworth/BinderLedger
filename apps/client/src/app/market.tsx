@@ -16,7 +16,7 @@ import { MarketMoverRow } from '@/components/market-mover-row';
 import { Metric } from '@/components/metric';
 import { PriceHistoryChart } from '@/components/price-history-chart';
 import { Screen } from '@/components/screen';
-import { colors, spacing } from '@/constants/theme';
+import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import {
   formatCurrency,
@@ -38,8 +38,9 @@ const conditions: { key: MarketCondition; short: string }[] = [
 
 export default function MarketScreen() {
   const width = useHydratedWidth();
-  const desktop = width >= 980;
-  const abbreviateConditions = width < 620;
+  const pageWidth = getUsablePageWidth(width);
+  const desktop = pageWidth >= 980;
+  const abbreviateConditions = pageWidth < 620;
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const [condition, setCondition] = useState<MarketCondition>('Near Mint');
   const [selectedVariantID, setSelectedVariantID] = useState('');

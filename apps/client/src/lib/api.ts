@@ -605,13 +605,13 @@ export async function removeWatchlistSet(
 
 export async function createScanSession(
   front: ScanCapture,
-  back: ScanCapture,
+  back: ScanCapture | undefined,
   platform: string,
 ): Promise<ScanSession> {
   const formData = new FormData();
   formData.append('platform', platform);
   await appendScanCapture(formData, 'front', front);
-  await appendScanCapture(formData, 'back', back);
+  if (back) await appendScanCapture(formData, 'back', back);
 
   const response = await fetch(`${apiURL}/api/scans`, {
     body: formData,

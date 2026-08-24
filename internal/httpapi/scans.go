@@ -41,21 +41,27 @@ func (api *API) scanCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer front.Close()
-	back, backHeader, err := r.FormFile("back")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "back image is required")
-		return
-	}
-	defer back.Close()
-	if frontHeader.Size > scan.MaxImageBytes || backHeader.Size > scan.MaxImageBytes {
+	uploads := []scan.Upload{{Side: "front", Reader: front}}
+	if frontHeader.Size > scan.MaxImageBytes {
 		writeError(w, http.StatusRequestEntityTooLarge, "each scan image must be 12 MB or smaller")
 		return
 	}
 
-	session, err := api.scans.Create(r.Context(), platform, []scan.Upload{
-		{Side: "front", Reader: front},
-		{Side: "back", Reader: back},
-	})
+	back, backHeader, err := r.FormFile("back")
+	if err != nil && !errors.Is(err, http.ErrMissingFile) {
+		writeError(w, http.StatusBadRequest, "back image is invalid")
+		return
+	}
+	if err == nil {
+		defer back.Close()
+		if backHeader.Size > scan.MaxImageBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, "each scan image must be 12 MB or smaller")
+			return
+		}
+		uploads = append(uploads, scan.Upload{Side: "back", Reader: back})
+	}
+
+	session, err := api.scans.Create(r.Context(), platform, uploads)
 	if errors.Is(err, scan.ErrImageTooLarge) {
 		writeError(w, http.StatusRequestEntityTooLarge, "each scan image must be 12 MB or smaller")
 		return

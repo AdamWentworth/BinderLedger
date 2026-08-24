@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { ChevronLeft, ChevronRight, CreditCard, Layers3, Library } from 'lucide-react-native';
 import { useState } from 'react';
 import {
@@ -293,6 +294,7 @@ function SetRail({ sets, selectedSet, onSelect }: SetSelectorProps) {
           label={set.name}
           onPress={() => onSelect(set.id)}
           selected={selectedSet === set.id}
+          symbolURL={set.symbolUrl}
         />
       ))}
     </View>
@@ -312,6 +314,7 @@ function SetStrip({ sets, selectedSet, onSelect }: SetSelectorProps) {
           label={set.name}
           onPress={() => onSelect(set.id)}
           selected={selectedSet === set.id}
+          symbolURL={set.symbolUrl}
         />
       ))}
     </ScrollView>
@@ -322,10 +325,11 @@ type SetButtonProps = {
   label: string;
   cardCount: number;
   selected: boolean;
+  symbolURL?: string | null;
   onPress: () => void;
 };
 
-function SetButton({ label, cardCount, selected, onPress }: SetButtonProps) {
+function SetButton({ label, cardCount, selected, symbolURL, onPress }: SetButtonProps) {
   return (
     <Pressable
       accessibilityRole="tab"
@@ -336,6 +340,7 @@ function SetButton({ label, cardCount, selected, onPress }: SetButtonProps) {
         selected && styles.setButtonSelected,
         pressed && styles.setButtonPressed,
       ]}>
+      <SetSymbol label={label} symbolURL={symbolURL} />
       <Text style={[styles.setButtonText, selected && styles.setButtonTextSelected]}>{label}</Text>
       <Text style={styles.setButtonCount}>{cardCount}</Text>
     </Pressable>
@@ -344,15 +349,28 @@ function SetButton({ label, cardCount, selected, onPress }: SetButtonProps) {
 
 type SetChipProps = Omit<SetButtonProps, 'cardCount'>;
 
-function SetChip({ label, selected, onPress }: SetChipProps) {
+function SetChip({ label, selected, symbolURL, onPress }: SetChipProps) {
   return (
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected }}
       onPress={onPress}
       style={[styles.setChip, selected && styles.setChipSelected]}>
+      <SetSymbol label={label} symbolURL={symbolURL} />
       <Text style={[styles.setChipText, selected && styles.setChipTextSelected]}>{label}</Text>
     </Pressable>
+  );
+}
+
+function SetSymbol({ label, symbolURL }: { label: string; symbolURL?: string | null }) {
+  return (
+    <View accessibilityLabel={`${label} symbol`} style={styles.setSymbolFrame}>
+      {symbolURL ? (
+        <Image contentFit="contain" source={symbolURL} style={styles.setSymbol} />
+      ) : (
+        <Layers3 color={colors.brass} size={15} />
+      )}
+    </View>
   );
 }
 
@@ -473,10 +491,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   setChip: {
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: 6,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
     justifyContent: 'center',
     minHeight: 38,
     paddingHorizontal: 13,
@@ -492,6 +513,17 @@ const styles = StyleSheet.create({
   },
   setChipTextSelected: {
     color: colors.brand,
+  },
+  setSymbolFrame: {
+    alignItems: 'center',
+    flexShrink: 0,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  setSymbol: {
+    height: 20,
+    width: 20,
   },
   results: {
     flex: 1,

@@ -25,6 +25,7 @@ import {
   getSetPricing,
   type MarketCondition,
   type MarketPeriod,
+  resolveImageURL,
   type SetPriceCard,
 } from '@/lib/api';
 
@@ -165,8 +166,8 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
                   />
                   <SummaryValue
                     accent={changePercent === null || changePercent >= 0 ? colors.positive : colors.negative}
-                    label={hasTrustedHistory ? periodLabel(period) : 'Validated prices'}
-                    note={hasTrustedHistory ? `${pricing.points.length} daily values` : 'No coherent set snapshot'}
+                    label={hasTrustedHistory ? periodLabel(period) : 'Available prices'}
+                    note={hasTrustedHistory ? `${pricing.points.length} daily values` : 'No complete market snapshot'}
                     value={hasTrustedHistory
                       ? formatPercent(changePercent)
                       : `${pricing.summary.pricedCards}/${pricing.summary.cardCount}`}
@@ -175,18 +176,22 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
 
                 {pricing.summary.historicalCards > 0 ||
                 pricing.summary.estimatedCards > 0 ||
+                pricing.summary.warningCards > 0 ||
                 pricing.summary.unavailableCards > 0 ? (
                   <View style={styles.coverageNotice}>
                     <AlertTriangle color={colors.warning} size={16} />
                     <Text style={styles.coverageText}>
                       {pricing.summary.historicalCards > 0
-                        ? `${pricing.summary.historicalCards} cards use their latest condition-consistent historical snapshot. `
+                        ? `${pricing.summary.historicalCards} cards use an older provider snapshot. `
                         : ''}
                       {pricing.summary.estimatedCards > 0
                         ? `${pricing.summary.estimatedCards} cards use an exact-printing ungraded estimate in current totals and sorting, but not in history. `
                         : ''}
+                      {pricing.summary.warningCards > 0
+                        ? `${pricing.summary.warningCards} cards have condition prices that conflict or are incomplete. `
+                        : ''}
                       {pricing.summary.unavailableCards > 0
-                        ? `${pricing.summary.unavailableCards} cards have no trustworthy price and are excluded.`
+                        ? `${pricing.summary.unavailableCards} cards have no usable price and are excluded.`
                         : ''}
                     </Text>
                   </View>
@@ -198,7 +203,7 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
                       <View style={styles.sectionTitleRow}>
                         <LineChart color={colors.brand} size={18} />
                         <View>
-                          <Text style={styles.sectionTitle}>Validated collection history</Text>
+                          <Text style={styles.sectionTitle}>Collection history</Text>
                           <Text style={styles.sectionMeta}>
                             {edition} / {condition}
                           </Text>
@@ -311,7 +316,7 @@ function SetCardRow({ card }: { card: SetPriceCard }) {
     <View style={styles.cardRow}>
       <View style={styles.cardImageFrame}>
         {card.imageUrl ? (
-          <Image contentFit="contain" source={card.imageUrl} style={styles.cardImage} />
+          <Image contentFit="contain" source={resolveImageURL(card.imageUrl)} style={styles.cardImage} />
         ) : null}
       </View>
       <Text style={styles.cardNumber}>{card.number ?? '-'}</Text>

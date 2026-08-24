@@ -1,6 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { ChevronLeft, ChevronRight, CreditCard, Layers3, Library } from 'lucide-react-native';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Layers3,
+  Library,
+} from 'lucide-react-native';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,6 +30,14 @@ import { SetDetailModal } from '@/components/set-detail-modal';
 import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import {
+  buildCatalogSetGroups,
+  type CatalogEdition,
+  type CatalogSetGroup,
+  type CatalogSetView,
+  selectedCatalogSetGroup,
+  selectedCatalogSetView,
+} from '@/lib/catalog-set-groups';
+import {
   type CatalogListing,
   type CatalogListingSort,
   type CatalogSet,
@@ -33,13 +48,13 @@ import { useCatalogPreferences } from '@/providers/catalog-preferences';
 
 const pageSize = 24;
 type CatalogMode = 'cards' | 'sets';
-type CatalogEdition = '' | 'Unlimited' | 'First Edition';
 type CatalogFinish = '' | 'Normal' | 'Holofoil' | 'Reverse Holofoil';
 
 const editionOptions: { label: string; value: CatalogEdition }[] = [
   { label: 'All editions', value: '' },
-  { label: 'Unlimited', value: 'Unlimited' },
   { label: 'First Edition', value: 'First Edition' },
+  { label: 'Shadowless', value: 'Shadowless' },
+  { label: 'Unlimited', value: 'Unlimited' },
 ];
 const finishOptions: { label: string; value: CatalogFinish }[] = [
   { label: 'All finishes', value: '' },
@@ -107,6 +122,10 @@ export default function CatalogScreen() {
   });
 
   const sets = setsQuery.data ?? [];
+  const setGroups = buildCatalogSetGroups(sets);
+  const selectedGroup = selectedCatalogSetGroup(setGroups, selectedSet, edition);
+  const selectedView = selectedCatalogSetView(selectedGroup, selectedSet, edition);
+  const totalPrintingCount = sets.reduce((sum, set) => sum + set.printingCount, 0);
   const filteredSets = sets.filter((set) =>
     set.name.toLocaleLowerCase().includes(setSearch.trim().toLocaleLowerCase()),
   );
@@ -117,11 +136,17 @@ export default function CatalogScreen() {
   const hasPrevious = offset > 0;
   const hasNext = offset + pageSize < total;
   const summary = setsQuery.isSuccess
-    ? `${sets.reduce((sum, set) => sum + set.cardCount, 0)} cards across ${sets.length} collected sets.`
+    ? `${totalPrintingCount} printings across ${setGroups.length} collected set families.`
     : 'Browse collected legacy Pokemon printings and condition prices.';
 
-  const selectSet = (setID: string) => {
-    setSelectedSet(setID);
+  const selectAllPrintings = () => {
+    setSelectedSet('');
+    setEdition('');
+    setOffset(0);
+  };
+  const selectSetView = (view: CatalogSetView) => {
+    setSelectedSet(view.setId);
+    setEdition(view.edition);
     setOffset(0);
   };
   const changeSearch = (value: string) => {
@@ -159,7 +184,7 @@ export default function CatalogScreen() {
             <View style={styles.resultCountWrap}>
               <Library color={colors.brass} size={17} />
               <Text style={styles.resultCount}>
-                {setsQuery.isPending ? 'Loading sets' : `${filteredSets.length} sets`}
+                {setsQuery.isPending ? 'Loading sets' : `${filteredSets.length} print runs`}
               </Text>
             </View>
           </View>
@@ -191,7 +216,22 @@ export default function CatalogScreen() {
       ) : (
         <>
           {compact ? (
-            <SetStrip selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
+            <>
+              <SetStrip
+                groups={setGroups}
+                onSelectAll={selectAllPrintings}
+                onSelectView={selectSetView}
+                selectedGroup={selectedGroup}
+                totalPrintingCount={totalPrintingCount}
+              />
+              {selectedGroup ? (
+                <SetViewStrip
+                  group={selectedGroup}
+                  onSelect={selectSetView}
+                  selectedView={selectedView}
+                />
+              ) : null}
+            </>
           ) : null}
 
           <View style={[styles.filterBar, compact && styles.filterBarCompact]}>
@@ -200,18 +240,20 @@ export default function CatalogScreen() {
               <MarketConditionControl condition={condition} onChange={changeCondition} />
             </View>
             <View style={[styles.filterMenus, compact && styles.filterMenusCompact]}>
-              <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
-                <SelectionMenu
-                  accessibilityLabel="Filter by edition"
-                  label="Edition"
-                  onChange={(value) => {
-                    setEdition(value);
-                    setOffset(0);
-                  }}
-                  options={editionOptions}
-                  value={edition}
-                />
-              </View>
+              {!selectedSet ? (
+                <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
+                  <SelectionMenu
+                    accessibilityLabel="Filter by edition"
+                    label="Edition"
+                    onChange={(value) => {
+                      setEdition(value);
+                      setOffset(0);
+                    }}
+                    options={editionOptions}
+                    value={edition}
+                  />
+                </View>
+              ) : null}
               <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
                 <SelectionMenu
                   accessibilityLabel="Filter by finish"
@@ -241,7 +283,14 @@ export default function CatalogScreen() {
 
           <View style={styles.catalogLayout}>
             {!compact ? (
-              <SetRail selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
+              <SetRail
+                groups={setGroups}
+                onSelectAll={selectAllPrintings}
+                onSelectView={selectSetView}
+                selectedGroup={selectedGroup}
+                selectedView={selectedView}
+                totalPrintingCount={totalPrintingCount}
+              />
             ) : null}
 
             <View style={styles.results}>
@@ -367,65 +416,134 @@ function ModeButton({
   );
 }
 
-type SetSelectorProps = {
-  sets: CatalogSet[];
-  selectedSet: string;
-  onSelect: (setID: string) => void;
+type SetNavigationProps = {
+  groups: CatalogSetGroup[];
+  selectedGroup: CatalogSetGroup | undefined;
+  totalPrintingCount: number;
+  onSelectAll: () => void;
+  onSelectView: (view: CatalogSetView) => void;
 };
 
-function SetRail({ sets, selectedSet, onSelect }: SetSelectorProps) {
+type SetRailProps = SetNavigationProps & {
+  selectedView: CatalogSetView | undefined;
+};
+
+function SetRail({
+  groups,
+  selectedGroup,
+  selectedView,
+  totalPrintingCount,
+  onSelectAll,
+  onSelectView,
+}: SetRailProps) {
   return (
     <View style={styles.setRail}>
       <Text style={styles.setRailTitle}>Collected sets</Text>
       <SetButton
-        cardCount={sets.reduce((sum, set) => sum + set.cardCount, 0)}
-        label="All cards"
-        onPress={() => onSelect('')}
-        selected={!selectedSet}
+        countLabel={String(totalPrintingCount)}
+        label="All printings"
+        onPress={onSelectAll}
+        selected={!selectedGroup}
       />
-      {sets.map((set) => (
-        <SetButton
-          cardCount={set.cardCount}
-          key={set.id}
-          label={set.name}
-          onPress={() => onSelect(set.id)}
-          selected={selectedSet === set.id}
-          symbolURL={set.symbolUrl}
-        />
-      ))}
+      {groups.map((group) => {
+        const expanded = selectedGroup?.key === group.key;
+        return (
+          <View key={group.key}>
+            <SetGroupButton
+              expanded={expanded}
+              group={group}
+              onPress={() => onSelectView(group.defaultView)}
+            />
+            {expanded ? (
+              <View accessibilityRole="tablist" style={styles.setViewList}>
+                {group.views.map((view) => (
+                  <SetViewButton
+                    key={view.key}
+                    onPress={() => onSelectView(view)}
+                    selected={selectedView?.key === view.key}
+                    view={view}
+                  />
+                ))}
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-function SetStrip({ sets, selectedSet, onSelect }: SetSelectorProps) {
+function SetStrip({
+  groups,
+  selectedGroup,
+  totalPrintingCount,
+  onSelectAll,
+  onSelectView,
+}: SetNavigationProps) {
   return (
     <ScrollView
       contentContainerStyle={styles.setStrip}
       horizontal
       showsHorizontalScrollIndicator={false}>
-      <SetChip label="All cards" onPress={() => onSelect('')} selected={!selectedSet} />
-      {sets.map((set) => (
+      <SetChip
+        count={totalPrintingCount}
+        label="All printings"
+        onPress={onSelectAll}
+        selected={!selectedGroup}
+      />
+      {groups.map((group) => (
         <SetChip
-          key={set.id}
-          label={set.name}
-          onPress={() => onSelect(set.id)}
-          selected={selectedSet === set.id}
-          symbolURL={set.symbolUrl}
+          key={group.key}
+          label={group.label}
+          onPress={() => onSelectView(group.defaultView)}
+          selected={selectedGroup?.key === group.key}
+          symbolURL={group.symbolUrl}
         />
       ))}
     </ScrollView>
   );
 }
 
+function SetViewStrip({
+  group,
+  selectedView,
+  onSelect,
+}: {
+  group: CatalogSetGroup;
+  selectedView: CatalogSetView | undefined;
+  onSelect: (view: CatalogSetView) => void;
+}) {
+  return (
+    <View style={styles.setViewStripWrap}>
+      <Text style={styles.setViewStripLabel}>{group.label} printing</Text>
+      <ScrollView
+        contentContainerStyle={styles.setViewStrip}
+        horizontal
+        showsHorizontalScrollIndicator={false}>
+        {group.views.map((view) => (
+          <SetChip
+            count={view.printingCount}
+            key={view.key}
+            label={view.label}
+            onPress={() => onSelect(view)}
+            selected={selectedView?.key === view.key}
+            showSymbol={false}
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
 type SetButtonProps = {
   label: string;
-  cardCount: number;
+  countLabel: string;
   selected: boolean;
   symbolURL?: string | null;
   onPress: () => void;
 };
 
-function SetButton({ label, cardCount, selected, symbolURL, onPress }: SetButtonProps) {
+function SetButton({ label, countLabel, selected, symbolURL, onPress }: SetButtonProps) {
   return (
     <Pressable
       accessibilityRole="tab"
@@ -438,22 +556,100 @@ function SetButton({ label, cardCount, selected, symbolURL, onPress }: SetButton
       ]}>
       <SetSymbol label={label} symbolURL={symbolURL} />
       <Text style={[styles.setButtonText, selected && styles.setButtonTextSelected]}>{label}</Text>
-      <Text style={styles.setButtonCount}>{cardCount}</Text>
+      <Text style={styles.setButtonCount}>{countLabel}</Text>
     </Pressable>
   );
 }
 
-type SetChipProps = Omit<SetButtonProps, 'cardCount'>;
+function SetGroupButton({
+  expanded,
+  group,
+  onPress,
+}: {
+  expanded: boolean;
+  group: CatalogSetGroup;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={`${group.label}, ${group.cardCountLabel} cards`}
+      accessibilityRole="tab"
+      accessibilityState={{ expanded, selected: expanded }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.setButton,
+        expanded && styles.setGroupButtonExpanded,
+        pressed && styles.setButtonPressed,
+      ]}>
+      <SetSymbol label={group.label} symbolURL={group.symbolUrl} />
+      <Text style={[styles.setButtonText, expanded && styles.setButtonTextSelected]}>
+        {group.label}
+      </Text>
+      <Text style={styles.setButtonCount}>{group.cardCountLabel}</Text>
+      {expanded ? (
+        <ChevronDown color={colors.textMuted} size={15} />
+      ) : (
+        <ChevronRight color={colors.textMuted} size={15} />
+      )}
+    </Pressable>
+  );
+}
 
-function SetChip({ label, selected, symbolURL, onPress }: SetChipProps) {
+function SetViewButton({
+  view,
+  selected,
+  onPress,
+}: {
+  view: CatalogSetView;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={`${view.label}, ${view.printingCount} printings`}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.setViewButton,
+        selected && styles.setViewButtonSelected,
+        pressed && styles.setButtonPressed,
+      ]}>
+      <View style={[styles.setViewGuide, selected && styles.setViewGuideSelected]} />
+      <Text style={[styles.setViewButtonText, selected && styles.setButtonTextSelected]}>
+        {view.label}
+      </Text>
+      <Text style={styles.setButtonCount}>{view.printingCount}</Text>
+    </Pressable>
+  );
+}
+
+type SetChipProps = {
+  label: string;
+  selected: boolean;
+  count?: number;
+  showSymbol?: boolean;
+  symbolURL?: string | null;
+  onPress: () => void;
+};
+
+function SetChip({
+  label,
+  selected,
+  count,
+  showSymbol = true,
+  symbolURL,
+  onPress,
+}: SetChipProps) {
   return (
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected }}
       onPress={onPress}
       style={[styles.setChip, selected && styles.setChipSelected]}>
-      <SetSymbol label={label} symbolURL={symbolURL} />
+      {showSymbol ? <SetSymbol label={label} symbolURL={symbolURL} /> : null}
       <Text style={[styles.setChipText, selected && styles.setChipTextSelected]}>{label}</Text>
+      {count === undefined ? null : <Text style={styles.setChipCount}>{count}</Text>}
     </Pressable>
   );
 }
@@ -591,7 +787,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     gap: spacing.xs,
     paddingRight: spacing.md,
-    width: 220,
+    width: 232,
   },
   setRailTitle: {
     color: colors.brass,
@@ -614,6 +810,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     borderLeftColor: colors.brand,
   },
+  setGroupButtonExpanded: {
+    backgroundColor: colors.surfaceQuiet,
+  },
   setButtonPressed: {
     backgroundColor: colors.surfaceQuiet,
   },
@@ -628,12 +827,56 @@ const styles = StyleSheet.create({
   },
   setButtonCount: {
     color: colors.brass,
+    flexShrink: 0,
     fontSize: 11,
     fontWeight: '700',
+  },
+  setViewList: {
+    marginBottom: spacing.xs,
+  },
+  setViewButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 38,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.sm,
+  },
+  setViewButtonSelected: {
+    backgroundColor: colors.surfaceRaised,
+  },
+  setViewButtonText: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  setViewGuide: {
+    borderLeftColor: colors.border,
+    borderLeftWidth: 1,
+    height: 20,
+    width: 5,
+  },
+  setViewGuideSelected: {
+    borderLeftColor: colors.brand,
+    borderLeftWidth: 3,
   },
   setStrip: {
     gap: spacing.sm,
     paddingBottom: spacing.md,
+  },
+  setViewStripWrap: {
+    gap: spacing.xs,
+    paddingBottom: spacing.md,
+  },
+  setViewStripLabel: {
+    color: colors.brass,
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  setViewStrip: {
+    gap: spacing.sm,
   },
   setChip: {
     alignItems: 'center',
@@ -658,6 +901,11 @@ const styles = StyleSheet.create({
   },
   setChipTextSelected: {
     color: colors.brand,
+  },
+  setChipCount: {
+    color: colors.brass,
+    fontSize: 10,
+    fontWeight: '800',
   },
   setSymbolFrame: {
     alignItems: 'center',

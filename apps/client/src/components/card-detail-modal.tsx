@@ -5,6 +5,7 @@ import {
   BadgeDollarSign,
   ChevronRight,
   CircleAlert,
+  ExternalLink,
   History,
   LineChart,
   X,
@@ -12,6 +13,7 @@ import {
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   type LayoutChangeEvent,
   Modal,
   Pressable,
@@ -32,6 +34,7 @@ import {
   formatPercent,
   getVariantHistory,
   type MarketPeriod,
+  resolveImageURL,
 } from '@/lib/api';
 
 type CardDetailModalProps = {
@@ -49,14 +52,18 @@ type CardDetailContentProps = {
   onClose: () => void;
 };
 
+type PriceView = 'conditions' | 'graded';
+
 function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
   const { width } = useWindowDimensions();
   const compact = width < 680;
-  const currentPricing = listing.priceQuality.status === 'current';
-  const [selectedVariantID, setSelectedVariantID] = useState(
-    currentPricing ? (listing.selectedVariantId ?? listing.variants[0]?.id ?? '') : '',
-  );
+  const initialVariant =
+    listing.variants.find(
+      (variant) => variant.id === listing.selectedVariantId && variant.currentPrice !== null,
+    ) ?? listing.variants.find((variant) => variant.currentPrice !== null);
+  const [selectedVariantID, setSelectedVariantID] = useState(initialVariant?.id ?? '');
   const [period, setPeriod] = useState<MarketPeriod>('1m');
+  const [priceView, setPriceView] = useState<PriceView>('conditions');
   const scrollViewRef = useRef<ScrollView>(null);
   const historyOffset = useRef<number | null>(null);
   const pendingHistoryScroll = useRef(false);
@@ -68,11 +75,15 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
     (reference) => reference.kind === 'graded',
   );
   const estimatedPricing = listing.valuationKind === 'ungraded_reference';
+  const hasGradedPricing = gradedReferences.length > 0;
+  const conditionSource = listing.variants[0]?.sourceProvider ?? 'Unknown provider';
+  const hasQualityWarning =
+    listing.priceQuality.status !== 'current' || listing.priceQuality.reason !== null;
 
   const historyQuery = useQuery({
     queryKey: ['market', 'history', selectedVariantID, period],
     queryFn: ({ signal }) => getVariantHistory(selectedVariantID, period, signal),
-    enabled: selectedVariantID !== '',
+    enabled: priceView === 'conditions' && selectedVariantID !== '',
     placeholderData: keepPreviousData,
   });
   const history = historyQuery.data;
@@ -124,7 +135,7 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
           </View>
 
           <ScrollView contentContainerStyle={styles.modalBody} ref={scrollViewRef}>
-            {listing.priceQuality.status !== 'current' ? (
+            {hasQualityWarning ? (
               <View style={styles.qualityNotice}>
                 {estimatedPricing ? (
                   <BadgeDollarSign color={colors.brass} size={18} />
@@ -142,7 +153,11 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
             <View style={[styles.cardOverview, compact && styles.cardOverviewCompact]}>
               <View style={[styles.detailImageFrame, compact && styles.detailImageFrameCompact]}>
                 {listing.imageUrl ? (
-                  <Image contentFit="contain" source={listing.imageUrl} style={styles.detailImage} />
+                  <Image
+                    contentFit="contain"
+                    source={resolveImageURL(listing.imageUrl)}
+                    style={styles.detailImage}
+                  />
                 ) : null}
               </View>
 
@@ -151,12 +166,40 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                   <Text style={styles.printing}>
                     {listing.edition} / {listing.finish} / {listing.language}
                   </Text>
-                  {estimatedPricing ? (
+                  {hasGradedPricing ? (
+                    <View accessibilityRole="tablist" style={styles.priceTabs}>
+                      {(['conditions', 'graded'] as const).map((view) => {
+                        const selected = priceView === view;
+                        return (
+                          <Pressable
+                            accessibilityRole="tab"
+                            accessibilityState={{ selected }}
+                            key={view}
+                            onPress={() => setPriceView(view)}
+                            style={({ pressed }) => [
+                              styles.priceTab,
+                              selected && styles.priceTabSelected,
+                              pressed && styles.priceTabPressed,
+                            ]}>
+                            <Text
+                              style={[
+                                styles.priceTabText,
+                                selected && styles.priceTabTextSelected,
+                              ]}>
+                              {view === 'conditions' ? 'Conditions' : 'Graded'}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+
+                  {priceView === 'graded' && hasGradedPricing ? (
                     <>
                       {ungradedReference ? (
                         <View style={[styles.variantRow, styles.estimateRow]}>
                           <View>
-                            <Text style={styles.estimateLabel}>Ungraded estimate</Text>
+                            <Text style={styles.estimateLabel}>Ungraded benchmark</Text>
                             <Text style={styles.estimateMeta}>Exact printing</Text>
                           </View>
                           <Text style={styles.estimateAmount}>
@@ -164,63 +207,99 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                           </Text>
                         </View>
                       ) : null}
-                      <Text style={styles.gradeHeading}>Graded values</Text>
+                      <Text style={styles.gradeHeading}>Grade benchmarks</Text>
                       {gradedReferences.map((reference) => (
                         <View key={reference.id} style={styles.variantRow}>
                           <Text style={styles.condition}>{reference.label}</Text>
-                          <Text style={styles.variantPrice}>{formatCurrency(reference.amount)}</Text>
+                          <Text
+                            style={[
+                              styles.variantPrice,
+                              reference.amount === null && styles.variantPriceUnavailable,
+                            ]}>
+                            {reference.amount === null
+                              ? 'Unavailable'
+                              : formatCurrency(reference.amount)}
+                          </Text>
                         </View>
                       ))}
-                      <Text style={styles.estimateFootnote}>
-                        Curated values for this exact printing. Graded values do not inherit the
-                        selected raw-card condition.
-                      </Text>
+                      <View style={styles.sourceAttribution}>
+                        <Pressable
+                          accessibilityLabel="Open this PriceCharting valuation source"
+                          accessibilityRole="link"
+                          onPress={() => void Linking.openURL(gradedReferences[0].sourceUrl)}
+                          style={({ pressed }) => [
+                            styles.sourceLink,
+                            pressed && styles.sourceLinkPressed,
+                          ]}>
+                          <Text style={styles.sourceLinkText}>PriceCharting</Text>
+                          <ExternalLink color={colors.brand} size={13} strokeWidth={2} />
+                        </Pressable>
+                        <Text style={styles.estimateFootnote}>
+                          Snapshot from {formatQualityDate(gradedReferences[0].checkedOn)}. Values
+                          are independent of the raw-card condition prices.
+                        </Text>
+                      </View>
                     </>
                   ) : (
-                    listing.variants.map((variant) => {
-                      const selected = variant.id === selectedVariantID;
-                      return (
-                        <Pressable
-                          accessibilityLabel={`View ${listing.edition} ${listing.finish} ${variant.condition} price history`}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          disabled={!currentPricing}
-                          key={variant.id}
-                          onPress={() => selectVariant(variant.id)}
-                          style={({ pressed }) => [
-                            styles.variantRow,
-                            selected && styles.variantRowSelected,
-                            pressed && styles.variantRowPressed,
-                          ]}>
-                          <Text style={[styles.condition, selected && styles.conditionSelected]}>
-                            {variant.condition}
-                          </Text>
-                          <View style={styles.variantValue}>
-                            <Text
-                              style={[
-                                styles.variantPrice,
-                                selected && styles.variantPriceSelected,
-                              ]}>
-                              {listing.priceQuality.status === 'unavailable'
-                                ? 'Unavailable'
-                                : formatCurrency(variant.currentPrice)}
+                    <>
+                      {listing.variants.map((variant) => {
+                        const selected = variant.id === selectedVariantID;
+                        const historyAvailable = variant.currentPrice !== null;
+                        return (
+                          <Pressable
+                            accessibilityLabel={`View ${listing.edition} ${listing.finish} ${variant.condition} price history`}
+                            accessibilityRole="button"
+                            accessibilityState={{ disabled: !historyAvailable, selected }}
+                            disabled={!historyAvailable}
+                            key={variant.id}
+                            onPress={() => selectVariant(variant.id)}
+                            style={({ pressed }) => [
+                              styles.variantRow,
+                              selected && styles.variantRowSelected,
+                              pressed && styles.variantRowPressed,
+                            ]}>
+                            <Text style={[styles.condition, selected && styles.conditionSelected]}>
+                              {variant.condition}
                             </Text>
-                            {currentPricing ? (
-                              <ChevronRight
-                                color={selected ? colors.brand : colors.textMuted}
-                                size={17}
-                              />
-                            ) : null}
-                          </View>
-                        </Pressable>
-                      );
-                    })
+                            <View style={styles.variantValue}>
+                              <Text
+                                style={[
+                                  styles.variantPrice,
+                                  selected && styles.variantPriceSelected,
+                                  !historyAvailable && styles.variantPriceUnavailable,
+                                ]}>
+                                {historyAvailable
+                                  ? formatCurrency(variant.currentPrice)
+                                  : 'Unavailable'}
+                              </Text>
+                              {historyAvailable ? (
+                                <ChevronRight
+                                  color={selected ? colors.brand : colors.textMuted}
+                                  size={17}
+                                />
+                              ) : null}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                      {conditionSource !== 'JustTCG' ? (
+                        <Text style={styles.estimateFootnote}>
+                          Condition prices supplied by {conditionSource} for this exact printing.
+                        </Text>
+                      ) : null}
+                      {estimatedPricing && ungradedReference ? (
+                        <Text style={styles.estimateFootnote}>
+                          Catalog sorting uses the {formatCurrency(ungradedReference.amount)} ungraded
+                          benchmark because these condition values carry a provider warning.
+                        </Text>
+                      ) : null}
+                    </>
                   )}
                 </View>
               </View>
             </View>
 
-            {selectedVariant ? (
+            {priceView === 'conditions' && selectedVariant ? (
               <View onLayout={placeHistory} style={styles.historySection}>
                 <View style={[styles.historyHeader, compact && styles.historyHeaderCompact]}>
                   <View style={styles.historyHeading}>
@@ -403,6 +482,41 @@ const styles = StyleSheet.create({
   variantGroup: {
     gap: spacing.xs,
   },
+  priceTabs: {
+    backgroundColor: colors.surfaceQuiet,
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
+    minHeight: 42,
+    overflow: 'hidden',
+  },
+  priceTab: {
+    alignItems: 'center',
+    borderBottomColor: 'transparent',
+    borderBottomWidth: 2,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
+  },
+  priceTabSelected: {
+    backgroundColor: colors.surfaceRaised,
+    borderBottomColor: colors.brand,
+  },
+  priceTabPressed: {
+    backgroundColor: colors.surface,
+  },
+  priceTabText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  priceTabTextSelected: {
+    color: colors.text,
+    fontWeight: '800',
+  },
   printing: {
     color: colors.brass,
     fontSize: 13,
@@ -449,6 +563,10 @@ const styles = StyleSheet.create({
   variantPriceSelected: {
     color: colors.brand,
   },
+  variantPriceUnavailable: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
   estimateRow: {
     backgroundColor: colors.onlineSurface,
     borderLeftColor: colors.brand,
@@ -482,8 +600,26 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 10,
     lineHeight: 15,
+  },
+  sourceAttribution: {
+    gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
+  },
+  sourceLink: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 24,
+  },
+  sourceLinkPressed: {
+    opacity: 0.7,
+  },
+  sourceLinkText: {
+    color: colors.brand,
+    fontSize: 11,
+    fontWeight: '800',
   },
   historySection: {
     borderTopColor: colors.border,
@@ -571,15 +707,15 @@ const styles = StyleSheet.create({
 
 function priceQualityMessage(listing: CatalogListing): string {
   if (listing.valuationKind === 'ungraded_reference') {
-    return 'JustTCG condition prices do not pass validation for this printing. Showing a curated ungraded estimate and graded values instead.';
+    return 'The separate ungraded benchmark is the displayed catalog value. Provider condition prices remain visible as reported.';
   }
   if (listing.priceQuality.status === 'historical' && listing.priceQuality.asOf) {
     return `Current provider prices fail condition-order validation. Showing the latest valid five-condition snapshot from ${formatQualityDate(listing.priceQuality.asOf)}.`;
   }
   if (listing.priceQuality.reason === 'missing_conditions') {
-    return 'Condition pricing unavailable. The provider is missing one or more condition prices, and no complete historical snapshot passes validation.';
+    return 'The provider is missing one or more condition prices. Available current values remain visible as reported.';
   }
-  return 'Condition pricing unavailable. The provider prices conflict with the expected condition order, and no historical snapshot passes validation.';
+  return 'Provider prices conflict with the expected DMG < HP < MP < LP < NM order. Current values remain visible as reported.';
 }
 
 function formatQualityDate(value: string): string {

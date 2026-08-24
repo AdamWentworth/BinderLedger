@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowDownRight, ArrowUpRight } from 'lucide-react-native
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '@/constants/theme';
-import { formatCurrency, formatPercent, MarketMover } from '@/lib/api';
+import { formatCurrency, formatPercent, MarketMover, resolveImageURL } from '@/lib/api';
 
 type MarketMoverRowProps = {
   mover: MarketMover;
@@ -28,7 +28,7 @@ export function MarketMoverRow({ mover, onPress, selected }: MarketMoverRowProps
       ]}>
       <View style={styles.imageFrame}>
         {mover.imageUrl ? (
-          <Image contentFit="contain" source={mover.imageUrl} style={styles.image} />
+          <Image contentFit="contain" source={resolveImageURL(mover.imageUrl)} style={styles.image} />
         ) : null}
       </View>
       <View style={styles.copy}>

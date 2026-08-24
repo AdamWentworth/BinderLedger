@@ -26,6 +26,7 @@ import { createScanSession, ScanCapture, ScanSession } from '@/lib/api';
 
 type CardSide = 'front' | 'back';
 type CaptureMode = 'camera' | 'review' | 'complete';
+type ScanGoal = 'identify' | 'condition';
 
 const sideLabel: Record<CardSide, string> = {
   front: 'Front',
@@ -36,6 +37,7 @@ export default function ScanScreen() {
   const camera = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [activeSide, setActiveSide] = useState<CardSide>('front');
+  const [goal, setGoal] = useState<ScanGoal>('identify');
   const [captures, setCaptures] = useState<Partial<Record<CardSide, ScanCapture>>>({});
   const [mode, setMode] = useState<CaptureMode>('camera');
   const [cameraReady, setCameraReady] = useState(false);
@@ -49,15 +51,23 @@ export default function ScanScreen() {
     setBusy(true);
     setError(null);
     try {
-      const picture = await camera.current.takePictureAsync({
-        exif: false,
-        quality: 0.88,
-      });
+      let picture: CameraCapturedPicture | undefined;
+      for (let attempt = 0; attempt < 2 && !picture; attempt += 1) {
+        try {
+          picture = await camera.current.takePictureAsync({
+            exif: false,
+            quality: 0.88,
+          });
+        } catch (caught) {
+          if (attempt === 1) throw caught;
+          await pause(600);
+        }
+      }
+      if (!picture) throw new Error('Camera returned no picture');
       const capture = toScanCapture(picture);
       setCaptures((current) => ({ ...current, [activeSide]: capture }));
-      if (activeSide === 'front') {
+      if (activeSide === 'front' && goal === 'condition') {
         setActiveSide('back');
-        setCameraReady(false);
       } else {
         setTorch(false);
         setMode('review');
@@ -80,7 +90,7 @@ export default function ScanScreen() {
   async function uploadScan() {
     const front = captures.front;
     const back = captures.back;
-    if (!front || !back || busy) return;
+    if (!front || (goal === 'condition' && !back) || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -104,9 +114,17 @@ export default function ScanScreen() {
     setMode('camera');
   }
 
+  function selectGoal(nextGoal: ScanGoal) {
+    if (nextGoal === goal) return;
+    setGoal(nextGoal);
+    setActiveSide('front');
+    setCaptures({});
+    setError(null);
+  }
+
   return (
     <Screen
-      subtitle="Capture both sides for identification and condition review."
+      subtitle="Photograph cards for identification and condition review."
       title="Card scanner">
       {!permission ? (
         <View style={styles.centerState}>
@@ -116,17 +134,30 @@ export default function ScanScreen() {
         <PermissionState canAskAgain={permission.canAskAgain} request={requestPermission} />
       ) : mode === 'camera' ? (
         <View style={styles.workspace}>
-          <View style={styles.progressRow}>
-            <ProgressStep complete={Boolean(captures.front)} label="Front" selected={activeSide === 'front'} />
-            <View style={styles.progressRule} />
-            <ProgressStep complete={Boolean(captures.back)} label="Back" selected={activeSide === 'back'} />
+          <View accessibilityRole="tablist" style={styles.goalControl}>
+            <GoalButton
+              label="Identify"
+              onPress={() => selectGoal('identify')}
+              selected={goal === 'identify'}
+            />
+            <GoalButton
+              label="Condition"
+              onPress={() => selectGoal('condition')}
+              selected={goal === 'condition'}
+            />
           </View>
+          {goal === 'condition' ? (
+            <View style={styles.progressRow}>
+              <ProgressStep complete={Boolean(captures.front)} label="Front" selected={activeSide === 'front'} />
+              <View style={styles.progressRule} />
+              <ProgressStep complete={Boolean(captures.back)} label="Back" selected={activeSide === 'back'} />
+            </View>
+          ) : null}
 
           <View style={styles.cameraFrame}>
             <CameraView
               enableTorch={torch}
               facing="back"
-              key={activeSide}
               mode="picture"
               onCameraReady={() => {
                 if (Platform.OS === 'web') {
@@ -186,12 +217,16 @@ export default function ScanScreen() {
           <View style={styles.reviewHeader}>
             <CircleCheck color={colors.brand} size={24} />
             <View style={styles.reviewHeadingCopy}>
-              <Text style={styles.sectionTitle}>Both sides ready</Text>
-              <Text style={styles.sectionSubtitle}>Review the full card and visible surface detail.</Text>
+              <Text style={styles.sectionTitle}>
+                {goal === 'condition' ? 'Both sides ready' : 'Card face ready'}
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {goal === 'condition' ? 'Review the full card and visible surface detail.' : 'Review the card face.'}
+              </Text>
             </View>
           </View>
           <View style={styles.previewGrid}>
-            {(['front', 'back'] as const).map((side) => (
+            {(goal === 'condition' ? (['front', 'back'] as const) : (['front'] as const)).map((side) => (
               <View key={side} style={styles.previewItem}>
                 <View style={styles.previewImageFrame}>
                   {captures[side] ? (
@@ -234,7 +269,9 @@ export default function ScanScreen() {
           </View>
           <Text style={styles.completeTitle}>Scan saved</Text>
           <Text style={styles.completeCopy}>
-            Front and back are stored for future recognition and condition analysis.
+            {goal === 'condition'
+              ? 'Front and back are stored for future recognition and condition analysis.'
+              : 'The card face is stored for future recognition.'}
           </Text>
           {session ? <Text style={styles.sessionID}>Scan {session.id.slice(0, 8)}</Text> : null}
           <Pressable
@@ -290,6 +327,22 @@ function ProgressStep({ complete, label, selected }: { complete: boolean; label:
   );
 }
 
+function GoalButton({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.goalButton,
+        selected && styles.goalButtonSelected,
+        pressed && styles.buttonPressed,
+      ]}>
+      <Text style={[styles.goalButtonText, selected && styles.goalButtonTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function toScanCapture(picture: CameraCapturedPicture): ScanCapture {
   return {
     format: picture.format,
@@ -306,6 +359,10 @@ function scanPlatform(): 'android' | 'ios' | 'web' | 'unknown' {
   return 'unknown';
 }
 
+function pause(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 const styles = StyleSheet.create({
   workspace: {
     alignSelf: 'center',
@@ -317,6 +374,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 420,
+  },
+  goalControl: {
+    alignSelf: 'center',
+    backgroundColor: colors.navigation,
+    borderColor: colors.border,
+    borderRadius: 7,
+    borderWidth: 1,
+    flexDirection: 'row',
+    padding: 3,
+  },
+  goalButton: {
+    alignItems: 'center',
+    borderRadius: 4,
+    justifyContent: 'center',
+    minHeight: 36,
+    minWidth: 112,
+    paddingHorizontal: spacing.md,
+  },
+  goalButtonSelected: {
+    backgroundColor: colors.surfaceRaised,
+  },
+  goalButtonText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  goalButtonTextSelected: {
+    color: colors.brand,
   },
   progressRow: {
     alignItems: 'center',

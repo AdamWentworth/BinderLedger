@@ -70,11 +70,11 @@ printing while inheriting the selected market condition; set entries identify a
 set and edition. The tables and routes are ready to receive ownership and named
 lists when accounts are introduced.
 
-The scanner MVP accepts one front and one back JPEG or PNG in a size-limited
-multipart request. It stores private originals under `data/scan-images` and
-records dimensions and checksums in PostgreSQL. Recognition and condition
-suggestions intentionally remain pending until the separate analysis service is
-built.
+The scanner MVP accepts a required front and optional back JPEG or PNG in a
+size-limited multipart request. It stores private originals under
+`data/scan-images` and records dimensions and checksums in PostgreSQL.
+Recognition and condition suggestions intentionally remain pending until the
+separate analysis service is built.
 
 On this 8 GB server, prefer the static web preview so Metro does not remain resident:
 

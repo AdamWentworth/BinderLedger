@@ -24,9 +24,11 @@ import (
 const MaxImageBytes int64 = 12 * 1024 * 1024
 
 var (
-	ErrImageTooLarge    = errors.New("scan image is too large")
-	ErrSessionNotFound  = errors.New("scan session was not found")
-	ErrUnsupportedImage = errors.New("scan image must be a valid JPEG or PNG")
+	ErrCandidateNotFound = errors.New("scan candidate was not found")
+	ErrImageTooLarge     = errors.New("scan image is too large")
+	ErrScanNotComplete   = errors.New("scan recognition is not complete")
+	ErrSessionNotFound   = errors.New("scan session was not found")
+	ErrUnsupportedImage  = errors.New("scan image must be a valid JPEG or PNG")
 )
 
 type Upload struct {
@@ -46,18 +48,56 @@ type Image struct {
 	storageKey string
 }
 
+type Candidate struct {
+	Rank     int            `json:"rank"`
+	CardID   string         `json:"cardId"`
+	CardName string         `json:"cardName"`
+	Number   *string        `json:"number"`
+	SetID    string         `json:"setId"`
+	SetName  string         `json:"setName"`
+	Edition  string         `json:"edition"`
+	Finish   string         `json:"finish"`
+	Language string         `json:"language"`
+	ImageURL string         `json:"imageUrl"`
+	Score    float64        `json:"score"`
+	Signals  map[string]any `json:"signals"`
+}
+
+type Confirmation struct {
+	Decision      string    `json:"decision"`
+	CandidateRank *int      `json:"candidateRank"`
+	CardID        *string   `json:"cardId"`
+	Edition       *string   `json:"edition"`
+	Finish        *string   `json:"finish"`
+	Language      *string   `json:"language"`
+	ConfirmedAt   time.Time `json:"confirmedAt"`
+}
+
+type ConfirmationInput struct {
+	Decision      string
+	CandidateRank *int
+}
+
 type Session struct {
-	ID             string    `json:"id"`
-	Status         string    `json:"status"`
-	ClientPlatform string    `json:"clientPlatform"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
-	Images         []Image   `json:"images"`
+	ID                  string        `json:"id"`
+	Status              string        `json:"status"`
+	Purpose             string        `json:"purpose"`
+	ClientPlatform      string        `json:"clientPlatform"`
+	RecognizerVersion   *string       `json:"recognizerVersion"`
+	FailureReason       *string       `json:"failureReason"`
+	ProcessingStartedAt *time.Time    `json:"processingStartedAt"`
+	CompletedAt         *time.Time    `json:"completedAt"`
+	CreatedAt           time.Time     `json:"createdAt"`
+	UpdatedAt           time.Time     `json:"updatedAt"`
+	Images              []Image       `json:"images"`
+	Candidates          []Candidate   `json:"candidates"`
+	Confirmation        *Confirmation `json:"confirmation"`
 }
 
 type Store interface {
-	Create(context.Context, string, []Upload) (Session, error)
+	Create(context.Context, string, string, []Upload) (Session, error)
 	Get(context.Context, string) (Session, error)
+	Confirm(context.Context, string, ConfirmationInput) (Session, error)
 }
 
 type Repository struct {
@@ -69,7 +109,7 @@ func NewRepository(db *pgxpool.Pool, directory string) *Repository {
 	return &Repository{db: db, directory: directory}
 }
 
-func (r *Repository) Create(ctx context.Context, platform string, uploads []Upload) (Session, error) {
+func (r *Repository) Create(ctx context.Context, purpose, platform string, uploads []Upload) (Session, error) {
 	id, err := newID()
 	if err != nil {
 		return Session{}, fmt.Errorf("generate scan id: %w", err)
@@ -101,14 +141,15 @@ func (r *Repository) Create(ctx context.Context, platform string, uploads []Uplo
 	session := Session{
 		ID:             id,
 		Status:         "captured",
+		Purpose:        purpose,
 		ClientPlatform: platform,
 		Images:         images,
 	}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO card_scan_sessions (id, status, client_platform)
-		VALUES ($1, $2, $3)
+		INSERT INTO card_scan_sessions (id, status, purpose, client_platform)
+		VALUES ($1, $2, $3, $4)
 		RETURNING created_at, updated_at
-	`, session.ID, session.Status, session.ClientPlatform).Scan(&session.CreatedAt, &session.UpdatedAt)
+	`, session.ID, session.Status, session.Purpose, session.ClientPlatform).Scan(&session.CreatedAt, &session.UpdatedAt)
 	if err != nil {
 		return Session{}, fmt.Errorf("insert scan session: %w", err)
 	}
@@ -149,13 +190,28 @@ func (r *Repository) Create(ctx context.Context, platform string, uploads []Uplo
 func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
 	var session Session
 	err := r.db.QueryRow(ctx, `
-		SELECT id, status, client_platform, created_at, updated_at
+		SELECT
+			id,
+			status,
+			purpose,
+			client_platform,
+			recognizer_version,
+			failure_reason,
+			processing_started_at,
+			completed_at,
+			created_at,
+			updated_at
 		FROM card_scan_sessions
 		WHERE id = $1
 	`, id).Scan(
 		&session.ID,
 		&session.Status,
+		&session.Purpose,
 		&session.ClientPlatform,
+		&session.RecognizerVersion,
+		&session.FailureReason,
+		&session.ProcessingStartedAt,
+		&session.CompletedAt,
 		&session.CreatedAt,
 		&session.UpdatedAt,
 	)
@@ -195,7 +251,168 @@ func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
 	if err := rows.Err(); err != nil {
 		return Session{}, fmt.Errorf("scan image rows: %w", err)
 	}
+
+	candidateRows, err := r.db.Query(ctx, `
+		SELECT
+			candidate.rank,
+			candidate.card_id,
+			card.name,
+			card.number,
+			catalog_set.id,
+			catalog_set.name,
+			candidate.edition,
+			candidate.finish,
+			candidate.language,
+			'/api/catalog/images/' || image.filename,
+			candidate.score,
+			candidate.signals
+		FROM card_scan_candidates candidate
+		JOIN catalog_cards card ON card.id = candidate.card_id
+		JOIN catalog_sets catalog_set ON catalog_set.id = card.set_id
+		JOIN catalog_printing_images image
+		  ON image.card_id = candidate.card_id
+		 AND image.edition = candidate.edition
+		 AND image.finish = candidate.finish
+		 AND image.language = candidate.language
+		WHERE candidate.scan_session_id = $1
+		ORDER BY candidate.rank
+	`, id)
+	if err != nil {
+		return Session{}, fmt.Errorf("scan candidate query: %w", err)
+	}
+	defer candidateRows.Close()
+	for candidateRows.Next() {
+		var candidate Candidate
+		if err := candidateRows.Scan(
+			&candidate.Rank,
+			&candidate.CardID,
+			&candidate.CardName,
+			&candidate.Number,
+			&candidate.SetID,
+			&candidate.SetName,
+			&candidate.Edition,
+			&candidate.Finish,
+			&candidate.Language,
+			&candidate.ImageURL,
+			&candidate.Score,
+			&candidate.Signals,
+		); err != nil {
+			return Session{}, fmt.Errorf("scan candidate row: %w", err)
+		}
+		session.Candidates = append(session.Candidates, candidate)
+	}
+	if err := candidateRows.Err(); err != nil {
+		return Session{}, fmt.Errorf("scan candidate rows: %w", err)
+	}
+
+	var confirmation Confirmation
+	err = r.db.QueryRow(ctx, `
+		SELECT
+			decision,
+			candidate_rank,
+			card_id,
+			edition,
+			finish,
+			language,
+			confirmed_at
+		FROM card_scan_confirmations
+		WHERE scan_session_id = $1
+	`, id).Scan(
+		&confirmation.Decision,
+		&confirmation.CandidateRank,
+		&confirmation.CardID,
+		&confirmation.Edition,
+		&confirmation.Finish,
+		&confirmation.Language,
+		&confirmation.ConfirmedAt,
+	)
+	if err == nil {
+		session.Confirmation = &confirmation
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, fmt.Errorf("scan confirmation: %w", err)
+	}
 	return session, nil
+}
+
+func (r *Repository) Confirm(ctx context.Context, id string, input ConfirmationInput) (Session, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return Session{}, fmt.Errorf("begin scan confirmation: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	if err := tx.QueryRow(ctx, `
+		SELECT status
+		FROM card_scan_sessions
+		WHERE id = $1
+		FOR UPDATE
+	`, id).Scan(&status); errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, ErrSessionNotFound
+	} else if err != nil {
+		return Session{}, fmt.Errorf("lock scan session: %w", err)
+	}
+	if status != "complete" {
+		return Session{}, ErrScanNotComplete
+	}
+
+	if input.Decision == "rejected" {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO card_scan_confirmations (scan_session_id, decision)
+			VALUES ($1, 'rejected')
+			ON CONFLICT (scan_session_id) DO UPDATE SET
+				decision = EXCLUDED.decision,
+				candidate_rank = NULL,
+				card_id = NULL,
+				edition = NULL,
+				finish = NULL,
+				language = NULL,
+				confirmed_at = now()
+		`, id)
+	} else {
+		result, insertErr := tx.Exec(ctx, `
+			INSERT INTO card_scan_confirmations (
+				scan_session_id,
+				decision,
+				candidate_rank,
+				card_id,
+				edition,
+				finish,
+				language
+			)
+			SELECT
+				candidate.scan_session_id,
+				'confirmed',
+				candidate.rank,
+				candidate.card_id,
+				candidate.edition,
+				candidate.finish,
+				candidate.language
+			FROM card_scan_candidates candidate
+			WHERE candidate.scan_session_id = $1 AND candidate.rank = $2
+			ON CONFLICT (scan_session_id) DO UPDATE SET
+				decision = EXCLUDED.decision,
+				candidate_rank = EXCLUDED.candidate_rank,
+				card_id = EXCLUDED.card_id,
+				edition = EXCLUDED.edition,
+				finish = EXCLUDED.finish,
+				language = EXCLUDED.language,
+				confirmed_at = now()
+		`, id, input.CandidateRank)
+		if insertErr != nil {
+			return Session{}, fmt.Errorf("confirm scan candidate: %w", insertErr)
+		}
+		if result.RowsAffected() == 0 {
+			return Session{}, ErrCandidateNotFound
+		}
+	}
+	if err != nil {
+		return Session{}, fmt.Errorf("record scan confirmation: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Session{}, fmt.Errorf("commit scan confirmation: %w", err)
+	}
+	return r.Get(ctx, id)
 }
 
 func prepareImage(directory, sessionID string, upload Upload) (Image, error) {

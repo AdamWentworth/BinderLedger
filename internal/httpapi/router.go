@@ -49,6 +49,7 @@ func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir, scanImageDir s
 	mux.HandleFunc("DELETE /api/watchlists/{watchlistID}/sets/{itemID}", api.watchlistRemoveSet)
 	mux.HandleFunc("POST /api/scans", api.scanCreate)
 	mux.HandleFunc("GET /api/scans/{scanID}", api.scanGet)
+	mux.HandleFunc("POST /api/scans/{scanID}/confirmation", api.scanConfirm)
 
 	return api.cors(mux)
 }

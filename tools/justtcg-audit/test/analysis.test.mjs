@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   analyzeCard,
   planPrefixQueries,
+  selectExactCardsByTCGPlayerID,
   selectSets,
   summarizeHistory,
 } from "../src/analysis.mjs";
@@ -79,4 +80,22 @@ test("planPrefixQueries covers remaining cards without matching covered names", 
     matches.forEach((card) => matched.add(card.id));
   }
   assert.deepEqual([...matched].sort(), ["blastoise", "bulbasaur", "charmander", "charmeleon"]);
+});
+
+test("selectExactCardsByTCGPlayerID returns required aliases in requested order", () => {
+  const cards = [
+    { name: "Another Machamp", tcgplayerId: "999" },
+    { name: "Later stamped Machamp", tcgplayerId: "42425" },
+    { name: "Shadowless Machamp", tcgplayerId: "107004" },
+  ];
+
+  const selected = selectExactCardsByTCGPlayerID(cards, ["107004", "42425"]);
+  assert.deepEqual(selected.map((card) => card.name), [
+    "Shadowless Machamp",
+    "Later stamped Machamp",
+  ]);
+  assert.throws(
+    () => selectExactCardsByTCGPlayerID(cards, ["missing"]),
+    /did not return TCGplayer product ID/,
+  );
 });

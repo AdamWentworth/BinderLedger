@@ -22,11 +22,18 @@ export class JustTcgQuotaError extends JustTcgError {
 }
 
 export class JustTcgClient {
-  constructor({ apiKey, baseUrl, cacheDirectory, requestIntervalMs = 6500 }) {
+  constructor({
+    apiKey,
+    baseUrl,
+    cacheDirectory,
+    requestIntervalMs = 6500,
+    dailyRequestReserve = 5,
+  }) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.cacheDirectory = cacheDirectory;
     this.requestIntervalMs = requestIntervalMs;
+    this.dailyRequestReserve = dailyRequestReserve;
     this.lastNetworkRequestAt = 0;
     this.latestMetadata = null;
     this.networkRequests = 0;
@@ -83,9 +90,10 @@ export class JustTcgClient {
     const metadata = this.latestMetadata;
     if (!metadata) return;
 
-    if (Number(metadata.apiDailyRequestsRemaining) === 0) {
+    if (Number(metadata.apiDailyRequestsRemaining) <= this.dailyRequestReserve) {
       throw new JustTcgQuotaError(
-        "The daily JustTCG request allowance is exhausted. Cached progress is safe; rerun after 00:00 UTC.",
+        `The daily JustTCG safety reserve of ${this.dailyRequestReserve} requests has been reached. ` +
+          "Cached progress is safe; rerun after 00:00 UTC.",
       );
     }
     if (Number(metadata.apiRequestsRemaining) === 0) {

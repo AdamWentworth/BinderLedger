@@ -10,6 +10,7 @@
     "sample": "node --env-file=.env src/cli.mjs sample",
     "collect-base": "node --env-file=.env src/cli.mjs collect-base",
     "collect-kanto": "node --env-file=.env src/cli.mjs collect-kanto",
+    "collect-machamp": "node --env-file=.env src/cli.mjs collect-machamp",
     "audit": "node --env-file=.env src/cli.mjs audit",
     "test": "node --test"
   },

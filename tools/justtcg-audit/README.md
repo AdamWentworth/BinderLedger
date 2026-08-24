@@ -17,6 +17,11 @@ The repository root `.env` contains the JustTCG key and is linked into this
 directory. The environment file, API cache, and generated reports are ignored
 by Git.
 
+The Free plan permits 10 requests per minute. The collector therefore requires
+at least 6 seconds between requests, defaults to 6.5 seconds, and stops before
+the final daily requests. See `docs/provider-api-policy.md` for the complete
+quota and data-use policy.
+
 ## Commands
 
 ```bash
@@ -25,6 +30,7 @@ npm run discover
 npm run sample
 npm run collect-base
 npm run collect-kanto
+npm run collect-machamp
 npm test
 ```
 
@@ -42,6 +48,9 @@ npm test
   Challenge, Base Set 2, Legendary Collection, and WoTC Promos. It saves each
   completed set independently and resumes from cached pages after a daily quota
   reset. The promo provider set is mixed Kanto and Johto and is classified later.
+- `collect-machamp` retrieves the two Base Set Machamps by exact TCGplayer ID
+  from JustTCG's Deck Exclusives grouping. The scheduled Kanto job runs this
+  first and the Go importer maps the histories onto the canonical cards.
 - `audit` walks all selected sets, requests one year of history, and writes a
   coverage report. It can take more than one day on Free. Responses are cached,
   so rerunning the command resumes without spending requests on completed pages.

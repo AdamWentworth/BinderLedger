@@ -1,0 +1,12 @@
+[Unit]
+Description=Resume JustTCG collection after the daily API reset
+
+[Timer]
+OnCalendar=*-*-* 00:05:00 UTC
+Persistent=true
+RandomizedDelaySec=30
+AccuracySec=1min
+Unit=pokemon-card-kanto-collection.service
+
+[Install]
+WantedBy=timers.target

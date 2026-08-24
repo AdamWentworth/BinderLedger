@@ -1,0 +1,15 @@
+[Unit]
+Description=Resume the rate-limited JustTCG Kanto collection
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/adam/src/BinderLedger/tools/justtcg-audit
+ExecStart=/home/adam/src/BinderLedger/tools/justtcg-audit/scripts/run-scheduled-kanto-collection.sh
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=10
+MemoryHigh=1G
+MemoryMax=1536M
+TimeoutStartSec=2h

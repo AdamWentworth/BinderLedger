@@ -144,6 +144,7 @@ func (r *Repository) Create(ctx context.Context, purpose, platform string, uploa
 		Purpose:        purpose,
 		ClientPlatform: platform,
 		Images:         images,
+		Candidates:     []Candidate{},
 	}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO card_scan_sessions (id, status, purpose, client_platform)
@@ -188,7 +189,10 @@ func (r *Repository) Create(ctx context.Context, purpose, platform string, uploa
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
-	var session Session
+	session := Session{
+		Images:     []Image{},
+		Candidates: []Candidate{},
+	}
 	err := r.db.QueryRow(ctx, `
 		SELECT
 			id,

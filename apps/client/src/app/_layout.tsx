@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Tabs } from 'expo-router';
-import { Eye, LayoutGrid, LibraryBig, TrendingUp } from 'lucide-react-native';
+import { Eye, LayoutGrid, LibraryBig, ScanLine, TrendingUp } from 'lucide-react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { colors, desktopNavigationBreakpoint } from '@/constants/theme';
@@ -31,7 +31,7 @@ export default function RootLayout() {
               tabBarActiveTintColor: colors.brand,
               tabBarInactiveTintColor: colors.textMuted,
               tabBarLabelPosition: desktop ? 'beside-icon' : 'below-icon',
-              tabBarLabelStyle: { fontSize: 12, fontWeight: '700' },
+              tabBarLabelStyle: { fontSize: desktop ? 12 : 10, fontWeight: '700' },
               tabBarPosition: desktop ? 'left' : 'bottom',
               tabBarStyle: desktop
                 ? {
@@ -77,6 +77,13 @@ export default function RootLayout() {
               options={{
                 title: 'Watchlist',
                 tabBarIcon: ({ color, size }) => <Eye color={color} size={size} />,
+              }}
+            />
+            <Tabs.Screen
+              name="scan"
+              options={{
+                title: 'Scan',
+                tabBarIcon: ({ color, size }) => <ScanLine color={color} size={size} />,
               }}
             />
           </Tabs>

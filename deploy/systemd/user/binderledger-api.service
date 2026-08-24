@@ -1,0 +1,20 @@
+[Unit]
+Description=BinderLedger API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/src/BinderLedger
+EnvironmentFile=-%h/src/BinderLedger/.env
+EnvironmentFile=-%h/.config/binderledger/server.env
+ExecStart=%h/src/BinderLedger/bin/binderledger-api
+Restart=on-failure
+RestartSec=10s
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryHigh=192M
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

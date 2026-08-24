@@ -49,3 +49,7 @@ Start it while testing the Expo Go client and stop it when finished:
 systemctl --user start binderledger-expo.service
 systemctl --user stop binderledger-expo.service
 ```
+
+Expo's Node server normally opens a dual-stack wildcard listener. The committed
+Node preload pins Expo and the static preview to `BINDERLEDGER_BIND_HOST` from
+the local server environment, preventing accidental exposure over public IPv6.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/AdamWentworth/BinderLedger/internal/catalog"
 	"github.com/AdamWentworth/BinderLedger/internal/market"
+	"github.com/AdamWentworth/BinderLedger/internal/scan"
 	"github.com/AdamWentworth/BinderLedger/internal/watchlist"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,15 +18,17 @@ type API struct {
 	catalog        *catalog.Repository
 	market         *market.Repository
 	watchlists     *watchlist.Repository
+	scans          scan.Store
 	allowedOrigins []string
 }
 
-func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir string) http.Handler {
+func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir, scanImageDir string) http.Handler {
 	api := &API{
 		db:             db,
 		catalog:        catalog.NewRepository(db),
 		market:         market.NewRepository(db),
 		watchlists:     watchlist.NewRepository(db),
+		scans:          scan.NewRepository(db, scanImageDir),
 		allowedOrigins: allowedOrigins,
 	}
 
@@ -44,6 +47,8 @@ func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir string) http.Ha
 	mux.HandleFunc("DELETE /api/watchlists/{watchlistID}/cards/{itemID}", api.watchlistRemoveCard)
 	mux.HandleFunc("POST /api/watchlists/{watchlistID}/sets", api.watchlistAddSet)
 	mux.HandleFunc("DELETE /api/watchlists/{watchlistID}/sets/{itemID}", api.watchlistRemoveSet)
+	mux.HandleFunc("POST /api/scans", api.scanCreate)
+	mux.HandleFunc("GET /api/scans/{scanID}", api.scanGet)
 
 	return api.cors(mux)
 }

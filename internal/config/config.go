@@ -11,6 +11,7 @@ const (
 	defaultDatabaseURL  = "postgres://binder_ledger_dev:binder_ledger_dev@127.0.0.1:5433/binder_ledger_dev?sslmode=disable"
 	defaultOrigins      = "http://localhost:8081,http://127.0.0.1:8081"
 	defaultCardImageDir = "data/card-images"
+	defaultScanImageDir = "data/scan-images"
 )
 
 type Config struct {
@@ -18,6 +19,7 @@ type Config struct {
 	DatabaseURL        string
 	CORSAllowedOrigins []string
 	CardImageDir       string
+	ScanImageDir       string
 }
 
 func Load() (Config, error) {
@@ -26,6 +28,7 @@ func Load() (Config, error) {
 		DatabaseURL:        valueOrDefault("DATABASE_URL", defaultDatabaseURL),
 		CORSAllowedOrigins: splitCSV(valueOrDefault("CORS_ALLOWED_ORIGINS", defaultOrigins)),
 		CardImageDir:       valueOrDefault("CARD_IMAGE_DIR", defaultCardImageDir),
+		ScanImageDir:       valueOrDefault("SCAN_IMAGE_DIR", defaultScanImageDir),
 	}
 
 	if cfg.HTTPAddr == "" {
@@ -36,6 +39,9 @@ func Load() (Config, error) {
 	}
 	if cfg.CardImageDir == "" {
 		return Config{}, fmt.Errorf("CARD_IMAGE_DIR must not be empty")
+	}
+	if cfg.ScanImageDir == "" {
+		return Config{}, fmt.Errorf("SCAN_IMAGE_DIR must not be empty")
 	}
 
 	return cfg, nil

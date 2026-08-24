@@ -10,6 +10,7 @@ func TestLoad(t *testing.T) {
 	t.Setenv("DATABASE_URL", defaultDatabaseURL)
 	t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:8081, http://127.0.0.1:8081")
 	t.Setenv("CARD_IMAGE_DIR", "/tmp/binderledger-card-images")
+	t.Setenv("SCAN_IMAGE_DIR", "/tmp/binderledger-scan-images")
 
 	got, err := Load()
 	if err != nil {
@@ -25,6 +26,9 @@ func TestLoad(t *testing.T) {
 	}
 	if got.CardImageDir != "/tmp/binderledger-card-images" {
 		t.Fatalf("CardImageDir = %q", got.CardImageDir)
+	}
+	if got.ScanImageDir != "/tmp/binderledger-scan-images" {
+		t.Fatalf("ScanImageDir = %q", got.ScanImageDir)
 	}
 }
 

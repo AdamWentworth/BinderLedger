@@ -33,3 +33,11 @@ export const spacing = {
 } as const;
 
 export const contentMaxWidth = 1180;
+export const desktopNavigationBreakpoint = 1200;
+export const desktopNavigationWidth = 360;
+
+export function getUsablePageWidth(windowWidth: number): number {
+  return windowWidth >= desktopNavigationBreakpoint
+    ? windowWidth - desktopNavigationWidth
+    : windowWidth;
+}

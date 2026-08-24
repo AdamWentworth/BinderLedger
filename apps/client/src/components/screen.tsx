@@ -45,7 +45,7 @@ export function Screen({ title, subtitle, toolbar, children }: ScreenProps) {
           </View>
 
           <View style={[styles.headingRow, compact && styles.headingRowCompact]}>
-            <View style={styles.headingCopy}>
+            <View style={[styles.headingCopy, compact && styles.headingCopyCompact]}>
               <Text style={styles.title}>{title}</Text>
               <Text style={styles.subtitle}>{subtitle}</Text>
             </View>
@@ -105,6 +105,7 @@ const styles = StyleSheet.create({
   headingRow: {
     alignItems: 'flex-end',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.md,
     justifyContent: 'space-between',
     paddingBottom: spacing.lg,
@@ -115,8 +116,14 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   headingCopy: {
+    flexGrow: 1,
     flexShrink: 1,
     gap: spacing.xs,
+    minWidth: 240,
+  },
+  headingCopyCompact: {
+    minWidth: 0,
+    width: '100%',
   },
   title: {
     color: colors.text,

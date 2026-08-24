@@ -17,7 +17,7 @@ import { EmptyState } from '@/components/empty-state';
 import { Screen } from '@/components/screen';
 import { SearchField } from '@/components/search-field';
 import { SetDetailModal } from '@/components/set-detail-modal';
-import { colors, spacing } from '@/constants/theme';
+import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import {
   CatalogCard,
@@ -31,10 +31,11 @@ type CatalogMode = 'cards' | 'sets';
 
 export default function CatalogScreen() {
   const width = useHydratedWidth();
-  const compact = width < 760;
-  const desktop = width >= 1040;
-  const columns = width >= 1280 ? 3 : width >= 760 ? 2 : 1;
-  const setColumns = width >= 1040 ? 3 : width >= 620 ? 2 : 1;
+  const pageWidth = getUsablePageWidth(width);
+  const compact = pageWidth < 760;
+  const desktop = pageWidth >= 1040;
+  const columns = pageWidth >= 1040 ? 3 : pageWidth >= 760 ? 2 : 1;
+  const setColumns = pageWidth >= 1040 ? 3 : pageWidth >= 620 ? 2 : 1;
   const [mode, setMode] = useState<CatalogMode>('cards');
   const [selectedSet, setSelectedSet] = useState('');
   const [cardSearch, setCardSearch] = useState('');
@@ -56,7 +57,7 @@ export default function CatalogScreen() {
         limit: pageSize,
         offset,
         signal,
-    }),
+      }),
     placeholderData: keepPreviousData,
     enabled: mode === 'cards',
   });
@@ -94,7 +95,7 @@ export default function CatalogScreen() {
       subtitle={summary}
       toolbar={
         <View style={[styles.toolbar, compact && styles.toolbarCompact]}>
-          <View style={styles.searchWrap}>
+          <View style={[styles.searchWrap, compact && styles.searchWrapCompact]}>
             <SearchField
               onChangeText={changeSearch}
               placeholder={mode === 'cards' ? 'Search name or number' : 'Search sets'}
@@ -358,22 +359,35 @@ function SetChip({ label, selected, onPress }: SetChipProps) {
 const styles = StyleSheet.create({
   toolbar: {
     alignItems: 'center',
+    flex: 1,
     flexDirection: 'row',
     gap: spacing.sm,
     justifyContent: 'flex-end',
     maxWidth: 560,
-    width: '100%',
+    minWidth: 440,
   },
   toolbarCompact: {
     alignItems: 'stretch',
+    flexBasis: 'auto',
     flexDirection: 'column',
+    flexGrow: 0,
+    flexShrink: 0,
     maxWidth: '100%',
+    minWidth: 0,
+    width: '100%',
   },
   searchWrap: {
     flex: 1,
     maxWidth: 360,
     minWidth: 260,
     width: '100%',
+  },
+  searchWrapCompact: {
+    flexBasis: 'auto',
+    flexGrow: 0,
+    flexShrink: 0,
+    maxWidth: '100%',
+    minWidth: 0,
   },
   modeControl: {
     backgroundColor: colors.surfaceQuiet,
@@ -541,7 +555,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   gridItemTwo: {
-    width: '48.5%',
+    width: '48%',
   },
   gridItemThree: {
     width: '30.5%',

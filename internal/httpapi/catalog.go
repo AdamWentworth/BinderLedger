@@ -73,7 +73,7 @@ func (api *API) catalogListings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	edition := strings.TrimSpace(r.URL.Query().Get("edition"))
-	if !optionalCatalogValue(edition, "Unlimited", "First Edition") {
+	if !optionalCatalogValue(edition, "Unlimited", "Shadowless", "First Edition") {
 		writeError(w, http.StatusBadRequest, "edition is not supported")
 		return
 	}

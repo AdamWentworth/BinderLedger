@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"net/http"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/AdamWentworth/BinderLedger/internal/catalog"
 	"github.com/AdamWentworth/BinderLedger/internal/market"
@@ -16,7 +18,7 @@ type API struct {
 	allowedOrigins []string
 }
 
-func New(db *pgxpool.Pool, allowedOrigins []string) http.Handler {
+func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir string) http.Handler {
 	api := &API{
 		db:             db,
 		catalog:        catalog.NewRepository(db),
@@ -30,10 +32,24 @@ func New(db *pgxpool.Pool, allowedOrigins []string) http.Handler {
 	mux.HandleFunc("GET /api/catalog/sets/{setID}/pricing", api.catalogSetPricing)
 	mux.HandleFunc("GET /api/catalog/cards", api.catalogCards)
 	mux.HandleFunc("GET /api/catalog/listings", api.catalogListings)
+	mux.HandleFunc("GET /api/catalog/images/{filename}", cardImage(cardImageDir))
 	mux.HandleFunc("GET /api/market/overview", api.marketOverview)
 	mux.HandleFunc("GET /api/market/variants/{variantID}/history", api.marketVariantHistory)
 
 	return api.cors(mux)
+}
+
+func cardImage(directory string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		filename := r.PathValue("filename")
+		if filename == "" || filename != filepath.Base(filename) || strings.Contains(filename, "\\") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		http.ServeFile(w, r, filepath.Join(directory, filename))
+	}
 }
 
 func (api *API) cors(next http.Handler) http.Handler {

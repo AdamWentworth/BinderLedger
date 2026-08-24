@@ -136,7 +136,7 @@ export default function ScanScreen() {
         <View style={styles.workspace}>
           <View accessibilityRole="tablist" style={styles.goalControl}>
             <GoalButton
-              label="Identify"
+              label="Front only"
               onPress={() => selectGoal('identify')}
               selected={goal === 'identify'}
             />
@@ -271,7 +271,7 @@ export default function ScanScreen() {
           <Text style={styles.completeCopy}>
             {goal === 'condition'
               ? 'Front and back are stored for future recognition and condition analysis.'
-              : 'The card face is stored for future recognition.'}
+              : 'The card face is stored and ready for future catalog matching.'}
           </Text>
           {session ? <Text style={styles.sessionID}>Scan {session.id.slice(0, 8)}</Text> : null}
           <Pressable

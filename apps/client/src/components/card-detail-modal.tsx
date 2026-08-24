@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { AlertTriangle, ChevronRight, LineChart, X } from 'lucide-react-native';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   type LayoutChangeEvent,
@@ -19,8 +19,7 @@ import { MarketPeriodControl } from '@/components/market-period-control';
 import { PriceHistoryChart } from '@/components/price-history-chart';
 import { colors, spacing } from '@/constants/theme';
 import {
-  type CatalogCard,
-  type CatalogVariant,
+  type CatalogListing,
   formatCurrency,
   formatPercent,
   getVariantHistory,
@@ -28,30 +27,31 @@ import {
 } from '@/lib/api';
 
 type CardDetailModalProps = {
-  card: CatalogCard | null;
+  listing: CatalogListing | null;
   onClose: () => void;
 };
 
-export function CardDetailModal({ card, onClose }: CardDetailModalProps) {
-  if (!card) return null;
-  return <CardDetailContent card={card} key={card.id} onClose={onClose} />;
+export function CardDetailModal({ listing, onClose }: CardDetailModalProps) {
+  if (!listing) return null;
+  return <CardDetailContent key={listing.id} listing={listing} onClose={onClose} />;
 }
 
 type CardDetailContentProps = {
-  card: CatalogCard;
+  listing: CatalogListing;
   onClose: () => void;
 };
 
-function CardDetailContent({ card, onClose }: CardDetailContentProps) {
+function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
   const { width } = useWindowDimensions();
   const compact = width < 680;
-  const groupedVariants = useMemo(() => groupVariants(card.variants), [card.variants]);
-  const [selectedVariantID, setSelectedVariantID] = useState('');
+  const [selectedVariantID, setSelectedVariantID] = useState(
+    listing.selectedVariantId ?? listing.variants[0]?.id ?? '',
+  );
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const scrollViewRef = useRef<ScrollView>(null);
   const historyOffset = useRef<number | null>(null);
   const pendingHistoryScroll = useRef(false);
-  const selectedVariant = card.variants.find((variant) => variant.id === selectedVariantID);
+  const selectedVariant = listing.variants.find((variant) => variant.id === selectedVariantID);
 
   const historyQuery = useQuery({
     queryKey: ['market', 'history', selectedVariantID, period],
@@ -92,9 +92,9 @@ function CardDetailContent({ card, onClose }: CardDetailContentProps) {
         <View style={[styles.dialog, compact && styles.dialogCompact]}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeading}>
-              <Text style={styles.cardName}>{card.name}</Text>
+              <Text style={styles.cardName}>{listing.name}</Text>
               <Text style={styles.cardMeta}>
-                {card.setName} / {card.number} / {card.rarity ?? 'Unknown rarity'}
+                {listing.setName} / {listing.number} / {listing.rarity ?? 'Unknown rarity'}
               </Text>
             </View>
             <Pressable
@@ -110,50 +110,50 @@ function CardDetailContent({ card, onClose }: CardDetailContentProps) {
           <ScrollView contentContainerStyle={styles.modalBody} ref={scrollViewRef}>
             <View style={[styles.cardOverview, compact && styles.cardOverviewCompact]}>
               <View style={[styles.detailImageFrame, compact && styles.detailImageFrameCompact]}>
-                {card.imageUrl ? (
-                  <Image contentFit="contain" source={card.imageUrl} style={styles.detailImage} />
+                {listing.imageUrl ? (
+                  <Image contentFit="contain" source={listing.imageUrl} style={styles.detailImage} />
                 ) : null}
               </View>
 
               <View style={styles.variantGroups}>
-                {groupedVariants.map(([printing, variants]) => (
-                  <View key={printing} style={styles.variantGroup}>
-                    <Text style={styles.printing}>{printing}</Text>
-                    {variants.map((variant) => {
-                      const selected = variant.id === selectedVariantID;
-                      return (
-                        <Pressable
-                          accessibilityLabel={`View ${printing} ${variant.condition} price history`}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          key={variant.id}
-                          onPress={() => selectVariant(variant.id)}
-                          style={({ pressed }) => [
-                            styles.variantRow,
-                            selected && styles.variantRowSelected,
-                            pressed && styles.variantRowPressed,
-                          ]}>
-                          <Text style={[styles.condition, selected && styles.conditionSelected]}>
-                            {variant.condition}
+                <View style={styles.variantGroup}>
+                  <Text style={styles.printing}>
+                    {listing.edition} / {listing.finish} / {listing.language}
+                  </Text>
+                  {listing.variants.map((variant) => {
+                    const selected = variant.id === selectedVariantID;
+                    return (
+                      <Pressable
+                        accessibilityLabel={`View ${listing.edition} ${listing.finish} ${variant.condition} price history`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        key={variant.id}
+                        onPress={() => selectVariant(variant.id)}
+                        style={({ pressed }) => [
+                          styles.variantRow,
+                          selected && styles.variantRowSelected,
+                          pressed && styles.variantRowPressed,
+                        ]}>
+                        <Text style={[styles.condition, selected && styles.conditionSelected]}>
+                          {variant.condition}
+                        </Text>
+                        <View style={styles.variantValue}>
+                          <Text
+                            style={[
+                              styles.variantPrice,
+                              selected && styles.variantPriceSelected,
+                            ]}>
+                            {formatCurrency(variant.currentPrice)}
                           </Text>
-                          <View style={styles.variantValue}>
-                            <Text
-                              style={[
-                                styles.variantPrice,
-                                selected && styles.variantPriceSelected,
-                              ]}>
-                              {formatCurrency(variant.currentPrice)}
-                            </Text>
-                            <ChevronRight
-                              color={selected ? colors.brand : colors.textMuted}
-                              size={17}
-                            />
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ))}
+                          <ChevronRight
+                            color={selected ? colors.brand : colors.textMuted}
+                            size={17}
+                          />
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
             </View>
 
@@ -174,7 +174,7 @@ function CardDetailContent({ card, onClose }: CardDetailContentProps) {
                       ) : null}
                     </View>
                     <Text style={styles.historyVariant}>
-                      {selectedVariant.printing} / {selectedVariant.condition}
+                      {listing.edition} / {listing.finish} / {selectedVariant.condition}
                     </Text>
                   </View>
                   {history ? (
@@ -221,16 +221,6 @@ function CardDetailContent({ card, onClose }: CardDetailContentProps) {
       </SafeAreaView>
     </Modal>
   );
-}
-
-function groupVariants(variants: CatalogVariant[]): [string, CatalogVariant[]][] {
-  const groups = new Map<string, CatalogVariant[]>();
-  for (const variant of variants) {
-    const group = groups.get(variant.printing) ?? [];
-    group.push(variant);
-    groups.set(variant.printing, group);
-  }
-  return [...groups.entries()];
 }
 
 const styles = StyleSheet.create({

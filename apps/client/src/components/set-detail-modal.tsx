@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MarketPeriodControl } from '@/components/market-period-control';
 import { PriceHistoryChart } from '@/components/price-history-chart';
 import { colors, spacing } from '@/constants/theme';
+import { useCatalogPreferences } from '@/providers/catalog-preferences';
 import {
   type CatalogSet,
   formatCurrency,
@@ -49,9 +50,9 @@ export function SetDetailModal({ set, onClose }: SetDetailModalProps) {
 
 function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => void }) {
   const { width } = useWindowDimensions();
+  const { condition, setCondition } = useCatalogPreferences();
   const compact = width < 700;
   const [edition, setEdition] = useState(defaultEdition(set.editions));
-  const [condition, setCondition] = useState<MarketCondition>('Near Mint');
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const [sort, setSort] = useState<SetSort>('number');
 

@@ -72,6 +72,52 @@ type CardPage struct {
 	Offset int    `json:"offset"`
 }
 
+type ListingSort string
+
+const (
+	ListingSortSetNumber ListingSort = "set_number"
+	ListingSortPriceHigh ListingSort = "price_desc"
+	ListingSortPriceLow  ListingSort = "price_asc"
+	ListingSortNameAZ    ListingSort = "name_asc"
+	ListingSortNameZA    ListingSort = "name_desc"
+)
+
+type Listing struct {
+	ID                 string    `json:"id"`
+	CardID             string    `json:"cardId"`
+	Name               string    `json:"name"`
+	Number             *string   `json:"number"`
+	Rarity             *string   `json:"rarity"`
+	TCGPlayerProductID *int64    `json:"tcgplayerProductId"`
+	ImageURL           *string   `json:"imageUrl"`
+	SetID              string    `json:"setId"`
+	SetName            string    `json:"setName"`
+	Edition            string    `json:"edition"`
+	Finish             string    `json:"finish"`
+	Language           string    `json:"language"`
+	SelectedVariantID  *string   `json:"selectedVariantId"`
+	CurrentPrice       *float64  `json:"currentPrice"`
+	Variants           []Variant `json:"variants"`
+}
+
+type ListingFilter struct {
+	SetID     string
+	Query     string
+	Edition   string
+	Finish    string
+	Condition string
+	Sort      ListingSort
+	Limit     int
+	Offset    int
+}
+
+type ListingPage struct {
+	Listings []Listing `json:"listings"`
+	Total    int       `json:"total"`
+	Limit    int       `json:"limit"`
+	Offset   int       `json:"offset"`
+}
+
 type SetPricingFilter struct {
 	SetID     string
 	Edition   string
@@ -289,6 +335,208 @@ func (repository *Repository) ListCards(ctx context.Context, filter CardFilter) 
 		Limit:  filter.Limit,
 		Offset: filter.Offset,
 	}, nil
+}
+
+func ParseListingSort(value string) (ListingSort, bool) {
+	sortValue := ListingSort(strings.TrimSpace(value))
+	if sortValue == "" {
+		return ListingSortSetNumber, true
+	}
+	switch sortValue {
+	case ListingSortSetNumber, ListingSortPriceHigh, ListingSortPriceLow, ListingSortNameAZ, ListingSortNameZA:
+		return sortValue, true
+	default:
+		return "", false
+	}
+}
+
+func (repository *Repository) ListListings(ctx context.Context, filter ListingFilter) (ListingPage, error) {
+	filter.SetID = strings.TrimSpace(filter.SetID)
+	filter.Query = strings.TrimSpace(filter.Query)
+	filter.Edition = strings.TrimSpace(filter.Edition)
+	filter.Finish = strings.TrimSpace(filter.Finish)
+	filter.Condition = strings.TrimSpace(filter.Condition)
+
+	rows, err := repository.db.Query(ctx, `
+		WITH printings AS (
+			SELECT DISTINCT card_id, edition, finish, language
+			FROM catalog_card_variants
+		), listings AS (
+			SELECT
+				c.id AS card_id,
+				c.name,
+				c.number,
+				c.number_sort,
+				c.rarity,
+				c.tcgplayer_product_id,
+				c.image_url,
+				s.id AS set_id,
+				s.name AS set_name,
+				s.release_date,
+				p.edition,
+				p.finish,
+				p.language,
+				selected.id AS selected_variant_id,
+				selected.current_price::double precision AS current_price
+			FROM printings p
+			JOIN catalog_cards c ON c.id = p.card_id
+			JOIN catalog_sets s ON s.id = c.set_id
+			LEFT JOIN LATERAL (
+				SELECT v.id, v.current_price
+				FROM catalog_card_variants v
+				WHERE v.card_id = p.card_id
+				  AND v.edition = p.edition
+				  AND v.finish = p.finish
+				  AND v.language = p.language
+				  AND v.condition = $5
+				ORDER BY v.id
+				LIMIT 1
+			) selected ON true
+			WHERE ($1 = '' OR c.set_id = $1)
+			  AND ($2 = '' OR c.name ILIKE '%' || $2 || '%' OR c.number ILIKE '%' || $2 || '%')
+			  AND ($3 = '' OR p.edition = $3)
+			  AND ($4 = '' OR p.finish = $4)
+		)
+		SELECT
+			count(*) OVER()::integer,
+			card_id,
+			name,
+			number,
+			rarity,
+			tcgplayer_product_id,
+			image_url,
+			set_id,
+			set_name,
+			edition,
+			finish,
+			language,
+			selected_variant_id,
+			current_price
+		FROM listings
+		ORDER BY
+			CASE WHEN $6 = 'price_desc' THEN current_price END DESC NULLS LAST,
+			CASE WHEN $6 = 'price_asc' THEN current_price END ASC NULLS LAST,
+			CASE WHEN $6 = 'name_asc' THEN lower(name) END ASC,
+			CASE WHEN $6 = 'name_desc' THEN lower(name) END DESC,
+			release_date NULLS LAST,
+			set_name,
+			number_sort NULLS LAST,
+			name,
+			CASE edition WHEN 'Unlimited' THEN 1 WHEN 'First Edition' THEN 2 ELSE 3 END,
+			finish,
+			language
+		LIMIT $7 OFFSET $8
+	`, filter.SetID, filter.Query, filter.Edition, filter.Finish, filter.Condition, filter.Sort, filter.Limit, filter.Offset)
+	if err != nil {
+		return ListingPage{}, fmt.Errorf("query catalog listings: %w", err)
+	}
+	defer rows.Close()
+
+	page := ListingPage{
+		Listings: make([]Listing, 0, filter.Limit),
+		Limit:    filter.Limit,
+		Offset:   filter.Offset,
+	}
+	listingIndex := make(map[string]int, filter.Limit)
+	cardIDs := make([]string, 0, filter.Limit)
+	seenCardIDs := make(map[string]struct{}, filter.Limit)
+	for rows.Next() {
+		var listing Listing
+		if err := rows.Scan(
+			&page.Total,
+			&listing.CardID,
+			&listing.Name,
+			&listing.Number,
+			&listing.Rarity,
+			&listing.TCGPlayerProductID,
+			&listing.ImageURL,
+			&listing.SetID,
+			&listing.SetName,
+			&listing.Edition,
+			&listing.Finish,
+			&listing.Language,
+			&listing.SelectedVariantID,
+			&listing.CurrentPrice,
+		); err != nil {
+			return ListingPage{}, fmt.Errorf("scan catalog listing: %w", err)
+		}
+		listing.ID = listingKey(listing.CardID, listing.Edition, listing.Finish, listing.Language)
+		listing.Variants = make([]Variant, 0, 5)
+		listingIndex[listing.ID] = len(page.Listings)
+		if _, seen := seenCardIDs[listing.CardID]; !seen {
+			seenCardIDs[listing.CardID] = struct{}{}
+			cardIDs = append(cardIDs, listing.CardID)
+		}
+		page.Listings = append(page.Listings, listing)
+	}
+	if err := rows.Err(); err != nil {
+		return ListingPage{}, fmt.Errorf("read catalog listings: %w", err)
+	}
+
+	if len(cardIDs) == 0 {
+		return page, nil
+	}
+
+	variantRows, err := repository.db.Query(ctx, `
+		SELECT
+			card_id,
+			id,
+			printing,
+			edition,
+			finish,
+			condition,
+			language,
+			current_price::double precision
+		FROM catalog_card_variants
+		WHERE card_id = ANY($1)
+		ORDER BY
+			card_id,
+			edition,
+			finish,
+			language,
+			CASE condition
+				WHEN 'Near Mint' THEN 1
+				WHEN 'Lightly Played' THEN 2
+				WHEN 'Moderately Played' THEN 3
+				WHEN 'Heavily Played' THEN 4
+				WHEN 'Damaged' THEN 5
+				ELSE 6
+			END
+	`, cardIDs)
+	if err != nil {
+		return ListingPage{}, fmt.Errorf("query listing variants: %w", err)
+	}
+	defer variantRows.Close()
+
+	for variantRows.Next() {
+		var cardID string
+		var variant Variant
+		if err := variantRows.Scan(
+			&cardID,
+			&variant.ID,
+			&variant.Printing,
+			&variant.Edition,
+			&variant.Finish,
+			&variant.Condition,
+			&variant.Language,
+			&variant.CurrentPrice,
+		); err != nil {
+			return ListingPage{}, fmt.Errorf("scan listing variant: %w", err)
+		}
+		index, ok := listingIndex[listingKey(cardID, variant.Edition, variant.Finish, variant.Language)]
+		if ok {
+			page.Listings[index].Variants = append(page.Listings[index].Variants, variant)
+		}
+	}
+	if err := variantRows.Err(); err != nil {
+		return ListingPage{}, fmt.Errorf("read listing variants: %w", err)
+	}
+
+	return page, nil
+}
+
+func listingKey(cardID, edition, finish, language string) string {
+	return strings.Join([]string{cardID, edition, finish, language}, ":")
 }
 
 func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingFilter) (SetPricing, error) {

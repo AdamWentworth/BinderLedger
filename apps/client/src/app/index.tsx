@@ -15,22 +15,48 @@ import { CardDetailModal } from '@/components/card-detail-modal';
 import { CatalogCardTile } from '@/components/catalog-card';
 import { CatalogSetTile } from '@/components/catalog-set';
 import { EmptyState } from '@/components/empty-state';
+import { MarketConditionControl } from '@/components/market-condition-control';
 import { Screen } from '@/components/screen';
 import { SearchField } from '@/components/search-field';
+import { SelectionMenu } from '@/components/selection-menu';
 import { SetDetailModal } from '@/components/set-detail-modal';
 import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import {
-  CatalogCard,
-  CatalogSet,
-  getCatalogCards,
+  type CatalogListing,
+  type CatalogListingSort,
+  type CatalogSet,
+  getCatalogListings,
   getCatalogSets,
 } from '@/lib/api';
+import { useCatalogPreferences } from '@/providers/catalog-preferences';
 
 const pageSize = 24;
 type CatalogMode = 'cards' | 'sets';
+type CatalogEdition = '' | 'Unlimited' | 'First Edition';
+type CatalogFinish = '' | 'Normal' | 'Holofoil' | 'Reverse Holofoil';
+
+const editionOptions: { label: string; value: CatalogEdition }[] = [
+  { label: 'All editions', value: '' },
+  { label: 'Unlimited', value: 'Unlimited' },
+  { label: 'First Edition', value: 'First Edition' },
+];
+const finishOptions: { label: string; value: CatalogFinish }[] = [
+  { label: 'All finishes', value: '' },
+  { label: 'Normal', value: 'Normal' },
+  { label: 'Holofoil', value: 'Holofoil' },
+  { label: 'Reverse Holofoil', value: 'Reverse Holofoil' },
+];
+const sortOptions: { label: string; value: CatalogListingSort }[] = [
+  { label: 'Set number', value: 'set_number' },
+  { label: 'Price: high to low', value: 'price_desc' },
+  { label: 'Price: low to high', value: 'price_asc' },
+  { label: 'Name: A to Z', value: 'name_asc' },
+  { label: 'Name: Z to A', value: 'name_desc' },
+];
 
 export default function CatalogScreen() {
+  const { condition, setCondition } = useCatalogPreferences();
   const width = useHydratedWidth();
   const pageWidth = getUsablePageWidth(width);
   const compact = pageWidth < 760;
@@ -41,20 +67,37 @@ export default function CatalogScreen() {
   const [selectedSet, setSelectedSet] = useState('');
   const [cardSearch, setCardSearch] = useState('');
   const [setSearch, setSetSearch] = useState('');
+  const [edition, setEdition] = useState<CatalogEdition>('');
+  const [finish, setFinish] = useState<CatalogFinish>('');
+  const [sort, setSort] = useState<CatalogListingSort>('set_number');
   const [offset, setOffset] = useState(0);
-  const [selectedCard, setSelectedCard] = useState<CatalogCard | null>(null);
+  const [selectedListing, setSelectedListing] = useState<CatalogListing | null>(null);
   const [selectedPricingSet, setSelectedPricingSet] = useState<CatalogSet | null>(null);
 
   const setsQuery = useQuery({
     queryKey: ['catalog', 'sets'],
     queryFn: ({ signal }) => getCatalogSets(signal),
   });
-  const cardsQuery = useQuery({
-    queryKey: ['catalog', 'cards', selectedSet, cardSearch, offset],
+  const listingsQuery = useQuery({
+    queryKey: [
+      'catalog',
+      'listings',
+      selectedSet,
+      cardSearch,
+      edition,
+      finish,
+      condition,
+      sort,
+      offset,
+    ],
     queryFn: ({ signal }) =>
-      getCatalogCards({
+      getCatalogListings({
         setId: selectedSet,
         query: cardSearch,
+        edition,
+        finish,
+        condition,
+        sort,
         limit: pageSize,
         offset,
         signal,
@@ -67,8 +110,8 @@ export default function CatalogScreen() {
   const filteredSets = sets.filter((set) =>
     set.name.toLocaleLowerCase().includes(setSearch.trim().toLocaleLowerCase()),
   );
-  const cards = cardsQuery.data?.cards ?? [];
-  const total = cardsQuery.data?.total ?? 0;
+  const listings = listingsQuery.data?.listings ?? [];
+  const total = listingsQuery.data?.total ?? 0;
   const pageStart = total === 0 ? 0 : offset + 1;
   const pageEnd = Math.min(offset + pageSize, total);
   const hasPrevious = offset > 0;
@@ -88,6 +131,10 @@ export default function CatalogScreen() {
     } else {
       setSetSearch(value);
     }
+  };
+  const changeCondition = (value: Parameters<typeof setCondition>[0]) => {
+    setCondition(value);
+    setOffset(0);
   };
 
   return (
@@ -147,6 +194,51 @@ export default function CatalogScreen() {
             <SetStrip selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
           ) : null}
 
+          <View style={[styles.filterBar, compact && styles.filterBarCompact]}>
+            <View style={[styles.conditionFilter, compact && styles.conditionFilterCompact]}>
+              <Text style={styles.filterLabel}>Price condition</Text>
+              <MarketConditionControl condition={condition} onChange={changeCondition} />
+            </View>
+            <View style={[styles.filterMenus, compact && styles.filterMenusCompact]}>
+              <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
+                <SelectionMenu
+                  accessibilityLabel="Filter by edition"
+                  label="Edition"
+                  onChange={(value) => {
+                    setEdition(value);
+                    setOffset(0);
+                  }}
+                  options={editionOptions}
+                  value={edition}
+                />
+              </View>
+              <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
+                <SelectionMenu
+                  accessibilityLabel="Filter by finish"
+                  label="Finish"
+                  onChange={(value) => {
+                    setFinish(value);
+                    setOffset(0);
+                  }}
+                  options={finishOptions}
+                  value={finish}
+                />
+              </View>
+              <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
+                <SelectionMenu
+                  accessibilityLabel="Sort catalog"
+                  label="Sort"
+                  onChange={(value) => {
+                    setSort(value);
+                    setOffset(0);
+                  }}
+                  options={sortOptions}
+                  value={sort}
+                />
+              </View>
+            </View>
+          </View>
+
           <View style={styles.catalogLayout}>
             {!compact ? (
               <SetRail selectedSet={selectedSet} sets={sets} onSelect={selectSet} />
@@ -157,7 +249,7 @@ export default function CatalogScreen() {
                 <View style={styles.resultCountWrap}>
                   <Layers3 color={colors.brass} size={17} />
                   <Text style={styles.resultCount}>
-                    {cardsQuery.isPending ? 'Loading catalog' : `${total} cards`}
+                    {listingsQuery.isPending ? 'Loading catalog' : `${total} printings`}
                   </Text>
                   {total > 0 && <Text style={styles.pageRange}>{pageStart}-{pageEnd}</Text>}
                 </View>
@@ -182,32 +274,36 @@ export default function CatalogScreen() {
                 </View>
               </View>
 
-              {cardsQuery.isPending ? (
+              {listingsQuery.isPending ? (
                 <View style={styles.loading}>
                   <ActivityIndicator color={colors.brand} size="large" />
                 </View>
-              ) : cardsQuery.isError ? (
+              ) : listingsQuery.isError ? (
                 <EmptyState
                   message="The catalog API could not be reached. Check the API status and try again."
                   title="Catalog unavailable"
                 />
-              ) : cards.length === 0 ? (
+              ) : listings.length === 0 ? (
                 <EmptyState
                   message="Try another card name, number, or collected set."
                   title="No matching cards"
                 />
               ) : (
                 <View style={[styles.grid, desktop && styles.gridDesktop]}>
-                  {cards.map((card) => (
+                  {listings.map((listing) => (
                     <View
-                      key={card.id}
+                      key={listing.id}
                       style={[
                         styles.gridItem,
                         columns === 1 && styles.gridItemOne,
                         columns === 2 && styles.gridItemTwo,
                         columns === 3 && styles.gridItemThree,
                       ]}>
-                      <CatalogCardTile card={card} onPress={setSelectedCard} />
+                      <CatalogCardTile
+                        condition={condition}
+                        listing={listing}
+                        onPress={setSelectedListing}
+                      />
                     </View>
                   ))}
                 </View>
@@ -217,7 +313,7 @@ export default function CatalogScreen() {
         </>
       )}
 
-      <CardDetailModal card={selectedCard} onClose={() => setSelectedCard(null)} />
+      <CardDetailModal listing={selectedListing} onClose={() => setSelectedListing(null)} />
       <SetDetailModal set={selectedPricingSet} onClose={() => setSelectedPricingSet(null)} />
     </Screen>
   );
@@ -435,6 +531,55 @@ const styles = StyleSheet.create({
   },
   modeButtonTextSelected: {
     color: colors.text,
+  },
+  filterBar: {
+    alignItems: 'flex-end',
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  filterBarCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+  },
+  conditionFilter: {
+    flexShrink: 0,
+    gap: spacing.xs,
+    width: 280,
+  },
+  conditionFilterCompact: {
+    width: '100%',
+  },
+  filterLabel: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  filterMenus: {
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: spacing.sm,
+    justifyContent: 'flex-end',
+    minWidth: 0,
+  },
+  filterMenusCompact: {
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+  },
+  filterMenu: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  filterMenuCompact: {
+    flexBasis: '48%',
+    flexGrow: 1,
   },
   catalogLayout: {
     alignItems: 'flex-start',

@@ -56,6 +56,60 @@ func (api *API) catalogCards(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, page)
 }
 
+func (api *API) catalogListings(w http.ResponseWriter, r *http.Request) {
+	limit, ok := queryInteger(r, "limit", defaultCardLimit, 1, maximumCardLimit)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "limit must be between 1 and 60")
+		return
+	}
+	offset, ok := queryInteger(r, "offset", 0, 0, 1_000_000)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "offset must be a non-negative integer")
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 100 {
+		writeError(w, http.StatusBadRequest, "q must be 100 characters or fewer")
+		return
+	}
+	edition := strings.TrimSpace(r.URL.Query().Get("edition"))
+	if !optionalCatalogValue(edition, "Unlimited", "First Edition") {
+		writeError(w, http.StatusBadRequest, "edition is not supported")
+		return
+	}
+	finish := strings.TrimSpace(r.URL.Query().Get("finish"))
+	if !optionalCatalogValue(finish, "Normal", "Holofoil", "Reverse Holofoil") {
+		writeError(w, http.StatusBadRequest, "finish is not supported")
+		return
+	}
+	condition, ok := marketCondition(r.URL.Query().Get("condition"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "condition is not supported")
+		return
+	}
+	sortValue, ok := catalog.ParseListingSort(r.URL.Query().Get("sort"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "sort is not supported")
+		return
+	}
+
+	page, err := api.catalog.ListListings(r.Context(), catalog.ListingFilter{
+		SetID:     r.URL.Query().Get("set_id"),
+		Query:     query,
+		Edition:   edition,
+		Finish:    finish,
+		Condition: condition,
+		Sort:      sortValue,
+		Limit:     limit,
+		Offset:    offset,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "catalog listings are unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
 func (api *API) catalogSetPricing(w http.ResponseWriter, r *http.Request) {
 	setID := strings.TrimSpace(r.PathValue("setID"))
 	if setID == "" || len(setID) > 200 {
@@ -109,6 +163,18 @@ func queryInteger(r *http.Request, key string, fallback, minimum, maximum int) (
 		return 0, false
 	}
 	return parsed, true
+}
+
+func optionalCatalogValue(value string, allowed ...string) bool {
+	if value == "" {
+		return true
+	}
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

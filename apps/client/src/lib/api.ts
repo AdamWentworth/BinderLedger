@@ -45,6 +45,38 @@ export type CatalogCardPage = {
   offset: number;
 };
 
+export type CatalogListing = {
+  id: string;
+  cardId: string;
+  name: string;
+  number: string | null;
+  rarity: string | null;
+  tcgplayerProductId: number | null;
+  imageUrl: string | null;
+  setId: string;
+  setName: string;
+  edition: string;
+  finish: string;
+  language: string;
+  selectedVariantId: string | null;
+  currentPrice: number | null;
+  variants: CatalogVariant[];
+};
+
+export type CatalogListingPage = {
+  listings: CatalogListing[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type CatalogListingSort =
+  | 'set_number'
+  | 'price_desc'
+  | 'price_asc'
+  | 'name_asc'
+  | 'name_desc';
+
 export type MarketPeriod = '1d' | '1w' | '1m' | '1y' | 'all';
 
 export type MarketCondition =
@@ -202,6 +234,47 @@ export async function getCatalogCards({
     throw new Error(`Catalog cards returned ${response.status}`);
   }
   return response.json() as Promise<CatalogCardPage>;
+}
+
+type CatalogListingRequest = {
+  setId?: string;
+  query?: string;
+  edition?: string;
+  finish?: string;
+  condition: MarketCondition;
+  sort?: CatalogListingSort;
+  limit?: number;
+  offset?: number;
+  signal?: AbortSignal;
+};
+
+export async function getCatalogListings({
+  setId = '',
+  query = '',
+  edition = '',
+  finish = '',
+  condition,
+  sort = 'set_number',
+  limit = 24,
+  offset = 0,
+  signal,
+}: CatalogListingRequest): Promise<CatalogListingPage> {
+  const parameters = new URLSearchParams({
+    condition,
+    limit: String(limit),
+    offset: String(offset),
+    sort,
+  });
+  if (setId) parameters.set('set_id', setId);
+  if (query) parameters.set('q', query);
+  if (edition) parameters.set('edition', edition);
+  if (finish) parameters.set('finish', finish);
+
+  const response = await fetch(`${apiURL}/api/catalog/listings?${parameters}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Catalog listings returned ${response.status}`);
+  }
+  return response.json() as Promise<CatalogListingPage>;
 }
 
 type SetPricingRequest = {

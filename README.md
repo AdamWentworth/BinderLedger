@@ -35,7 +35,21 @@ npm install
 npm run web
 ```
 
-The API listens on `http://127.0.0.1:4000` and Expo web on `http://localhost:8081` by default. For a physical phone, set `EXPO_PUBLIC_API_URL` to this computer's LAN address.
+Development uses its own Compose project, PostgreSQL volume, and ports. The
+database listens only on `127.0.0.1:55432`, the API uses `4001`, Expo uses
+`8082`, and the optional static development preview uses `8083`. These are
+separate from every production app stack on the server.
+
+Start or stop the complete development runtime without affecting production:
+
+```bash
+make dev-up
+make dev-status
+make dev-down
+```
+
+The development database persists in the dedicated
+`binderledger_dev_postgres` Docker volume when the runtime is stopped.
 
 For Expo Go on the same trusted Wi-Fi network, bind the API to this computer's
 LAN address, place the same URL in `apps/client/.env.local`, and run:
@@ -45,8 +59,9 @@ make client-phone
 ```
 
 The phone workflow currently uses Expo SDK 54 because that is the version in
-the public-store Expo Go client during the SDK 57 transition. Metro uses port
-8082 so it can coexist with the lightweight static preview on 8081.
+the public-store Expo Go client during the SDK 57 transition. `make
+client-phone` targets the isolated development API. `make client-phone-prod`
+uses the production API for an explicit integration test.
 
 `go run ./cmd/import-justtcg` is idempotent. It imports every collected set JSON file under `tools/justtcg-audit/output/collections` into normalized catalog, variant, and daily price tables. Rerun it after a collector pass to update the database.
 
@@ -82,7 +97,8 @@ exact-printing candidates. The user must confirm or reject those candidates.
 Condition suggestions remain pending until a trustworthy labeled photograph set
 exists.
 
-On this 8 GB server, prefer the static web preview so Metro does not remain resident:
+On this 8 GB server, stop Metro when development is finished. The optional
+static development preview is available with:
 
 ```bash
 make client-preview

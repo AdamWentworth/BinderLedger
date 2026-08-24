@@ -372,7 +372,7 @@ export type ScanSession = {
 
 export const defaultWatchlistID = 'default';
 
-export const apiURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4000';
+export const apiURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4001';
 
 export function resolveImageURL(value: string | null): string | null {
   if (!value || !value.startsWith('/')) return value;

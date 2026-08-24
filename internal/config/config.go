@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	defaultHTTPAddr     = "127.0.0.1:4000"
-	defaultDatabaseURL  = "postgres://binder_ledger_dev:binder_ledger_dev@127.0.0.1:5433/binder_ledger_dev?sslmode=disable"
-	defaultOrigins      = "http://localhost:8081,http://127.0.0.1:8081"
+	defaultHTTPAddr     = "127.0.0.1:4001"
+	defaultDatabaseURL  = "postgres://binder_ledger_dev:binder_ledger_dev@127.0.0.1:55432/binder_ledger_dev?sslmode=disable"
+	defaultOrigins      = "http://localhost:8082,http://127.0.0.1:8082"
 	defaultCardImageDir = "data/card-images"
 	defaultScanImageDir = "data/scan-images"
 )

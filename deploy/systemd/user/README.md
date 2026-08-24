@@ -44,8 +44,8 @@ make db-up
 systemctl --user enable --now binderledger-api.service
 ```
 
-Metro is intentionally opt-in because it is considerably heavier than the API.
-Start it while testing the Expo Go client and stop it when finished:
+The Expo service runs one Metro process for both the live browser frontend and
+Expo Go. Start or stop it independently when needed:
 
 ```bash
 systemctl --user start binderledger-expo.service

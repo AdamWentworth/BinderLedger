@@ -35,10 +35,12 @@ mkdir -p ~/.config/binderledger
 cp deploy/systemd/user/binderledger-server.env.example ~/.config/binderledger/server.env
 ```
 
-Set `HTTP_ADDR` and `CORS_ALLOWED_ORIGINS` in that local file to the trusted LAN
-addresses required by the phone, then enable the API at boot:
+Set `HTTP_ADDR` to the machine's trusted LAN address on development port `4001`
+and set `CORS_ALLOWED_ORIGINS` for Expo on `8082`. Start the dedicated
+development database before enabling the API:
 
 ```bash
+make db-up
 systemctl --user enable --now binderledger-api.service
 ```
 
@@ -49,6 +51,10 @@ Start it while testing the Expo Go client and stop it when finished:
 systemctl --user start binderledger-expo.service
 systemctl --user stop binderledger-expo.service
 ```
+
+From the repository root, `make dev-up`, `make dev-status`, and `make dev-down`
+manage the isolated database and development processes together. These commands
+do not operate on `/srv/binderledger` or its production Compose project.
 
 Expo's Node server normally opens a dual-stack wildcard listener. The committed
 Node preload pins Expo and the static preview to `BINDERLEDGER_BIND_HOST` from

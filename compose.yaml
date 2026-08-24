@@ -1,3 +1,5 @@
+name: binderledger-dev
+
 services:
   postgres:
     image: postgres:17-bookworm
@@ -6,7 +8,7 @@ services:
       POSTGRES_USER: binder_ledger_dev
       POSTGRES_PASSWORD: binder_ledger_dev
     ports:
-      - "${BINDER_LEDGER_POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${BINDER_LEDGER_POSTGRES_PORT:-55432}:5432"
     volumes:
       - binder_ledger_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -14,11 +16,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
+    restart: "no"
+    cpus: "0.50"
+    mem_limit: 512m
+    memswap_limit: 768m
+    pids_limit: 128
 volumes:
   binder_ledger_postgres:
+    name: binderledger_dev_postgres

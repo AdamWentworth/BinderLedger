@@ -1,4 +1,4 @@
-.PHONY: api build-server client client-export client-phone client-preview db-up format migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify vision-test
+.PHONY: api build-server client client-export client-phone client-phone-prod client-preview db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify vision-test
 
 api:
 	go run ./cmd/api
@@ -9,19 +9,44 @@ build-server:
 	go build -o bin/binderledger-pkmnprices-backfill ./cmd/backfill-pkmnprices
 
 client:
-	cd apps/client && npm run web
+	cd apps/client && npx expo start --web --port 8082
 
 client-phone:
 	cd apps/client && npx expo start --lan --port 8082
+
+client-phone-prod:
+	cd apps/client && EXPO_PUBLIC_API_URL=http://PRODUCTION_HOST:4000 npx expo start --lan --port 8082
 
 client-export:
 	cd apps/client && npm run export:web
 
 client-preview: client-export
-	cd apps/client && npx expo serve dist --port 8081
+	cd apps/client && npx expo serve dist --port 8083
 
 db-up:
 	docker compose up -d postgres
+
+db-down:
+	docker compose down
+
+db-status:
+	docker compose ps
+
+install-user-services:
+	mkdir -p $(HOME)/.config/systemd/user
+	cp deploy/systemd/user/*.service deploy/systemd/user/*.timer $(HOME)/.config/systemd/user/
+	systemctl --user daemon-reload
+
+dev-up: db-up build-server install-user-services
+	systemctl --user start binderledger-api.service
+
+dev-down:
+	-systemctl --user stop binderledger-expo.service binderledger-client-preview.service binderledger-api.service
+	docker compose down
+
+dev-status:
+	docker compose ps
+	-systemctl --user is-active binderledger-api.service binderledger-expo.service binderledger-client-preview.service
 
 format:
 	gofmt -w cmd internal

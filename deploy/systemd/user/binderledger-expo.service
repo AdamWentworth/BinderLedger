@@ -8,7 +8,6 @@ Type=simple
 WorkingDirectory=%h/src/BinderLedger/apps/client
 EnvironmentFile=%h/src/BinderLedger/apps/client/.env.local
 EnvironmentFile=%h/.config/binderledger/server.env
-Environment=CI=1
 Environment=BINDERLEDGER_BIND_PORT=8082
 Environment=NODE_OPTIONS=--require=../../deploy/systemd/user/bind-server.cjs
 ExecStart=/usr/bin/npx expo start --offline --port 8082

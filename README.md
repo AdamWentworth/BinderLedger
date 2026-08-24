@@ -10,6 +10,8 @@ cmd/api/              Go JSON API
 cmd/migrate/          PostgreSQL migration command
 cmd/backfill-pricecharting-images/  Printing-specific image collector
 docs/                 Architecture and decisions
+services/vision/      OpenCV/Tesseract recognition worker
+ops/prod/             Resource-bounded production deployment
 tools/justtcg-audit/  Preserved JustTCG research collector
 ```
 
@@ -62,6 +64,7 @@ The current API surface includes:
 - `DELETE /api/watchlists/default/sets/{itemID}`
 - `POST /api/scans`
 - `GET /api/scans/{scanID}`
+- `POST /api/scans/{scanID}/confirmation`
 
 Market periods are `1d`, `1w`, `1m`, `1y`, and `all`. Market rankings keep NM, LP, MP, HP, and Damaged variants separate, exclude price series more than seven days behind the latest market observation, and label thin or unusually volatile histories.
 
@@ -72,9 +75,12 @@ lists when accounts are introduced.
 
 The scanner MVP accepts a required front and optional back JPEG or PNG in a
 size-limited multipart request. It stores private originals under
-`data/scan-images` and records dimensions and checksums in PostgreSQL.
-Recognition and condition suggestions intentionally remain pending until the
-separate analysis service is built.
+`data/scan-images` and records dimensions and checksums in PostgreSQL. The
+resource-limited vision worker corrects perspective, combines OpenCV features,
+targeted printing regions, and Tesseract OCR, and returns up to three verified
+exact-printing candidates. The user must confirm or reject those candidates.
+Condition suggestions remain pending until a trustworthy labeled photograph set
+exists.
 
 On this 8 GB server, prefer the static web preview so Metro does not remain resident:
 
@@ -83,6 +89,13 @@ make client-preview
 ```
 
 Use `make client` on a development laptop when hot reloading is useful. A first Metro build briefly used about 1.4 GB here; the static preview used about 77 MB.
+
+Production runs independently from this checkout. Compose configuration and
+deployment metadata live under `/srv/binderledger`; PostgreSQL, curated card
+images, and private scans live under `/mnt/storage/binderledger`. The private-LAN
+web client is `http://192.168.1.77:8081`, and the API is
+`http://192.168.1.77:4000`. See [ops/prod/README.md](ops/prod/README.md) for
+resource limits, deployment commands, and the GitHub runner handoff.
 
 Real provider keys belong only in the ignored root `.env`. The JustTCG collector reads that file through `tools/justtcg-audit/.env`, which is a local symlink. PkmnPrices uses `PKMNPRICES_API_KEY` for historical backfills and as a fallback when JustTCG omits a card.
 

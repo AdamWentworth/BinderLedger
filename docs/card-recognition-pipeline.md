@@ -45,7 +45,7 @@ catalog size. PostgreSQL row locking is enough for the initial job queue.
 
 ## Delivery Plan
 
-### 1. Evaluation Harness
+### 1. Evaluation Harness - Next
 
 - Photograph 30-50 cards under realistic lighting, glare, sleeves, and angles.
 - Include difficult pairs: first edition versus unlimited, shadowless versus
@@ -54,16 +54,17 @@ catalog size. PostgreSQL row locking is enough for the initial job queue.
 - Measure top-1 exact-printing accuracy, top-3 recall, abstention rate, and
   processing time. Do not tune against the same images used for final testing.
 
-### 2. Classical Vision Baseline
+### 2. Classical Vision Baseline - Implemented
 
-- Add `services/card-vision` with OpenCV and Tesseract.
+- `services/vision` uses OpenCV and Tesseract in its deployed container.
 - Build and cache reference features whenever catalog images change.
 - Add scan job and candidate tables plus worker claim/complete operations.
 - Return ranked candidates to the Expo review screen.
-- Target under five seconds per scan on this server, processing one scan at a
-  time.
+- Process one scan at a time. Controlled exact-reference tests take about 2.5
+  seconds after the 312-image cache is warm; end-to-end latency also includes the
+  three-second queue polling interval.
 
-### 3. Exact Printing Rules
+### 3. Exact Printing Rules - In Progress
 
 - Add small, testable region detectors for edition stamps, set symbols, and
   Base Set layout differences.
@@ -71,7 +72,11 @@ catalog size. PostgreSQL row locking is enough for the initial job queue.
   reference image cannot be auto-suggested.
 - Add more real phone photographs to the evaluation set as failures appear.
 
-### 4. Learned Image Features
+The baseline compares dedicated edition and collector-number regions and only
+loads database references marked verified. Broader phone-photo evaluation and
+more curated first-edition images are still required.
+
+### 4. Learned Image Features - Deferred
 
 Only add an ONNX image-embedding model if the classical baseline misses too many
 real photographs. Run inference on demand on CPU and compare embeddings exactly

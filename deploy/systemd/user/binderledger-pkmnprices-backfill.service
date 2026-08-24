@@ -5,9 +5,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/srv/binderledger/src/BinderLedger
-EnvironmentFile=/srv/binderledger/src/BinderLedger/.env
-ExecStart=/srv/binderledger/src/BinderLedger/bin/binderledger-pkmnprices-backfill
+WorkingDirectory=%h/src/BinderLedger
+EnvironmentFile=%h/src/BinderLedger/.env
+ExecStart=%h/src/BinderLedger/bin/binderledger-pkmnprices-backfill
 Nice=10
 IOSchedulingClass=idle
 CPUWeight=10

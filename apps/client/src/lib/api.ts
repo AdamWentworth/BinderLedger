@@ -10,7 +10,11 @@ export type CatalogSet = {
   logoUrl: string | null;
   symbolUrl: string | null;
   editions: string[];
+  declaredCardCount: number | null;
   cardCount: number;
+  printingCount: number;
+  sharedCardCount: number;
+  sharedPrintingCount: number;
   variantCount: number;
   minimumPrice: number | null;
   maximumPrice: number | null;
@@ -23,6 +27,7 @@ export type CatalogVariant = {
   finish: string;
   condition: string;
   language: string;
+  sourceProvider: string;
   currentPrice: number | null;
 };
 
@@ -57,7 +62,7 @@ export type CatalogValuationReference = {
   label: string;
   grader: string | null;
   grade: string | null;
-  amount: number;
+  amount: number | null;
   currency: string;
   sourceName: string;
   sourceUrl: string;
@@ -209,6 +214,7 @@ export type SetPricing = {
     currentCards: number;
     historicalCards: number;
     estimatedCards: number;
+    warningCards: number;
     unavailableCards: number;
     cardCount: number;
     complete: boolean;
@@ -218,6 +224,11 @@ export type SetPricing = {
 };
 
 export const apiURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4000';
+
+export function resolveImageURL(value: string | null): string | null {
+  if (!value || !value.startsWith('/')) return value;
+  return `${apiURL}${value}`;
+}
 
 export async function getHealth(signal?: AbortSignal): Promise<Health> {
   const response = await fetch(`${apiURL}/api/health`, { signal });

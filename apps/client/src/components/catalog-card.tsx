@@ -5,7 +5,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { shortCondition } from '@/components/market-condition-control';
 import { colors, spacing } from '@/constants/theme';
-import { type CatalogListing, formatCurrency, type MarketCondition } from '@/lib/api';
+import {
+  type CatalogListing,
+  formatCurrency,
+  type MarketCondition,
+  resolveImageURL,
+} from '@/lib/api';
 
 type CatalogCardTileProps = {
   condition: MarketCondition;
@@ -18,6 +23,7 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
   const historical = listing.priceQuality.status === 'historical';
   const unavailable = listing.priceQuality.status === 'unavailable';
   const estimated = listing.valuationKind === 'ungraded_reference';
+  const warning = listing.priceQuality.reason !== null;
 
   return (
     <Pressable
@@ -30,7 +36,7 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
           <Image
             contentFit="contain"
             onError={() => setImageFailed(true)}
-            source={listing.imageUrl}
+            source={resolveImageURL(listing.imageUrl)}
             style={styles.image}
             transition={180}
           />
@@ -69,21 +75,23 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
         <View style={styles.priceRow}>
           <View style={styles.priceLabelWrap}>
             {historical ? <History color={colors.warning} size={13} /> : null}
-            {unavailable && !estimated ? (
+            {(unavailable || warning) && !estimated ? (
               <CircleAlert color={colors.warning} size={13} />
             ) : null}
             {estimated ? <BadgeDollarSign color={colors.brass} size={14} /> : null}
             <Text
               style={[
                 styles.priceLabel,
-                (historical || (unavailable && !estimated)) && styles.priceLabelFlagged,
+                (historical || warning || (unavailable && !estimated)) && styles.priceLabelFlagged,
                 estimated && styles.priceLabelReference,
               ]}>
               {estimated
                 ? 'Ungraded value'
                 : historical && listing.priceQuality.asOf
                 ? `${shortCondition(condition)} / ${formatShortDate(listing.priceQuality.asOf)}`
-                : shortCondition(condition)}
+                : warning
+                  ? `${shortCondition(condition)} / review`
+                  : shortCondition(condition)}
             </Text>
           </View>
           <Text

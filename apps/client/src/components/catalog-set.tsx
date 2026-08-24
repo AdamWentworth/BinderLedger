@@ -33,7 +33,8 @@ export function CatalogSetTile({ set, onPress }: CatalogSetTileProps) {
               {set.name}
             </Text>
             <Text style={styles.meta}>
-              {set.cardCount} cards{set.releaseDate ? ` / ${formatYear(set.releaseDate)}` : ''}
+              {set.cardCount + set.sharedCardCount} cards
+              {set.releaseDate ? ` / ${formatYear(set.releaseDate)}` : ''}
             </Text>
           </View>
           <ChevronRight color={colors.brand} size={20} />

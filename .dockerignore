@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.*
+bin
+coverage
+data
+apps/client/.expo
+apps/client/dist
+apps/client/node_modules
+services/vision/.pytest_cache
+services/vision/**/__pycache__
+tools/justtcg-audit/.cache
+tools/justtcg-audit/node_modules
+tools/justtcg-audit/output
+*.out
+*.pyc

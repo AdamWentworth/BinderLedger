@@ -121,6 +121,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			"observations", stats.Observations,
 		)
 	}
+	if _, err := pool.Exec(ctx, "SELECT refresh_catalog_price_quality()"); err != nil {
+		return fmt.Errorf("refresh catalog price quality: %w", err)
+	}
 
 	logger.Info("JustTCG import complete",
 		"sets", total.Sets,

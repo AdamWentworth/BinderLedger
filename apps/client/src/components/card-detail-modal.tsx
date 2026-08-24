@@ -1,9 +1,20 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { AlertTriangle, ChevronRight, LineChart, X } from 'lucide-react-native';
+import {
+  AlertTriangle,
+  BadgeDollarSign,
+  ChevronRight,
+  CircleAlert,
+  ExternalLink,
+  History,
+  LineChart,
+  ShieldCheck,
+  X,
+} from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   type LayoutChangeEvent,
   Modal,
   Pressable,
@@ -44,14 +55,21 @@ type CardDetailContentProps = {
 function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
   const { width } = useWindowDimensions();
   const compact = width < 680;
+  const currentPricing = listing.priceQuality.status === 'current';
   const [selectedVariantID, setSelectedVariantID] = useState(
-    listing.selectedVariantId ?? listing.variants[0]?.id ?? '',
+    currentPricing ? (listing.selectedVariantId ?? listing.variants[0]?.id ?? '') : '',
   );
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const scrollViewRef = useRef<ScrollView>(null);
   const historyOffset = useRef<number | null>(null);
   const pendingHistoryScroll = useRef(false);
   const selectedVariant = listing.variants.find((variant) => variant.id === selectedVariantID);
+  const ungradedReference = listing.valuationReferences.find(
+    (reference) => reference.kind === 'ungraded',
+  );
+  const gradedReferences = listing.valuationReferences.filter(
+    (reference) => reference.kind === 'graded',
+  );
 
   const historyQuery = useQuery({
     queryKey: ['market', 'history', selectedVariantID, period],
@@ -87,7 +105,7 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
   };
 
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible>
+    <Modal animationType={compact ? 'none' : 'fade'} onRequestClose={onClose} transparent visible>
       <SafeAreaView style={[styles.overlay, compact && styles.overlayCompact]}>
         <View style={[styles.dialog, compact && styles.dialogCompact]}>
           <View style={styles.modalHeader}>
@@ -108,6 +126,19 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
           </View>
 
           <ScrollView contentContainerStyle={styles.modalBody} ref={scrollViewRef}>
+            {listing.priceQuality.status !== 'current' ? (
+              <View style={styles.qualityNotice}>
+                {listing.priceQuality.status === 'historical' ? (
+                  <History color={colors.warning} size={18} />
+                ) : (
+                  <CircleAlert color={colors.warning} size={18} />
+                )}
+                <Text style={styles.qualityNoticeText}>
+                  {priceQualityMessage(listing)}
+                </Text>
+              </View>
+            ) : null}
+
             <View style={[styles.cardOverview, compact && styles.cardOverviewCompact]}>
               <View style={[styles.detailImageFrame, compact && styles.detailImageFrameCompact]}>
                 {listing.imageUrl ? (
@@ -127,6 +158,7 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                         accessibilityLabel={`View ${listing.edition} ${listing.finish} ${variant.condition} price history`}
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
+                        disabled={!currentPricing}
                         key={variant.id}
                         onPress={() => selectVariant(variant.id)}
                         style={({ pressed }) => [
@@ -143,12 +175,16 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                               styles.variantPrice,
                               selected && styles.variantPriceSelected,
                             ]}>
-                            {formatCurrency(variant.currentPrice)}
+                            {listing.priceQuality.status === 'unavailable'
+                              ? 'Unavailable'
+                              : formatCurrency(variant.currentPrice)}
                           </Text>
-                          <ChevronRight
-                            color={selected ? colors.brand : colors.textMuted}
-                            size={17}
-                          />
+                          {currentPricing ? (
+                            <ChevronRight
+                              color={selected ? colors.brand : colors.textMuted}
+                              size={17}
+                            />
+                          ) : null}
                         </View>
                       </Pressable>
                     );
@@ -156,6 +192,76 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                 </View>
               </View>
             </View>
+
+            {ungradedReference || gradedReferences.length > 0 ? (
+              <View style={styles.valuationSection}>
+                <View style={[styles.valuationHeader, compact && styles.valuationHeaderCompact]}>
+                  <View style={styles.valuationHeading}>
+                    <View style={styles.valuationTitleRow}>
+                      <BadgeDollarSign color={colors.brass} size={19} />
+                      <Text style={styles.valuationTitle}>Alternative market view</Text>
+                    </View>
+                    <Text style={styles.valuationSubtitle}>
+                      Exact-printing references shown separately from condition pricing.
+                    </Text>
+                  </View>
+                  {ungradedReference ? (
+                    <Pressable
+                      accessibilityLabel={`Open ${ungradedReference.sourceName} source`}
+                      accessibilityRole="link"
+                      onPress={() => void Linking.openURL(ungradedReference.sourceUrl)}
+                      style={({ pressed }) => [
+                        styles.sourceLink,
+                        pressed && styles.sourceLinkPressed,
+                      ]}>
+                      <Text style={styles.sourceLinkText}>{ungradedReference.sourceName}</Text>
+                      <ExternalLink color={colors.brand} size={14} />
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                {ungradedReference ? (
+                  <View style={styles.referenceSummary}>
+                    <View style={styles.referenceValueGroup}>
+                      <Text style={styles.referenceLabel}>{ungradedReference.label} reference</Text>
+                      <Text style={styles.referenceAmount}>
+                        {formatCurrency(ungradedReference.amount)}
+                      </Text>
+                    </View>
+                    <View style={styles.referenceContext}>
+                      <View style={styles.referenceContextRow}>
+                        <ShieldCheck color={colors.brand} size={15} />
+                        <Text style={styles.referenceContextText}>
+                          Completed-sales estimate / checked {formatQualityDate(ungradedReference.checkedOn)}
+                        </Text>
+                      </View>
+                      {ungradedReference.note ? (
+                        <Text style={styles.referenceNote}>{ungradedReference.note}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
+
+                {gradedReferences.length > 0 ? (
+                  <View style={styles.benchmarkSection}>
+                    <Text style={styles.benchmarkTitle}>Graded benchmarks</Text>
+                    <View style={styles.benchmarkGrid}>
+                      {gradedReferences.map((reference) => (
+                        <View key={reference.id} style={styles.benchmarkItem}>
+                          <Text style={styles.benchmarkLabel}>{reference.label}</Text>
+                          <Text style={styles.benchmarkAmount}>
+                            {formatCurrency(reference.amount)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={styles.benchmarkFootnote}>
+                      External market benchmarks are informational and are excluded from catalog totals.
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
 
             {selectedVariant ? (
               <View onLayout={placeHistory} style={styles.historySection}>
@@ -256,6 +362,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
+    flexShrink: 0,
     gap: spacing.md,
     justifyContent: 'space-between',
     padding: spacing.md,
@@ -288,6 +395,22 @@ const styles = StyleSheet.create({
   modalBody: {
     gap: spacing.lg,
     padding: spacing.lg,
+  },
+  qualityNotice: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.warningSurface,
+    borderColor: colors.warningBorder,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  qualityNoticeText: {
+    color: colors.warning,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
   },
   cardOverview: {
     alignItems: 'flex-start',
@@ -368,6 +491,146 @@ const styles = StyleSheet.create({
   },
   variantPriceSelected: {
     color: colors.brand,
+  },
+  valuationSection: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    gap: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  valuationHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+  },
+  valuationHeaderCompact: {
+    flexDirection: 'column',
+  },
+  valuationHeading: {
+    flex: 1,
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  valuationTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  valuationTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  valuationSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  sourceLink: {
+    alignItems: 'center',
+    borderColor: colors.onlineBorder,
+    borderRadius: 4,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 34,
+    paddingHorizontal: spacing.sm,
+  },
+  sourceLinkPressed: {
+    backgroundColor: colors.onlineSurface,
+  },
+  sourceLinkText: {
+    color: colors.brand,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  referenceSummary: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.onlineSurface,
+    borderLeftColor: colors.brand,
+    borderLeftWidth: 3,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+    padding: spacing.md,
+  },
+  referenceValueGroup: {
+    gap: spacing.xs,
+    minWidth: 180,
+  },
+  referenceLabel: {
+    color: colors.brand,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  referenceAmount: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  referenceContext: {
+    flex: 1,
+    gap: spacing.sm,
+    minWidth: 220,
+  },
+  referenceContextRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  referenceContextText: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  referenceNote: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  benchmarkSection: {
+    gap: spacing.sm,
+  },
+  benchmarkTitle: {
+    color: colors.brass,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  benchmarkGrid: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  benchmarkItem: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexBasis: 142,
+    flexGrow: 1,
+    gap: spacing.xs,
+    minWidth: 128,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  benchmarkLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  benchmarkAmount: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  benchmarkFootnote: {
+    color: colors.textMuted,
+    fontSize: 10,
+    lineHeight: 15,
   },
   historySection: {
     borderTopColor: colors.border,
@@ -452,3 +715,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+
+function priceQualityMessage(listing: CatalogListing): string {
+  if (listing.priceQuality.status === 'historical' && listing.priceQuality.asOf) {
+    return `Current provider prices fail condition-order validation. Showing the latest valid five-condition snapshot from ${formatQualityDate(listing.priceQuality.asOf)}.`;
+  }
+  const referenceNote =
+    listing.valuationReferences.length > 0
+      ? ' Exact-printing market references are available below.'
+      : '';
+  if (listing.priceQuality.reason === 'missing_conditions') {
+    return `Condition pricing unavailable. The provider is missing one or more condition prices, and no complete historical snapshot passes validation.${referenceNote}`;
+  }
+  return `Condition pricing unavailable. The provider prices conflict with the expected condition order, and no historical snapshot passes validation.${referenceNote}`;
+}
+
+function formatQualityDate(value: string): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(
+    new Date(`${value}T00:00:00`),
+  );
+}

@@ -69,6 +69,7 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
     startPrice !== null && endPrice !== null && startPrice > 0
       ? ((endPrice - startPrice) / startPrice) * 100
       : null;
+  const hasTrustedHistory = (pricing?.points.length ?? 0) > 0;
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible>
@@ -149,7 +150,7 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
                 <View style={styles.summaryStrip}>
                   <SummaryValue
                     label="Collection value"
-                    note={`${pricing.summary.pricedCards} of ${pricing.summary.cardCount} priced`}
+                    note={`${pricing.summary.currentCards} current / ${pricing.summary.historicalCards} historical`}
                     value={formatCurrency(pricing.summary.totalValue)}
                   />
                   <SummaryValue
@@ -164,36 +165,45 @@ function SetDetailContent({ set, onClose }: { set: CatalogSet; onClose: () => vo
                   />
                   <SummaryValue
                     accent={changePercent === null || changePercent >= 0 ? colors.positive : colors.negative}
-                    label={periodLabel(period)}
-                    note={`${pricing.points.length} daily values`}
-                    value={formatPercent(changePercent)}
+                    label={hasTrustedHistory ? periodLabel(period) : 'Validated prices'}
+                    note={hasTrustedHistory ? `${pricing.points.length} daily values` : 'No coherent set snapshot'}
+                    value={hasTrustedHistory
+                      ? formatPercent(changePercent)
+                      : `${pricing.summary.pricedCards}/${pricing.summary.cardCount}`}
                   />
                 </View>
 
-                {!pricing.summary.complete ? (
+                {pricing.summary.historicalCards > 0 || pricing.summary.unavailableCards > 0 ? (
                   <View style={styles.coverageNotice}>
                     <AlertTriangle color={colors.warning} size={16} />
                     <Text style={styles.coverageText}>
-                      Collection value covers {pricing.summary.pricedCards} of {pricing.summary.cardCount} cards; cards without a current market price are excluded.
+                      {pricing.summary.historicalCards > 0
+                        ? `${pricing.summary.historicalCards} cards use their latest condition-consistent historical snapshot. `
+                        : ''}
+                      {pricing.summary.unavailableCards > 0
+                        ? `${pricing.summary.unavailableCards} cards have no trustworthy price and are excluded.`
+                        : ''}
                     </Text>
                   </View>
                 ) : null}
 
-                <View style={styles.chartSection}>
-                  <View style={[styles.sectionHeader, compact && styles.sectionHeaderCompact]}>
-                    <View style={styles.sectionTitleRow}>
-                      <LineChart color={colors.brand} size={18} />
-                      <View>
-                        <Text style={styles.sectionTitle}>Collection history</Text>
-                        <Text style={styles.sectionMeta}>
-                          {edition} / {condition}
-                        </Text>
+                {hasTrustedHistory ? (
+                  <View style={styles.chartSection}>
+                    <View style={[styles.sectionHeader, compact && styles.sectionHeaderCompact]}>
+                      <View style={styles.sectionTitleRow}>
+                        <LineChart color={colors.brand} size={18} />
+                        <View>
+                          <Text style={styles.sectionTitle}>Validated collection history</Text>
+                          <Text style={styles.sectionMeta}>
+                            {edition} / {condition}
+                          </Text>
+                        </View>
                       </View>
+                      <Text style={styles.chartValue}>{formatCurrency(endPrice)}</Text>
                     </View>
-                    <Text style={styles.chartValue}>{formatCurrency(endPrice)}</Text>
+                    <PriceHistoryChart points={pricing.points} />
                   </View>
-                  <PriceHistoryChart points={pricing.points} />
-                </View>
+                ) : null}
 
                 <View style={styles.cardSection}>
                   <View style={[styles.cardHeader, compact && styles.cardHeaderCompact]}>
@@ -304,11 +314,17 @@ function SetCardRow({ card }: { card: SetPriceCard }) {
           {card.name}
         </Text>
         <Text numberOfLines={1} style={styles.cardMeta}>
-          {card.rarity ?? 'Unknown rarity'}{card.finish ? ` / ${card.finish}` : ''}
+          {card.priceQuality?.status === 'historical' && card.priceQuality.asOf
+            ? `Verified ${formatDate(card.priceQuality.asOf)}`
+            : card.priceQuality?.status === 'unavailable'
+              ? 'Price unavailable'
+              : `${card.rarity ?? 'Unknown rarity'}${card.finish ? ` / ${card.finish}` : ''}`}
         </Text>
       </View>
       <Text style={[styles.cardPrice, card.currentPrice === null && styles.cardPriceMissing]}>
-        {formatCurrency(card.currentPrice)}
+        {card.priceQuality?.status === 'unavailable'
+          ? 'Unavailable'
+          : formatCurrency(card.currentPrice)}
       </Text>
     </View>
   );

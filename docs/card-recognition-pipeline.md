@@ -57,12 +57,13 @@ catalog size. PostgreSQL row locking is enough for the initial job queue.
 ### 2. Classical Vision Baseline - Implemented
 
 - `services/vision` uses OpenCV and Tesseract in its deployed container.
-- Build and cache reference features whenever catalog images change.
+- Build and cache reference features whenever catalog images change. The worker
+  currently loads all 516 verified Kanto MVP printings.
 - Add scan job and candidate tables plus worker claim/complete operations.
 - Return ranked candidates to the Expo review screen.
-- Process one scan at a time. Controlled exact-reference tests take about 2.5
-  seconds after the 312-image cache is warm; end-to-end latency also includes the
-  three-second queue polling interval.
+- Process one scan at a time. End-to-end latency includes the three-second queue
+  polling interval; performance should be remeasured against the complete
+  516-reference cache and realistic phone photographs.
 
 ### 3. Exact Printing Rules - In Progress
 

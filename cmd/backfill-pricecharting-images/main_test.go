@@ -69,15 +69,35 @@ func TestMatchTargetsSeparatesPikachuPrints(t *testing.T) {
 func TestProductBelongsToTarget(t *testing.T) {
 	t.Parallel()
 
+	firstEdition := availableTargets["base-first-edition"]
 	shadowless := availableTargets["base-shadowless"]
+	baseUnlimited := availableTargets["base-unlimited"]
 	jungle := availableTargets["jungle-unlimited"]
 	fossil := availableTargets["fossil-unlimited"]
 	teamRocket := availableTargets["team-rocket-unlimited"]
+	if !productBelongsToTarget(firstEdition, product{Title: "Alakazam [1st Edition] #1"}) {
+		t.Error("first-edition product did not match")
+	}
+	if !productBelongsToTarget(firstEdition, product{Title: "Pikachu [1st Edition Red Cheeks] #58"}) {
+		t.Error("first-edition red-cheeks product did not match")
+	}
+	if productBelongsToTarget(firstEdition, product{Title: "Pikachu [1st Edition Ghost Stamp] #58"}) {
+		t.Error("ghost-stamp product matched regular first-edition target")
+	}
+	if productBelongsToTarget(firstEdition, product{Title: "Alakazam [Shadowless] #1"}) {
+		t.Error("shadowless product matched first-edition target")
+	}
 	if !productBelongsToTarget(shadowless, product{Title: "Alakazam [Shadowless] #1"}) {
 		t.Error("shadowless product did not match")
 	}
 	if productBelongsToTarget(shadowless, product{Title: "Alakazam [1st Edition] #1"}) {
 		t.Error("first-edition product matched shadowless")
+	}
+	if !productBelongsToTarget(baseUnlimited, product{Title: "Alakazam #1"}) {
+		t.Error("Base Set unlimited product did not match")
+	}
+	if productBelongsToTarget(baseUnlimited, product{Title: "Alakazam [1999-2000] #1"}) {
+		t.Error("fourth-print product matched Base Set unlimited")
 	}
 	if !productBelongsToTarget(jungle, product{Title: "Clefable #1"}) {
 		t.Error("unlimited Jungle product did not match")
@@ -102,6 +122,60 @@ func TestProductBelongsToTarget(t *testing.T) {
 	}
 	if productBelongsToTarget(teamRocket, product{Title: "Dark Dragonite [Error] #5"}) {
 		t.Error("Dark Dragonite error matched regular Unlimited target")
+	}
+}
+
+func TestMatchTargetsSelectsBaseUnlimitedOverrides(t *testing.T) {
+	t.Parallel()
+
+	spec := availableTargets["base-unlimited"]
+	targets := []catalogTarget{
+		{
+			CardID: "pokemon-base-set-machamp-first-edition-holo-rare",
+			Name:   "Machamp", Number: 8, Edition: "First Edition", Finish: "Holofoil",
+		},
+		{
+			CardID: "pokemon-base-set-computer-search-rare",
+			Name:   "Computer Search", Number: 71, Edition: "Unlimited", Finish: "Normal",
+		},
+	}
+
+	matches, err := matchTargets(spec, targets, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machamp := matches[targets[0].CardID]
+	if machamp.Source != "TCGplayer" || !strings.Contains(machamp.ImageURL, "42425") {
+		t.Errorf("later stamped Machamp match = %#v", machamp)
+	}
+	computerSearch := matches[targets[1].CardID]
+	if computerSearch.Source != "TCGplayer" || !strings.Contains(computerSearch.ImageURL, "42417") {
+		t.Errorf("Computer Search match = %#v", computerSearch)
+	}
+}
+
+func TestMatchTargetsSeparatesFirstEditionPikachuPrints(t *testing.T) {
+	t.Parallel()
+
+	spec := availableTargets["base-first-edition"]
+	targets := []catalogTarget{
+		{CardID: "yellow", Name: "Pikachu", Number: 58},
+		{CardID: "red", Name: "Pikachu (Red Cheeks)", Number: 58},
+	}
+	products := []product{
+		{Title: "Pikachu [1st Edition] #58", Number: 58},
+		{Title: "Pikachu [1st Edition Red Cheeks] #58", Number: 58},
+	}
+
+	matches, err := matchTargets(spec, targets, products)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches["yellow"].Title != "Pikachu [1st Edition] #58" {
+		t.Errorf("yellow cheeks match = %q", matches["yellow"].Title)
+	}
+	if matches["red"].Title != "Pikachu [1st Edition Red Cheeks] #58" {
+		t.Errorf("red cheeks match = %q", matches["red"].Title)
 	}
 }
 

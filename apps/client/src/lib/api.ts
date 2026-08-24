@@ -80,6 +80,7 @@ export type CatalogListing = {
   language: string;
   selectedVariantId: string | null;
   currentPrice: number | null;
+  valuationKind: 'condition' | 'ungraded_reference' | null;
   priceQuality: PriceQuality;
   variants: CatalogVariant[];
   valuationReferences: CatalogValuationReference[];
@@ -190,6 +191,7 @@ export type SetPriceCard = {
   printing: string | null;
   finish: string | null;
   currentPrice: number | null;
+  valuationKind: 'condition' | 'ungraded_reference' | null;
   priceQuality: PriceQuality | null;
 };
 
@@ -206,6 +208,7 @@ export type SetPricing = {
     pricedCards: number;
     currentCards: number;
     historicalCards: number;
+    estimatedCards: number;
     unavailableCards: number;
     cardCount: number;
     complete: boolean;

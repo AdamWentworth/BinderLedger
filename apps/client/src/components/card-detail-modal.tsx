@@ -5,16 +5,13 @@ import {
   BadgeDollarSign,
   ChevronRight,
   CircleAlert,
-  ExternalLink,
   History,
   LineChart,
-  ShieldCheck,
   X,
 } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   type LayoutChangeEvent,
   Modal,
   Pressable,
@@ -70,6 +67,7 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
   const gradedReferences = listing.valuationReferences.filter(
     (reference) => reference.kind === 'graded',
   );
+  const estimatedPricing = listing.valuationKind === 'ungraded_reference';
 
   const historyQuery = useQuery({
     queryKey: ['market', 'history', selectedVariantID, period],
@@ -128,7 +126,9 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
           <ScrollView contentContainerStyle={styles.modalBody} ref={scrollViewRef}>
             {listing.priceQuality.status !== 'current' ? (
               <View style={styles.qualityNotice}>
-                {listing.priceQuality.status === 'historical' ? (
+                {estimatedPricing ? (
+                  <BadgeDollarSign color={colors.brass} size={18} />
+                ) : listing.priceQuality.status === 'historical' ? (
                   <History color={colors.warning} size={18} />
                 ) : (
                   <CircleAlert color={colors.warning} size={18} />
@@ -151,117 +151,74 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                   <Text style={styles.printing}>
                     {listing.edition} / {listing.finish} / {listing.language}
                   </Text>
-                  {listing.variants.map((variant) => {
-                    const selected = variant.id === selectedVariantID;
-                    return (
-                      <Pressable
-                        accessibilityLabel={`View ${listing.edition} ${listing.finish} ${variant.condition} price history`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        disabled={!currentPricing}
-                        key={variant.id}
-                        onPress={() => selectVariant(variant.id)}
-                        style={({ pressed }) => [
-                          styles.variantRow,
-                          selected && styles.variantRowSelected,
-                          pressed && styles.variantRowPressed,
-                        ]}>
-                        <Text style={[styles.condition, selected && styles.conditionSelected]}>
-                          {variant.condition}
-                        </Text>
-                        <View style={styles.variantValue}>
-                          <Text
-                            style={[
-                              styles.variantPrice,
-                              selected && styles.variantPriceSelected,
-                            ]}>
-                            {listing.priceQuality.status === 'unavailable'
-                              ? 'Unavailable'
-                              : formatCurrency(variant.currentPrice)}
+                  {estimatedPricing ? (
+                    <>
+                      {ungradedReference ? (
+                        <View style={[styles.variantRow, styles.estimateRow]}>
+                          <View>
+                            <Text style={styles.estimateLabel}>Ungraded estimate</Text>
+                            <Text style={styles.estimateMeta}>Exact printing</Text>
+                          </View>
+                          <Text style={styles.estimateAmount}>
+                            {formatCurrency(ungradedReference.amount)}
                           </Text>
-                          {currentPricing ? (
-                            <ChevronRight
-                              color={selected ? colors.brand : colors.textMuted}
-                              size={17}
-                            />
-                          ) : null}
                         </View>
-                      </Pressable>
-                    );
-                  })}
+                      ) : null}
+                      <Text style={styles.gradeHeading}>Graded values</Text>
+                      {gradedReferences.map((reference) => (
+                        <View key={reference.id} style={styles.variantRow}>
+                          <Text style={styles.condition}>{reference.label}</Text>
+                          <Text style={styles.variantPrice}>{formatCurrency(reference.amount)}</Text>
+                        </View>
+                      ))}
+                      <Text style={styles.estimateFootnote}>
+                        Curated values for this exact printing. Graded values do not inherit the
+                        selected raw-card condition.
+                      </Text>
+                    </>
+                  ) : (
+                    listing.variants.map((variant) => {
+                      const selected = variant.id === selectedVariantID;
+                      return (
+                        <Pressable
+                          accessibilityLabel={`View ${listing.edition} ${listing.finish} ${variant.condition} price history`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          disabled={!currentPricing}
+                          key={variant.id}
+                          onPress={() => selectVariant(variant.id)}
+                          style={({ pressed }) => [
+                            styles.variantRow,
+                            selected && styles.variantRowSelected,
+                            pressed && styles.variantRowPressed,
+                          ]}>
+                          <Text style={[styles.condition, selected && styles.conditionSelected]}>
+                            {variant.condition}
+                          </Text>
+                          <View style={styles.variantValue}>
+                            <Text
+                              style={[
+                                styles.variantPrice,
+                                selected && styles.variantPriceSelected,
+                              ]}>
+                              {listing.priceQuality.status === 'unavailable'
+                                ? 'Unavailable'
+                                : formatCurrency(variant.currentPrice)}
+                            </Text>
+                            {currentPricing ? (
+                              <ChevronRight
+                                color={selected ? colors.brand : colors.textMuted}
+                                size={17}
+                              />
+                            ) : null}
+                          </View>
+                        </Pressable>
+                      );
+                    })
+                  )}
                 </View>
               </View>
             </View>
-
-            {ungradedReference || gradedReferences.length > 0 ? (
-              <View style={styles.valuationSection}>
-                <View style={[styles.valuationHeader, compact && styles.valuationHeaderCompact]}>
-                  <View style={styles.valuationHeading}>
-                    <View style={styles.valuationTitleRow}>
-                      <BadgeDollarSign color={colors.brass} size={19} />
-                      <Text style={styles.valuationTitle}>Alternative market view</Text>
-                    </View>
-                    <Text style={styles.valuationSubtitle}>
-                      Exact-printing references shown separately from condition pricing.
-                    </Text>
-                  </View>
-                  {ungradedReference ? (
-                    <Pressable
-                      accessibilityLabel={`Open ${ungradedReference.sourceName} source`}
-                      accessibilityRole="link"
-                      onPress={() => void Linking.openURL(ungradedReference.sourceUrl)}
-                      style={({ pressed }) => [
-                        styles.sourceLink,
-                        pressed && styles.sourceLinkPressed,
-                      ]}>
-                      <Text style={styles.sourceLinkText}>{ungradedReference.sourceName}</Text>
-                      <ExternalLink color={colors.brand} size={14} />
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                {ungradedReference ? (
-                  <View style={styles.referenceSummary}>
-                    <View style={styles.referenceValueGroup}>
-                      <Text style={styles.referenceLabel}>{ungradedReference.label} reference</Text>
-                      <Text style={styles.referenceAmount}>
-                        {formatCurrency(ungradedReference.amount)}
-                      </Text>
-                    </View>
-                    <View style={styles.referenceContext}>
-                      <View style={styles.referenceContextRow}>
-                        <ShieldCheck color={colors.brand} size={15} />
-                        <Text style={styles.referenceContextText}>
-                          Completed-sales estimate / checked {formatQualityDate(ungradedReference.checkedOn)}
-                        </Text>
-                      </View>
-                      {ungradedReference.note ? (
-                        <Text style={styles.referenceNote}>{ungradedReference.note}</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ) : null}
-
-                {gradedReferences.length > 0 ? (
-                  <View style={styles.benchmarkSection}>
-                    <Text style={styles.benchmarkTitle}>Graded benchmarks</Text>
-                    <View style={styles.benchmarkGrid}>
-                      {gradedReferences.map((reference) => (
-                        <View key={reference.id} style={styles.benchmarkItem}>
-                          <Text style={styles.benchmarkLabel}>{reference.label}</Text>
-                          <Text style={styles.benchmarkAmount}>
-                            {formatCurrency(reference.amount)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                    <Text style={styles.benchmarkFootnote}>
-                      External market benchmarks are informational and are excluded from catalog totals.
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
 
             {selectedVariant ? (
               <View onLayout={placeHistory} style={styles.historySection}>
@@ -492,145 +449,41 @@ const styles = StyleSheet.create({
   variantPriceSelected: {
     color: colors.brand,
   },
-  valuationSection: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    gap: spacing.lg,
-    paddingTop: spacing.lg,
-  },
-  valuationHeader: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: spacing.md,
-    justifyContent: 'space-between',
-  },
-  valuationHeaderCompact: {
-    flexDirection: 'column',
-  },
-  valuationHeading: {
-    flex: 1,
-    gap: spacing.xs,
-    minWidth: 0,
-  },
-  valuationTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  valuationTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  valuationSubtitle: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  sourceLink: {
-    alignItems: 'center',
-    borderColor: colors.onlineBorder,
-    borderRadius: 4,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    minHeight: 34,
-    paddingHorizontal: spacing.sm,
-  },
-  sourceLinkPressed: {
-    backgroundColor: colors.onlineSurface,
-  },
-  sourceLinkText: {
-    color: colors.brand,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  referenceSummary: {
-    alignItems: 'flex-start',
+  estimateRow: {
     backgroundColor: colors.onlineSurface,
     borderLeftColor: colors.brand,
     borderLeftWidth: 3,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.lg,
-    padding: spacing.md,
+    minHeight: 58,
   },
-  referenceValueGroup: {
-    gap: spacing.xs,
-    minWidth: 180,
-  },
-  referenceLabel: {
+  estimateLabel: {
     color: colors.brand,
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  referenceAmount: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  referenceContext: {
-    flex: 1,
-    gap: spacing.sm,
-    minWidth: 220,
-  },
-  referenceContextRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  referenceContextText: {
-    color: colors.text,
-    flex: 1,
     fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 18,
+    fontWeight: '800',
   },
-  referenceNote: {
+  estimateMeta: {
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 10,
+    marginTop: 2,
   },
-  benchmarkSection: {
-    gap: spacing.sm,
+  estimateAmount: {
+    color: colors.brand,
+    fontSize: 20,
+    fontWeight: '800',
   },
-  benchmarkTitle: {
+  gradeHeading: {
     color: colors.brass,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
     textTransform: 'uppercase',
   },
-  benchmarkGrid: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  benchmarkItem: {
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
-    flexBasis: 142,
-    flexGrow: 1,
-    gap: spacing.xs,
-    minWidth: 128,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  benchmarkLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  benchmarkAmount: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  benchmarkFootnote: {
+  estimateFootnote: {
     color: colors.textMuted,
     fontSize: 10,
     lineHeight: 15,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
   },
   historySection: {
     borderTopColor: colors.border,
@@ -717,17 +570,16 @@ const styles = StyleSheet.create({
 });
 
 function priceQualityMessage(listing: CatalogListing): string {
+  if (listing.valuationKind === 'ungraded_reference') {
+    return 'JustTCG condition prices do not pass validation for this printing. Showing a curated ungraded estimate and graded values instead.';
+  }
   if (listing.priceQuality.status === 'historical' && listing.priceQuality.asOf) {
     return `Current provider prices fail condition-order validation. Showing the latest valid five-condition snapshot from ${formatQualityDate(listing.priceQuality.asOf)}.`;
   }
-  const referenceNote =
-    listing.valuationReferences.length > 0
-      ? ' Exact-printing market references are available below.'
-      : '';
   if (listing.priceQuality.reason === 'missing_conditions') {
-    return `Condition pricing unavailable. The provider is missing one or more condition prices, and no complete historical snapshot passes validation.${referenceNote}`;
+    return 'Condition pricing unavailable. The provider is missing one or more condition prices, and no complete historical snapshot passes validation.';
   }
-  return `Condition pricing unavailable. The provider prices conflict with the expected condition order, and no historical snapshot passes validation.${referenceNote}`;
+  return 'Condition pricing unavailable. The provider prices conflict with the expected condition order, and no historical snapshot passes validation.';
 }
 
 function formatQualityDate(value: string): string {

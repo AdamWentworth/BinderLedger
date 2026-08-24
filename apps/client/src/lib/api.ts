@@ -329,13 +329,45 @@ export type ScanImage = {
   sha256: string;
 };
 
+export type ScanCandidate = {
+  rank: number;
+  cardId: string;
+  cardName: string;
+  number: string | null;
+  setId: string;
+  setName: string;
+  edition: string;
+  finish: string;
+  language: string;
+  imageUrl: string;
+  score: number;
+  signals: Record<string, unknown>;
+};
+
+export type ScanConfirmation = {
+  decision: 'confirmed' | 'rejected';
+  candidateRank: number | null;
+  cardId: string | null;
+  edition: string | null;
+  finish: string | null;
+  language: string | null;
+  confirmedAt: string;
+};
+
 export type ScanSession = {
   id: string;
   status: 'captured' | 'processing' | 'complete' | 'failed';
+  purpose: 'identify' | 'condition';
   clientPlatform: 'android' | 'ios' | 'web' | 'unknown';
+  recognizerVersion: string | null;
+  failureReason: string | null;
+  processingStartedAt: string | null;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
   images: ScanImage[];
+  candidates: ScanCandidate[];
+  confirmation: ScanConfirmation | null;
 };
 
 export const defaultWatchlistID = 'default';
@@ -607,9 +639,11 @@ export async function createScanSession(
   front: ScanCapture,
   back: ScanCapture | undefined,
   platform: string,
+  purpose: 'identify' | 'condition',
 ): Promise<ScanSession> {
   const formData = new FormData();
   formData.append('platform', platform);
+  formData.append('purpose', purpose);
   await appendScanCapture(formData, 'front', front);
   if (back) await appendScanCapture(formData, 'back', back);
 
@@ -620,6 +654,37 @@ export async function createScanSession(
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `Scan upload returned ${response.status}`);
+  }
+  return response.json() as Promise<ScanSession>;
+}
+
+export async function getScanSession(scanId: string): Promise<ScanSession> {
+  const response = await fetch(`${apiURL}/api/scans/${encodeURIComponent(scanId)}`);
+  if (!response.ok) {
+    throw new Error(`Scan status returned ${response.status}`);
+  }
+  return response.json() as Promise<ScanSession>;
+}
+
+export async function confirmScanSession(
+  scanId: string,
+  candidateRank: number | null,
+): Promise<ScanSession> {
+  const response = await fetch(
+    `${apiURL}/api/scans/${encodeURIComponent(scanId)}/confirmation`,
+    {
+      body: JSON.stringify(
+        candidateRank === null
+          ? { decision: 'rejected' }
+          : { candidateRank, decision: 'confirmed' },
+      ),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    },
+  );
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `Scan confirmation returned ${response.status}`);
   }
   return response.json() as Promise<ScanSession>;
 }

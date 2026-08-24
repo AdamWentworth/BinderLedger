@@ -7,9 +7,11 @@ import {
   FlashlightOff,
   RotateCcw,
   ScanLine,
+  Search,
   Upload,
+  X,
 } from 'lucide-react-native';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -22,7 +24,14 @@ import {
 
 import { Screen } from '@/components/screen';
 import { colors, spacing } from '@/constants/theme';
-import { createScanSession, ScanCapture, ScanSession } from '@/lib/api';
+import {
+  confirmScanSession,
+  createScanSession,
+  getScanSession,
+  resolveImageURL,
+  ScanCapture,
+  ScanSession,
+} from '@/lib/api';
 
 type CardSide = 'front' | 'back';
 type CaptureMode = 'camera' | 'review' | 'complete';
@@ -45,6 +54,38 @@ export default function ScanScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<ScanSession | null>(null);
+  const activeScanID = session?.id;
+  const activeScanStatus = session?.status;
+
+  useEffect(() => {
+    if (
+      mode !== 'complete' ||
+      !activeScanID ||
+      (activeScanStatus !== 'captured' && activeScanStatus !== 'processing')
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const current = await getScanSession(activeScanID);
+        if (!cancelled) {
+          setSession(current);
+          setError(null);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : 'Scan status is unavailable.');
+        }
+      }
+    };
+    const interval = setInterval(() => void poll(), 1500);
+    void poll();
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [activeScanID, activeScanStatus, mode]);
 
   async function capturePhoto() {
     if (!camera.current || !cameraReady || busy) return;
@@ -94,11 +135,24 @@ export default function ScanScreen() {
     setBusy(true);
     setError(null);
     try {
-      const saved = await createScanSession(front, back, scanPlatform());
+      const saved = await createScanSession(front, back, scanPlatform(), goal);
       setSession(saved);
       setMode('complete');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The scan could not be saved.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmMatch(candidateRank: number | null) {
+    if (!session || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setSession(await confirmScanSession(session.id, candidateRank));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The match could not be confirmed.');
     } finally {
       setBusy(false);
     }
@@ -259,28 +313,19 @@ export default function ScanScreen() {
             ) : (
               <Upload color={colors.canvas} size={19} />
             )}
-            <Text style={styles.primaryButtonText}>{busy ? 'Saving' : 'Save scan'}</Text>
+            <Text style={styles.primaryButtonText}>
+              {busy ? 'Saving' : goal === 'identify' ? 'Match card' : 'Save and match'}
+            </Text>
           </Pressable>
         </View>
       ) : (
-        <View style={styles.completeState}>
-          <View style={styles.completeIcon}>
-            <Check color={colors.canvas} size={34} strokeWidth={3} />
-          </View>
-          <Text style={styles.completeTitle}>Scan saved</Text>
-          <Text style={styles.completeCopy}>
-            {goal === 'condition'
-              ? 'Front and back are stored for future recognition and condition analysis.'
-              : 'The card face is stored and ready for future catalog matching.'}
-          </Text>
-          {session ? <Text style={styles.sessionID}>Scan {session.id.slice(0, 8)}</Text> : null}
-          <Pressable
-            onPress={reset}
-            style={({ pressed }) => [styles.primaryButton, styles.scanAnotherButton, pressed && styles.buttonPressed]}>
-            <Camera color={colors.canvas} size={19} />
-            <Text style={styles.primaryButtonText}>Scan another</Text>
-          </Pressable>
-        </View>
+        <RecognitionState
+          busy={busy}
+          error={error}
+          onConfirm={confirmMatch}
+          onReset={reset}
+          session={session}
+        />
       )}
     </Screen>
   );
@@ -339,6 +384,161 @@ function GoalButton({ label, onPress, selected }: { label: string; onPress: () =
         pressed && styles.buttonPressed,
       ]}>
       <Text style={[styles.goalButtonText, selected && styles.goalButtonTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function RecognitionState({
+  busy,
+  error,
+  onConfirm,
+  onReset,
+  session,
+}: {
+  busy: boolean;
+  error: string | null;
+  onConfirm: (candidateRank: number | null) => Promise<void>;
+  onReset: () => void;
+  session: ScanSession | null;
+}) {
+  if (!session || session.status === 'captured' || session.status === 'processing') {
+    return (
+      <View style={styles.completeState}>
+        <View style={styles.processingIcon}>
+          <Search color={colors.brass} size={30} />
+        </View>
+        <ActivityIndicator color={colors.brand} size="large" />
+        <Text style={styles.completeTitle}>Matching card</Text>
+        <Text style={styles.completeCopy}>Comparing the card face with verified catalog printings.</Text>
+        {session ? <Text style={styles.sessionID}>Scan {session.id.slice(0, 8)}</Text> : null}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      </View>
+    );
+  }
+
+  if (session.status === 'failed') {
+    return (
+      <View style={styles.completeState}>
+        <View style={styles.failureIcon}>
+          <X color={colors.negative} size={34} strokeWidth={3} />
+        </View>
+        <Text style={styles.completeTitle}>Match unavailable</Text>
+        <Text style={styles.completeCopy}>The scan was stored, but its card could not be matched.</Text>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <ScanAnotherButton onPress={onReset} />
+      </View>
+    );
+  }
+
+  if (session.confirmation) {
+    const selected = session.candidates.find(
+      (candidate) => candidate.rank === session.confirmation?.candidateRank,
+    );
+    return (
+      <View style={styles.completeState}>
+        <View style={styles.completeIcon}>
+          <Check color={colors.canvas} size={34} strokeWidth={3} />
+        </View>
+        <Text style={styles.completeTitle}>
+          {session.confirmation.decision === 'confirmed' ? 'Match confirmed' : 'Suggestions dismissed'}
+        </Text>
+        <Text style={styles.completeCopy}>
+          {selected
+            ? `${selected.cardName} / ${selected.setName} / ${selected.edition}`
+            : 'No catalog printing was selected for this scan.'}
+        </Text>
+        {session.purpose === 'condition' ? (
+          <Text style={styles.conditionNote}>Both card faces remain stored for later condition analysis.</Text>
+        ) : null}
+        <ScanAnotherButton onPress={onReset} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.resultsState}>
+      <View style={styles.resultsHeader}>
+        <View style={styles.processingIcon}>
+          <Search color={colors.brass} size={26} />
+        </View>
+        <View style={styles.resultsHeadingCopy}>
+          <Text style={styles.completeTitle}>Possible matches</Text>
+          <Text style={styles.sectionSubtitle}>Confirm the exact printing shown on your card.</Text>
+        </View>
+      </View>
+      <View style={styles.candidateList}>
+        {session.candidates.map((candidate) => (
+          <Pressable
+            accessibilityLabel={`Confirm ${candidate.cardName}, ${candidate.edition}, ${candidate.finish}`}
+            disabled={busy}
+            key={`${candidate.cardId}-${candidate.edition}-${candidate.finish}`}
+            onPress={() => void onConfirm(candidate.rank)}
+            style={({ pressed }) => [
+              styles.candidateRow,
+              busy && styles.buttonDisabled,
+              pressed && styles.buttonPressed,
+            ]}>
+            <View style={styles.candidateImageFrame}>
+              <Image
+                resizeMode="contain"
+                source={{ uri: resolveImageURL(candidate.imageUrl) ?? undefined }}
+                style={styles.candidateImage}
+              />
+            </View>
+            <View style={styles.candidateCopy}>
+              <Text style={styles.candidateRank}>
+                {candidate.rank === 1 ? 'Best visual match' : `Alternative ${candidate.rank - 1}`}
+              </Text>
+              <Text numberOfLines={2} style={styles.candidateName}>
+                {candidate.cardName}
+              </Text>
+              <Text numberOfLines={2} style={styles.candidateMeta}>
+                {candidate.setName}{candidate.number ? ` #${candidate.number}` : ''}
+              </Text>
+              <Text numberOfLines={2} style={styles.candidatePrinting}>
+                {candidate.edition} / {candidate.finish}
+              </Text>
+            </View>
+            <View style={styles.confirmIcon}>
+              {busy ? (
+                <ActivityIndicator color={colors.canvas} size="small" />
+              ) : (
+                <Check color={colors.canvas} size={18} strokeWidth={3} />
+              )}
+            </View>
+          </Pressable>
+        ))}
+      </View>
+      {session.candidates.length === 0 ? (
+        <Text style={styles.completeCopy}>No verified catalog image produced a useful match.</Text>
+      ) : null}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <Pressable
+        disabled={busy}
+        onPress={() => void onConfirm(null)}
+        style={({ pressed }) => [
+          styles.secondaryButton,
+          busy && styles.buttonDisabled,
+          pressed && styles.buttonPressed,
+        ]}>
+        <X color={colors.text} size={18} />
+        <Text style={styles.secondaryButtonText}>None of these</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function ScanAnotherButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        styles.scanAnotherButton,
+        pressed && styles.buttonPressed,
+      ]}>
+      <Camera color={colors.canvas} size={19} />
+      <Text style={styles.primaryButtonText}>Scan another</Text>
     </Pressable>
   );
 }
@@ -634,10 +834,46 @@ const styles = StyleSheet.create({
     minHeight: 420,
     width: '100%',
   },
+  resultsState: {
+    alignSelf: 'center',
+    gap: spacing.md,
+    maxWidth: 620,
+    width: '100%',
+  },
+  resultsHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  resultsHeadingCopy: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0,
+  },
   completeIcon: {
     alignItems: 'center',
     backgroundColor: colors.brand,
     borderRadius: 34,
+    height: 68,
+    justifyContent: 'center',
+    width: 68,
+  },
+  processingIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.warningSurface,
+    borderColor: colors.warningBorder,
+    borderRadius: 28,
+    borderWidth: 1,
+    height: 56,
+    justifyContent: 'center',
+    width: 56,
+  },
+  failureIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.offlineSurface,
+    borderColor: colors.offlineBorder,
+    borderRadius: 34,
+    borderWidth: 1,
     height: 68,
     justifyContent: 'center',
     width: 68,
@@ -657,6 +893,72 @@ const styles = StyleSheet.create({
     color: colors.brass,
     fontSize: 12,
     fontWeight: '800',
+  },
+  conditionNote: {
+    color: colors.brass,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  candidateList: {
+    gap: spacing.sm,
+  },
+  candidateRow: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 7,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    minHeight: 126,
+    padding: spacing.sm,
+  },
+  candidateImageFrame: {
+    alignItems: 'center',
+    backgroundColor: colors.navigation,
+    borderRadius: 5,
+    height: 108,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 77,
+  },
+  candidateImage: {
+    height: '100%',
+    width: '100%',
+  },
+  candidateCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  candidateRank: {
+    color: colors.brass,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  candidateName: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  candidateMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  candidatePrinting: {
+    color: colors.brand,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  confirmIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.brand,
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
   },
   scanAnotherButton: {
     marginTop: spacing.sm,

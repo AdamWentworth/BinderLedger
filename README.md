@@ -286,18 +286,6 @@ repo-scoped self-hosted runner that:
 5. Recreates API, vision, collector, and web services.
 6. Performs API, web, container, and resource smoke checks.
 
-### Published GHCR Packages
-
-| Package | Purpose |
-| --- | --- |
-| `binderledger-core` | API, migrations, refresh, and administrative commands |
-| `binderledger-web` | Static Expo web export served by nginx |
-| `binderledger-vision` | OpenCV/Tesseract recognition worker |
-| `binderledger-collector` | Quota-aware historical collection runtime |
-
-These packages are deployment artifacts produced from this repository, not
-independent libraries. Production authenticates to GHCR before pulling them.
-
 Operational commands, limits, timers, backups, and restore procedures are in
 [the production runbook](ops/prod/README.md) and
 [disaster-recovery guide](ops/prod/disaster-recovery.md).

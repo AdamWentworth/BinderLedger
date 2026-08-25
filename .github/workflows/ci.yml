@@ -121,25 +121,8 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: [go, client, collectors, vision, database, operations]
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    env:
-      CORE_IMAGE: ghcr.io/adamwentworth/binderledger-core
-      VISION_IMAGE: ghcr.io/adamwentworth/binderledger-vision
-      WEB_IMAGE: ghcr.io/adamwentworth/binderledger-web
-      COLLECTOR_IMAGE: ghcr.io/adamwentworth/binderledger-collector
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - name: Validate production Compose
-        run: >-
-          docker compose
-          --project-directory ops/prod
-          -f ops/prod/docker-compose.yml
-          --env-file ops/prod/binderledger.env.example
-          --env-file ops/prod/images.env.example
-          config >/dev/null
 
       - name: Build images
         run: |
@@ -147,20 +130,3 @@ jobs:
           docker build --pull --target runtime -t binderledger-vision:ci -f services/vision/Dockerfile .
           docker build --pull -t binderledger-web:ci -f apps/client/Dockerfile .
           docker build --pull -t binderledger-collector:ci -f tools/justtcg-audit/Dockerfile .
-
-      - name: Log in to GHCR
-        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      - name: Publish SHA and latest tags
-        run: |
-          for spec in \
-            "binderledger-core:ci ${CORE_IMAGE}" \
-            "binderledger-vision:ci ${VISION_IMAGE}" \
-            "binderledger-web:ci ${WEB_IMAGE}" \
-            "binderledger-collector:ci ${COLLECTOR_IMAGE}"; do
-            set -- ${spec}
-            docker tag "$1" "$2:sha-${GITHUB_SHA}"
-            docker tag "$1" "$2:latest"
-            docker push "$2:sha-${GITHUB_SHA}"
-            docker push "$2:latest"
-          done

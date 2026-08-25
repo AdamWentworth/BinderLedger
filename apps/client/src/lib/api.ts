@@ -66,6 +66,8 @@ export type CatalogValuationReference = {
   currency: string;
   sourceName: string;
   sourceUrl: string;
+  printingVariant: string;
+  isPrimary: boolean;
   checkedOn: string;
   note: string | null;
 };

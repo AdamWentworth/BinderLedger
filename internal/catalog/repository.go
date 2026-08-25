@@ -123,17 +123,19 @@ type PriceQuality struct {
 }
 
 type ValuationReference struct {
-	ID         string   `json:"id"`
-	Kind       string   `json:"kind"`
-	Label      string   `json:"label"`
-	Grader     *string  `json:"grader"`
-	Grade      *string  `json:"grade"`
-	Amount     *float64 `json:"amount"`
-	Currency   string   `json:"currency"`
-	SourceName string   `json:"sourceName"`
-	SourceURL  string   `json:"sourceUrl"`
-	CheckedOn  string   `json:"checkedOn"`
-	Note       *string  `json:"note"`
+	ID              string   `json:"id"`
+	Kind            string   `json:"kind"`
+	Label           string   `json:"label"`
+	Grader          *string  `json:"grader"`
+	Grade           *string  `json:"grade"`
+	Amount          *float64 `json:"amount"`
+	Currency        string   `json:"currency"`
+	SourceName      string   `json:"sourceName"`
+	SourceURL       string   `json:"sourceUrl"`
+	PrintingVariant string   `json:"printingVariant"`
+	IsPrimary       bool     `json:"isPrimary"`
+	CheckedOn       string   `json:"checkedOn"`
+	Note            *string  `json:"note"`
 }
 
 type ListingFilter struct {
@@ -528,6 +530,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				  AND reference.finish = quality.finish
 				  AND reference.language = quality.language
 				  AND reference.kind = 'ungraded'
+				  AND reference.is_primary
 				ORDER BY reference.checked_on DESC, reference.sort_order, reference.id
 				LIMIT 1
 			) fallback ON true
@@ -744,13 +747,20 @@ func (repository *Repository) attachValuationReferences(
 			reference.currency,
 			reference.source_name,
 			reference.source_url,
+			reference.printing_variant,
+			reference.is_primary,
 			to_char(reference.checked_on, 'YYYY-MM-DD'),
 			reference.note
 		FROM catalog_valuation_references reference
 		JOIN catalog_cards card
 		  ON card.tcgplayer_product_id = reference.tcgplayer_product_id
 		WHERE card.id = ANY($1)
-		ORDER BY reference.kind DESC, reference.sort_order, reference.label
+		ORDER BY
+			reference.is_primary DESC,
+			reference.printing_variant,
+			reference.kind DESC,
+			reference.sort_order,
+			reference.label
 	`, cardIDs)
 	if err != nil {
 		return fmt.Errorf("query listing valuation references: %w", err)
@@ -774,6 +784,8 @@ func (repository *Repository) attachValuationReferences(
 			&reference.Currency,
 			&reference.SourceName,
 			&reference.SourceURL,
+			&reference.PrintingVariant,
+			&reference.IsPrimary,
 			&reference.CheckedOn,
 			&reference.Note,
 		); err != nil {
@@ -965,6 +977,7 @@ func (repository *Repository) SetPricing(ctx context.Context, filter SetPricingF
 					  AND reference.finish = quality.finish
 					  AND reference.language = quality.language
 					  AND reference.kind = 'ungraded'
+					  AND reference.is_primary
 					ORDER BY reference.checked_on DESC, reference.sort_order, reference.id
 					LIMIT 1
 				) fallback ON true

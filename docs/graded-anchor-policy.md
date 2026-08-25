@@ -50,6 +50,26 @@ The Shadowless ladder remains primary because it is coherent. PriceCharting's
 individual grade estimates are stored as reported even when sparse sales make
 adjacent grades non-monotonic; BinderLedger does not interpolate them.
 
+## Base Set 2 And Gym Pass
+
+The 2026-08-24 pass added 23 reviewed PriceCharting ladders for 22 exact
+printings from Base Set 2, Gym Heroes, and Gym Challenge. Each ladder contains
+Ungraded, Grades 1 through 9, Grade 9.5, and PSA 10. The selection covers the
+two Base Set 2 headliners and the Gym cards that cross the normal value,
+condition-conflict, scarcity, or iconic-printing thresholds.
+
+| Group | Exact printings | Source ladders |
+| --- | ---: | ---: |
+| Base Set 2 Unlimited | 2 | 2 |
+| Gym Heroes | 5 | 5 |
+| Gym Challenge | 15 | 16 |
+
+Blaine's Charizard accounts for the extra source ladder. First Edition is the
+energy-error printing. Unlimited has separately labeled `Corrected` and
+`Energy Misprint` ladders in the card detail view. Only the corrected Unlimited
+ladder is eligible to supply the catalog's fallback value, preventing the two
+markets from being blended while preserving both for comparison.
+
 PriceCharting references are dated valuation snapshots rather than a scheduled
 feed. The UI must continue identifying and linking to the exact source page,
 and the deployment remains private unless PriceCharting grants written

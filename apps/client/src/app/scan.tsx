@@ -1,4 +1,4 @@
-import { CameraCapturedPicture, CameraView, useCameraPermissions } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Camera,
@@ -13,7 +13,7 @@ import {
   Upload,
   X,
 } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -26,6 +26,12 @@ import {
 } from 'react-native';
 
 import { Screen } from '@/components/screen';
+import {
+  CardBounds,
+  CardCameraHandle,
+  CardCameraStatus,
+} from '@/components/card-camera';
+import { CardCamera } from '@/components/card-camera-view';
 import { colors, spacing } from '@/constants/theme';
 import {
   confirmScanSession,
@@ -45,8 +51,15 @@ const sideLabel: Record<CardSide, string> = {
   back: 'Back',
 };
 
+const cameraPrompt: Record<CardCameraStatus, string> = {
+  searching: 'Place the card inside the frame',
+  align: 'Line up the full card',
+  'hold-steady': 'Hold steady — capturing automatically',
+  ready: 'Card captured',
+};
+
 export default function ScanScreen() {
-  const camera = useRef<CameraView>(null);
+  const camera = useRef<CardCameraHandle>(null);
   const { height: viewportHeight } = useWindowDimensions();
   const [permission, requestPermission] = useCameraPermissions();
   const [activeSide, setActiveSide] = useState<CardSide>('front');
@@ -54,6 +67,8 @@ export default function ScanScreen() {
   const [captures, setCaptures] = useState<Partial<Record<CardSide, ScanCapture>>>({});
   const [mode, setMode] = useState<CaptureMode>('camera');
   const [cameraReady, setCameraReady] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<CardCameraStatus>('searching');
+  const [cardBounds, setCardBounds] = useState<CardBounds | null>(null);
   const [torch, setTorch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,26 +107,22 @@ export default function ScanScreen() {
     };
   }, [activeScanID, activeScanStatus, mode]);
 
-  async function capturePhoto() {
+  const capturePhoto = useCallback(async () => {
     if (!camera.current || !cameraReady || busy) return;
     setBusy(true);
     setError(null);
     try {
-      let picture: CameraCapturedPicture | undefined;
+      let picture: ScanCapture | undefined;
       for (let attempt = 0; attempt < 2 && !picture; attempt += 1) {
         try {
-          picture = await camera.current.takePictureAsync({
-            exif: false,
-            quality: 0.88,
-          });
+          picture = await camera.current.capture();
         } catch (caught) {
           if (attempt === 1) throw caught;
           await pause(600);
         }
       }
       if (!picture) throw new Error('Camera returned no picture');
-      const capture = toScanCapture(picture);
-      setCaptures((current) => ({ ...current, [activeSide]: capture }));
+      setCaptures((current) => ({ ...current, [activeSide]: picture }));
       if (activeSide === 'front' && goal === 'condition') {
         setActiveSide('back');
       } else {
@@ -124,7 +135,7 @@ export default function ScanScreen() {
     } finally {
       setBusy(false);
     }
-  }
+  }, [activeSide, busy, cameraReady, goal]);
 
   async function selectPhoto(side: CardSide) {
     if (busy) return;
@@ -158,6 +169,8 @@ export default function ScanScreen() {
     setActiveSide(side);
     setCameraReady(false);
     setError(null);
+    setCardBounds(null);
+    setCameraStatus('searching');
     setMode('camera');
   }
 
@@ -198,6 +211,8 @@ export default function ScanScreen() {
     setError(null);
     setTorch(false);
     setCameraReady(false);
+    setCardBounds(null);
+    setCameraStatus('searching');
     setMode('camera');
   }
 
@@ -207,6 +222,8 @@ export default function ScanScreen() {
     setActiveSide('front');
     setCaptures({});
     setError(null);
+    setCardBounds(null);
+    setCameraStatus('searching');
   }
 
   return (
@@ -262,23 +279,42 @@ export default function ScanScreen() {
               ) : null}
 
               <View style={styles.cameraFrame}>
-                <CameraView
-                  enableTorch={torch}
-                  facing="back"
-                  mode="picture"
-                  onCameraReady={() => {
-                    if (Platform.OS === 'web') {
-                      setTimeout(() => setCameraReady(true), 2500);
-                      return;
-                    }
-                    setCameraReady(true);
-                  }}
-                  onMountError={({ message }) => setError(message)}
+                <CardCamera
+                  active={mode === 'camera'}
+                  disabled={busy}
+                  onAutoCapture={capturePhoto}
+                  onBoundsChange={setCardBounds}
+                  onError={setError}
+                  onReady={() => setCameraReady(true)}
+                  onStatusChange={setCameraStatus}
                   ref={camera}
-                  style={StyleSheet.absoluteFill}
+                  resetKey={`${activeSide}-${goal}`}
+                  torch={torch}
                 />
                 <View pointerEvents="none" style={styles.cameraShade}>
-                  <View style={styles.cardGuide} />
+                  <View
+                    style={[
+                      styles.cardGuide,
+                      cameraStatus === 'hold-steady' && styles.cardGuideSteady,
+                      cameraStatus === 'ready' && styles.cardGuideReady,
+                    ]}
+                  />
+                  {cardBounds ? (
+                    <View
+                      style={[
+                        styles.detectedCard,
+                        {
+                          height: `${cardBounds.height * 100}%`,
+                          left: `${cardBounds.x * 100}%`,
+                          top: `${cardBounds.y * 100}%`,
+                          width: `${cardBounds.width * 100}%`,
+                        },
+                      ]}
+                    />
+                  ) : null}
+                  <View style={styles.capturePrompt}>
+                    <Text style={styles.capturePromptText}>{cameraPrompt[cameraStatus]}</Text>
+                  </View>
                 </View>
                 <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
                   <View style={styles.cameraTopBar}>
@@ -678,15 +714,6 @@ function ScanAnotherButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-function toScanCapture(picture: CameraCapturedPicture): ScanCapture {
-  return {
-    format: picture.format,
-    height: picture.height,
-    uri: picture.uri,
-    width: picture.width,
-  };
-}
-
 function toPickerCapture(asset: ImagePicker.ImagePickerAsset): ScanCapture {
   const mimeType = asset.mimeType?.toLowerCase();
   const filename = asset.fileName?.toLowerCase() ?? '';
@@ -830,6 +857,35 @@ const styles = StyleSheet.create({
     maxWidth: 330,
     transform: [{ translateY: -36 }],
     width: '66%',
+  },
+  cardGuideSteady: {
+    borderColor: colors.text,
+    borderWidth: 3,
+  },
+  cardGuideReady: {
+    borderColor: colors.positive,
+    borderWidth: 4,
+  },
+  detectedCard: {
+    borderColor: colors.positive,
+    borderRadius: 6,
+    borderWidth: 2,
+    position: 'absolute',
+  },
+  capturePrompt: {
+    backgroundColor: colors.overlay,
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 1,
+    bottom: 112,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    position: 'absolute',
+  },
+  capturePromptText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
   },
   cameraTopBar: {
     alignItems: 'center',

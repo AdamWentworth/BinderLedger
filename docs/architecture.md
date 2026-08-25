@@ -61,11 +61,11 @@ development database for explicit backend work. The primary development
 machine normally runs only Expo and targets the private-LAN production API.
 
 The API, vision worker, and static Expo web export run as hardened containers.
-Systemd timers launch quota-aware collector jobs and backups. A credential-free
-production poller selects the latest successful `main` CI run, fetches that
-exact commit, builds immutable SHA-tagged images locally, applies migrations,
-and completes health checks before recording the deployment.
+Systemd timers launch quota-aware collector jobs and backups. GitHub-hosted CI
+builds and scans immutable SHA-tagged GHCR images; the dedicated production
+runner then pulls that exact successful image set, applies migrations, and
+completes health checks before recording the deployment.
 
 Metro runs only on the primary frontend development machine, where hot reload
-serves both the browser and Expo Go. Production serves the static web export
-through nginx and never runs Metro.
+serves both the browser and the BinderLedger native development client.
+Production serves the static web export through nginx and never runs Metro.

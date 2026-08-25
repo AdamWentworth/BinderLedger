@@ -36,6 +36,9 @@ class Features:
     histogram: np.ndarray
     stamp_region: np.ndarray
     number_region: np.ndarray
+    first_edition_stamp: float
+    shadow_region: np.ndarray
+    copyright_region: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -116,8 +119,44 @@ class ReferenceMatcher:
                 matches_by_printing[key] = match
 
         matches = list(matches_by_printing.values())
+        matches = self._rerank_printings(matches)
         matches.sort(key=lambda item: item.score, reverse=True)
         return matches[: max(1, min(limit, 3))]
+
+    @staticmethod
+    def _rerank_printings(matches: list[Match]) -> list[Match]:
+        """Use printing-only details after the card identity has been established.
+
+        Whole-card feature matching is intentionally the strongest signal for card
+        identity, but it can favor a sharper reference image over the right Base Set
+        printing.  Only sibling references for the same catalog card are adjusted
+        here, and only when that group contains a First Edition printing.
+        """
+
+        editions_by_card: dict[str, set[str]] = {}
+        for match in matches:
+            editions_by_card.setdefault(match.reference.card_id, set()).add(match.reference.edition.lower())
+
+        reranked: list[Match] = []
+        for match in matches:
+            editions = editions_by_card[match.reference.card_id]
+            if len(editions) < 2 or not any("first" in edition for edition in editions):
+                reranked.append(match)
+                continue
+
+            signals = dict(match.signals)
+            observed_stamp = float(signals["firstEditionStamp"])
+            stamp_score = observed_stamp if "first" in match.reference.edition.lower() else 1.0 - observed_stamp
+            region_score = (
+                0.65 * float(signals["shadowRegion"])
+                + 0.35 * float(signals["copyrightRegion"])
+            )
+            printing_score = clamp(0.55 * stamp_score + 0.45 * region_score)
+            adjusted_score = clamp(0.68 * match.score + 0.32 * printing_score)
+            signals["baseScore"] = match.score
+            signals["printingScore"] = round(printing_score, 5)
+            reranked.append(Match(match.reference, round(adjusted_score, 5), signals))
+        return reranked
 
     def _prefilter_score(
         self,
@@ -139,8 +178,8 @@ class ReferenceMatcher:
         return 0.78 * visual + 0.15 * title + 0.07 * number
 
     def _features(self, image: np.ndarray) -> Features:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray)
+        raw_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(raw_gray)
         keypoints, descriptors = self._orb.detectAndCompute(gray, None)
 
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -155,6 +194,11 @@ class ReferenceMatcher:
             histogram=histogram,
             stamp_region=crop_ratio(gray, 0.04, 0.37, 0.35, 0.60),
             number_region=crop_ratio(gray, 0.53, 0.82, 0.99, 0.995),
+            first_edition_stamp=first_edition_stamp_presence(
+                crop_ratio(raw_gray, 0.035, 0.51, 0.17, 0.58)
+            ),
+            shadow_region=crop_ratio(gray, 0.82, 0.10, 0.96, 0.56),
+            copyright_region=crop_ratio(gray, 0.03, 0.91, 0.97, 0.99),
         )
 
     def _score(
@@ -170,6 +214,8 @@ class ReferenceMatcher:
         histogram = clamp((histogram + 1.0) / 2.0)
         stamp = region_similarity(query.stamp_region, reference.stamp_region)
         number_region = region_similarity(query.number_region, reference.number_region)
+        shadow_region = region_similarity(query.shadow_region, reference.shadow_region)
+        copyright_region = region_similarity(query.copyright_region, reference.copyright_region)
 
         visual = (
             0.46 * orb
@@ -192,6 +238,12 @@ class ReferenceMatcher:
             "color": round(histogram, 5),
             "editionRegion": round(stamp, 5),
             "numberRegion": round(number_region, 5),
+            "firstEditionStamp": round(query.first_edition_stamp, 5),
+            "editionStampMatch": round(
+                1.0 - abs(query.first_edition_stamp - reference.first_edition_stamp), 5
+            ),
+            "shadowRegion": round(shadow_region, 5),
+            "copyrightRegion": round(copyright_region, 5),
         }
         if ocr_text:
             signals["titleText"] = round(title, 5)
@@ -221,28 +273,89 @@ def normalize_scan(image: np.ndarray) -> tuple[np.ndarray, str]:
 
 
 def detect_card_quad(image: np.ndarray) -> np.ndarray | None:
+    color_quad = detect_pokemon_border_quad(image)
+    if color_quad is not None:
+        return color_quad
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(gray, 45, 135)
-    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=2)
-    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     minimum_area = image.shape[0] * image.shape[1] * 0.12
+    candidates: list[tuple[float, np.ndarray]] = []
 
-    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:20]:
+    for lower, upper in ((30, 90), (45, 135), (70, 200)):
+        edges = cv2.Canny(gray, lower, upper)
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=2)
+        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:30]:
+            area = cv2.contourArea(contour)
+            if area < minimum_area:
+                break
+            perimeter = cv2.arcLength(contour, True)
+            polygon = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
+            if len(polygon) != 4 or not cv2.isContourConvex(polygon):
+                continue
+            ordered = order_points(polygon.reshape(4, 2).astype(np.float32))
+            score = card_quad_score(ordered, image.shape[:2])
+            if score is not None:
+                candidates.append((score, ordered))
+
+    return max(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
+def detect_pokemon_border_quad(image: np.ndarray) -> np.ndarray | None:
+    """Find the saturated yellow/gold border common to physical Pokemon cards.
+
+    Transparent sleeves and top loaders often form a cleaner, larger rectangle than
+    the card itself.  Looking for the enclosed colored border lets us select the card
+    rather than the plastic when both have nearly the same aspect ratio.
+    """
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, np.array([15, 80, 100]), np.array([40, 255, 255]))
+    kernel_size = max(5, round(min(image.shape[:2]) * 0.012))
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    minimum_area = image.shape[0] * image.shape[1] * 0.12
+    candidates: list[tuple[float, np.ndarray]] = []
+
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:12]:
         area = cv2.contourArea(contour)
         if area < minimum_area:
             break
-        perimeter = cv2.arcLength(contour, True)
-        polygon = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
-        if len(polygon) != 4 or not cv2.isContourConvex(polygon):
+        rectangle = cv2.minAreaRect(contour)
+        ordered = order_points(cv2.boxPoints(rectangle).astype(np.float32))
+        score = card_quad_score(ordered, image.shape[:2])
+        if score is None:
             continue
-        ordered = order_points(polygon.reshape(4, 2).astype(np.float32))
-        width = max(np.linalg.norm(ordered[1] - ordered[0]), np.linalg.norm(ordered[2] - ordered[3]))
-        height = max(np.linalg.norm(ordered[3] - ordered[0]), np.linalg.norm(ordered[2] - ordered[1]))
-        ratio = min(width, height) / max(width, height)
-        if 0.58 <= ratio <= 0.82:
-            return ordered
-    return None
+        rectangularity = clamp(area / max(1.0, float(rectangle[1][0] * rectangle[1][1])))
+        candidates.append((score + 0.35 * rectangularity, ordered))
+    return max(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
+def card_quad_score(points: np.ndarray, image_shape: tuple[int, int]) -> float | None:
+    width = max(np.linalg.norm(points[1] - points[0]), np.linalg.norm(points[2] - points[3]))
+    height = max(np.linalg.norm(points[3] - points[0]), np.linalg.norm(points[2] - points[1]))
+    ratio = min(width, height) / max(width, height)
+    if not 0.58 <= ratio <= 0.82:
+        return None
+
+    image_height, image_width = image_shape
+    area_ratio = abs(float(cv2.contourArea(points))) / (image_width * image_height)
+    if not 0.12 <= area_ratio <= 0.92:
+        return None
+    center = points.mean(axis=0)
+    center_distance = np.linalg.norm(
+        (center - np.array([image_width / 2.0, image_height / 2.0]))
+        / np.array([image_width / 2.0, image_height / 2.0])
+    )
+    aspect_score = clamp(1.0 - abs(ratio - CARD_ASPECT) / 0.14)
+    center_score = clamp(1.0 - float(center_distance))
+    area_score = clamp(area_ratio / 0.55)
+    return 0.55 * aspect_score + 0.25 * center_score + 0.20 * area_score
 
 
 def order_points(points: np.ndarray) -> np.ndarray:
@@ -323,6 +436,23 @@ def region_similarity(left: np.ndarray, right: np.ndarray) -> float:
     if not np.isfinite(score):
         return 0.0
     return clamp((score + 1.0) / 2.0)
+
+
+def first_edition_stamp_presence(region: np.ndarray) -> float:
+    """Estimate whether the dense black First Edition stamp is present.
+
+    The thresholds are local to the small stamp box, so global exposure differences
+    between a catalog scan and a phone photo do not masquerade as a printed stamp.
+    """
+
+    if region.size == 0:
+        return 0.0
+    median = float(np.median(region))
+    dark_fraction = float(np.mean(region < median - 30.0))
+    edge_fraction = float(np.mean(cv2.Canny(region, 60, 160) > 0))
+    dark_score = clamp((dark_fraction - 0.05) / 0.18)
+    edge_score = clamp((edge_fraction - 0.035) / 0.12)
+    return clamp(0.60 * dark_score + 0.40 * edge_score)
 
 
 def orb_similarity(query: Features, reference: Features) -> float:

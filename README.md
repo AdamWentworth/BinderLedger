@@ -112,7 +112,8 @@ API available on your trusted network.
 - Git
 - Node.js 24 LTS
 - npm
-- Expo Go on a phone connected to the same trusted network
+- The BinderLedger Android development client on a phone connected to the same
+  trusted network
 
 ### Install and Configure
 
@@ -128,7 +129,7 @@ Create the ignored `apps/client/.env.local`:
 EXPO_PUBLIC_API_URL=http://<trusted-api-host>:4000
 ```
 
-### Run Web and Expo Go
+### Run Web and the Native Development Client
 
 ```bash
 npx expo start --lan --port 8082
@@ -137,9 +138,17 @@ npx expo start --lan --port 8082
 One Metro process serves both targets:
 
 - Press `w` or open `http://localhost:8082` for the web app.
-- Scan the QR code with Expo Go for the native app.
+- Open the installed BinderLedger development client and select the LAN server,
+  or scan Metro's development-client QR code.
 - Native builds call `EXPO_PUBLIC_API_URL` directly.
 - Web requests remain same-origin and use the Metro development proxy.
+
+The live card-outline detector uses custom native camera and OpenCV modules, so
+it cannot run inside Expo Go. To create a replacement Android development APK:
+
+```bash
+npx eas-cli@latest build --platform android --profile development
+```
 
 > [!WARNING]
 > When the configured API is production, watchlist mutations, scan uploads,

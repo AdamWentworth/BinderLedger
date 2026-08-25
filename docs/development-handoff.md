@@ -33,9 +33,19 @@ cd apps/client
 npx expo start --lan --port 8082
 ```
 
-Use the QR code with Expo Go, or press `w` for the browser build. The native app
-uses `EXPO_PUBLIC_API_URL`. The web client uses Metro's same-origin development
-proxy.
+Open the installed BinderLedger Android development client and select the LAN
+server, or scan Metro's development-client QR code. Press `w` for the browser
+build. The native app uses `EXPO_PUBLIC_API_URL`; the web client uses Metro's
+same-origin development proxy.
+
+The development client is required for the native card-outline detector and
+automatic capture because those features use custom camera and OpenCV modules
+that Expo Go does not include. Build a replacement Android APK when native
+dependencies change:
+
+```bash
+npx eas-cli@latest build --platform android --profile development
+```
 
 Before pushing:
 

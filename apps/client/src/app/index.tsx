@@ -6,8 +6,11 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  Grid2X2,
+  Grid3X3,
   Layers3,
   Library,
+  Square,
 } from 'lucide-react-native';
 import { useState } from 'react';
 import {
@@ -29,7 +32,7 @@ import { Screen } from '@/components/screen';
 import { SearchField } from '@/components/search-field';
 import { SelectionMenu } from '@/components/selection-menu';
 import { SetDetailModal } from '@/components/set-detail-modal';
-import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
+import { colors, contentMaxWidth, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import {
   buildCatalogSetGroups,
@@ -46,7 +49,10 @@ import {
   getCatalogListings,
   getCatalogSets,
 } from '@/lib/api';
-import { useCatalogPreferences } from '@/providers/catalog-preferences';
+import {
+  type CatalogDensity,
+  useCatalogPreferences,
+} from '@/providers/catalog-preferences';
 
 const pageSize = 24;
 type CatalogMode = 'cards' | 'sets';
@@ -73,12 +79,19 @@ const sortOptions: { label: string; value: CatalogListingSort }[] = [
 ];
 
 export default function CatalogScreen() {
-  const { condition, setCondition } = useCatalogPreferences();
+  const { condition, density, setCondition, setDensity } = useCatalogPreferences();
   const width = useHydratedWidth();
   const pageWidth = getUsablePageWidth(width);
   const compact = pageWidth < 760;
   const desktop = pageWidth >= 1040;
-  const columns = pageWidth >= 1040 ? 3 : pageWidth >= 760 ? 2 : 1;
+  const horizontalPadding = width < 720 ? spacing.md * 2 : spacing.xl * 2;
+  const contentWidth = Math.max(0, Math.min(pageWidth, contentMaxWidth) - horizontalPadding);
+  const resultsWidth = Math.max(
+    0,
+    contentWidth - (compact ? 0 : 232 + spacing.lg),
+  );
+  const gridGap = desktop ? spacing.lg : spacing.md;
+  const columns = getCatalogColumnCount(resultsWidth, density, gridGap);
   const setColumns = pageWidth >= 1040 ? 3 : pageWidth >= 620 ? 2 : 1;
   const [mode, setMode] = useState<CatalogMode>('cards');
   const [selectedSet, setSelectedSet] = useState('');
@@ -336,28 +349,37 @@ export default function CatalogScreen() {
                 <View style={styles.resultCountWrap}>
                   <Layers3 color={colors.brass} size={17} />
                   <Text style={styles.resultCount}>
-                    {listingsQuery.isPending ? 'Loading catalog' : `${total} printings`}
+                    {listingsQuery.isPending
+                      ? 'Loading catalog'
+                      : total === 0
+                        ? '0 printings'
+                        : `${pageStart}-${pageEnd} of ${total} printings`}
                   </Text>
-                  {total > 0 && <Text style={styles.pageRange}>{pageStart}-{pageEnd}</Text>}
                 </View>
 
-                <View style={styles.pager}>
-                  <Pressable
-                    accessibilityLabel="Previous catalog page"
-                    accessibilityRole="button"
-                    disabled={!hasPrevious}
-                    onPress={() => setOffset(Math.max(0, offset - pageSize))}
-                    style={[styles.pageButton, !hasPrevious && styles.pageButtonDisabled]}>
-                    <ChevronLeft color={colors.text} size={19} />
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel="Next catalog page"
-                    accessibilityRole="button"
-                    disabled={!hasNext}
-                    onPress={() => setOffset(offset + pageSize)}
-                    style={[styles.pageButton, !hasNext && styles.pageButtonDisabled]}>
-                    <ChevronRight color={colors.text} size={19} />
-                  </Pressable>
+                <View style={styles.resultsActions}>
+                  <CatalogDensityControl
+                    density={density}
+                    onChange={setDensity}
+                  />
+                  <View style={styles.pager}>
+                    <Pressable
+                      accessibilityLabel="Previous catalog page"
+                      accessibilityRole="button"
+                      disabled={!hasPrevious}
+                      onPress={() => setOffset(Math.max(0, offset - pageSize))}
+                      style={[styles.pageButton, !hasPrevious && styles.pageButtonDisabled]}>
+                      <ChevronLeft color={colors.text} size={19} />
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel="Next catalog page"
+                      accessibilityRole="button"
+                      disabled={!hasNext}
+                      onPress={() => setOffset(offset + pageSize)}
+                      style={[styles.pageButton, !hasNext && styles.pageButtonDisabled]}>
+                      <ChevronRight color={colors.text} size={19} />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
 
@@ -372,7 +394,11 @@ export default function CatalogScreen() {
                 />
               ) : listings.length === 0 ? (
                 <EmptyState
-                  message="Try another card name, number, or collected set."
+                  message={
+                    gradedOnly
+                      ? 'Try another set or remove the graded-pricing filter.'
+                      : 'Try another card name, number, or collected set.'
+                  }
                   title="No matching cards"
                 />
               ) : (
@@ -385,9 +411,11 @@ export default function CatalogScreen() {
                         columns === 1 && styles.gridItemOne,
                         columns === 2 && styles.gridItemTwo,
                         columns === 3 && styles.gridItemThree,
+                        columns === 4 && styles.gridItemFour,
                       ]}>
                       <CatalogCardTile
                         condition={condition}
+                        density={density}
                         listing={listing}
                         onPress={setSelectedListing}
                       />
@@ -404,6 +432,82 @@ export default function CatalogScreen() {
       <SetDetailModal set={selectedPricingSet} onClose={() => setSelectedPricingSet(null)} />
     </Screen>
   );
+}
+
+function CatalogDensityControl({
+  density,
+  onChange,
+}: {
+  density: CatalogDensity;
+  onChange: (density: CatalogDensity) => void;
+}) {
+  return (
+    <View accessibilityLabel="Card size" accessibilityRole="tablist" style={styles.densityControl}>
+      <DensityButton
+        icon={<Square color={density === 'large' ? colors.text : colors.textMuted} size={15} />}
+        label="Large"
+        onPress={() => onChange('large')}
+        selected={density === 'large'}
+      />
+      <DensityButton
+        icon={<Grid2X2 color={density === 'standard' ? colors.text : colors.textMuted} size={15} />}
+        label="Standard"
+        onPress={() => onChange('standard')}
+        selected={density === 'standard'}
+      />
+      <DensityButton
+        icon={<Grid3X3 color={density === 'compact' ? colors.text : colors.textMuted} size={15} />}
+        label="Compact"
+        onPress={() => onChange('compact')}
+        selected={density === 'compact'}
+      />
+    </View>
+  );
+}
+
+function DensityButton({
+  icon,
+  label,
+  onPress,
+  selected,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  selected: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={`${label} card size`}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[styles.densityButton, selected && styles.densityButtonSelected]}>
+      {icon}
+      <Text style={[styles.densityButtonText, selected && styles.densityButtonTextSelected]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function getCatalogColumnCount(
+  availableWidth: number,
+  density: CatalogDensity,
+  gap: number,
+): number {
+  const minimumWidth: Record<CatalogDensity, number> = {
+    large: 300,
+    standard: 205,
+    compact: 150,
+  };
+  const maximumColumns: Record<CatalogDensity, number> = {
+    large: 2,
+    standard: 3,
+    compact: 4,
+  };
+  const fittedColumns = Math.floor((availableWidth + gap) / (minimumWidth[density] + gap));
+  return Math.max(1, Math.min(maximumColumns[density], fittedColumns));
 }
 
 function CatalogModeControl({
@@ -999,6 +1103,8 @@ const styles = StyleSheet.create({
   resultsHeader: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
     justifyContent: 'space-between',
     marginBottom: spacing.md,
     minHeight: 38,
@@ -1013,9 +1119,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  pageRange: {
+  resultsActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'flex-end',
+  },
+  densityControl: {
+    backgroundColor: colors.surfaceQuiet,
+    borderRadius: 6,
+    flexDirection: 'row',
+    padding: 3,
+  },
+  densityButton: {
+    alignItems: 'center',
+    borderRadius: 4,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 30,
+    paddingHorizontal: 8,
+  },
+  densityButtonSelected: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  densityButtonText: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  densityButtonTextSelected: {
+    color: colors.text,
   },
   pager: {
     flexDirection: 'row',
@@ -1054,9 +1191,12 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   gridItemTwo: {
-    width: '48%',
+    width: '47.5%',
   },
   gridItemThree: {
     width: '30.5%',
+  },
+  gridItemFour: {
+    width: '22.2%',
   },
 });

@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { BadgeDollarSign, CircleAlert, History, ImageOff } from 'lucide-react-native';
+import { BadgeCheck, BadgeDollarSign, CircleAlert, History, ImageOff } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -11,27 +11,44 @@ import {
   type MarketCondition,
   resolveImageURL,
 } from '@/lib/api';
+import { type CatalogDensity } from '@/providers/catalog-preferences';
 
 type CatalogCardTileProps = {
   condition: MarketCondition;
+  density: CatalogDensity;
   listing: CatalogListing;
   onPress: (listing: CatalogListing) => void;
 };
 
-export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTileProps) {
+export function CatalogCardTile({ condition, density, listing, onPress }: CatalogCardTileProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const historical = listing.priceQuality.status === 'historical';
   const unavailable = listing.priceQuality.status === 'unavailable';
   const estimated = listing.valuationKind === 'ungraded_reference';
   const warning = listing.priceQuality.reason !== null;
+  const hasGradedPricing = listing.valuationReferences.some(
+    (reference) => reference.kind === 'graded' && reference.amount !== null,
+  );
+  const compact = density === 'compact';
 
   return (
     <Pressable
-      accessibilityLabel={`Open ${listing.name}, ${listing.setName}, ${listing.edition}, ${listing.finish}`}
+      accessibilityLabel={`Open ${listing.name}, ${listing.setName}, ${listing.edition}, ${listing.finish}${
+        hasGradedPricing ? ', graded pricing available' : ''
+      }`}
       accessibilityRole="button"
       onPress={() => onPress(listing)}
-      style={({ pressed }) => [styles.container, pressed && styles.pressed]}>
-      <View style={styles.imageFrame}>
+      style={({ pressed }) => [
+        styles.container,
+        compact && styles.containerCompact,
+        pressed && styles.pressed,
+      ]}>
+      <View
+        style={[
+          styles.imageFrame,
+          density === 'large' && styles.imageFrameLarge,
+          compact && styles.imageFrameCompact,
+        ]}>
         {listing.imageUrl && !imageFailed ? (
           <Image
             contentFit="contain"
@@ -48,31 +65,61 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
         )}
       </View>
 
-      <View style={styles.body}>
-        <View style={styles.titleRow}>
-          <Text numberOfLines={2} style={styles.name}>
+      <View
+        style={[
+          styles.body,
+          density === 'large' && styles.bodyLarge,
+          compact && styles.bodyCompact,
+        ]}>
+        <View style={[styles.titleRow, compact && styles.titleRowCompact]}>
+          <Text
+            numberOfLines={2}
+            style={[
+              styles.name,
+              density === 'large' && styles.nameLarge,
+              compact && styles.nameCompact,
+            ]}>
             {listing.name}
           </Text>
-          <Text style={styles.number}>{listing.number}</Text>
+          <Text style={[styles.number, compact && styles.numberCompact]}>{listing.number}</Text>
         </View>
-        <Text numberOfLines={1} style={styles.setName}>
-          {listing.setName}
-        </Text>
+        <View style={styles.setMetaRow}>
+          <Text numberOfLines={1} style={[styles.setName, compact && styles.setNameCompact]}>
+            {listing.setName}
+          </Text>
+          {hasGradedPricing ? (
+            <View style={styles.gradedMarker}>
+              <BadgeCheck color={colors.brand} size={compact ? 12 : 13} />
+              <Text style={styles.gradedMarkerText}>Graded</Text>
+            </View>
+          ) : null}
+        </View>
 
-        <View style={styles.tags}>
-          <View style={[styles.tag, listing.edition === 'First Edition' && styles.editionTag]}>
+        <View style={[styles.tags, compact && styles.tagsCompact]}>
+          <View
+            style={[
+              styles.tag,
+              compact && styles.tagCompact,
+              listing.edition === 'First Edition' && styles.editionTag,
+            ]}>
             <Text
               numberOfLines={1}
-              style={[styles.tagText, listing.edition === 'First Edition' && styles.editionTagText]}>
+              style={[
+                styles.tagText,
+                compact && styles.tagTextCompact,
+                listing.edition === 'First Edition' && styles.editionTagText,
+              ]}>
               {listing.edition}
             </Text>
           </View>
-          <View style={styles.tag}>
-            <Text numberOfLines={1} style={styles.tagText}>{listing.finish}</Text>
+          <View style={[styles.tag, compact && styles.tagCompact]}>
+            <Text numberOfLines={1} style={[styles.tagText, compact && styles.tagTextCompact]}>
+              {listing.finish}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.priceRow}>
+        <View style={[styles.priceRow, compact && styles.priceRowCompact]}>
           <View style={styles.priceLabelWrap}>
             {historical ? <History color={colors.warning} size={13} /> : null}
             {(unavailable || warning) && !estimated ? (
@@ -97,13 +144,17 @@ export function CatalogCardTile({ condition, listing, onPress }: CatalogCardTile
           <Text
             style={[
               styles.price,
+              density === 'large' && styles.priceLarge,
+              compact && styles.priceCompact,
               unavailable && !estimated && styles.priceUnavailable,
               estimated && styles.priceReference,
             ]}>
             {estimated
               ? formatCurrency(listing.currentPrice)
               : unavailable
-                ? 'Price unavailable'
+                ? compact
+                  ? 'Unavailable'
+                  : 'Price unavailable'
                 : formatCurrency(listing.currentPrice)}
           </Text>
         </View>
@@ -121,6 +172,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     width: '100%',
   },
+  containerCompact: {
+    borderRadius: 6,
+  },
   pressed: {
     borderColor: colors.brand,
     opacity: 0.88,
@@ -131,6 +185,14 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
     padding: spacing.md,
+  },
+  imageFrameLarge: {
+    aspectRatio: 0.76,
+    padding: spacing.lg,
+  },
+  imageFrameCompact: {
+    aspectRatio: 0.78,
+    padding: spacing.sm,
   },
   image: {
     height: '100%',
@@ -151,11 +213,23 @@ const styles = StyleSheet.create({
     minHeight: 154,
     padding: spacing.md,
   },
+  bodyLarge: {
+    minHeight: 164,
+  },
+  bodyCompact: {
+    gap: 6,
+    minHeight: 138,
+    padding: 10,
+  },
   titleRow: {
     alignItems: 'flex-start',
     flexDirection: 'row',
     gap: spacing.sm,
     minHeight: 40,
+  },
+  titleRowCompact: {
+    gap: spacing.xs,
+    minHeight: 36,
   },
   name: {
     color: colors.text,
@@ -164,15 +238,48 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 20,
   },
+  nameLarge: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  nameCompact: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
   number: {
     color: colors.brass,
     fontSize: 11,
     fontWeight: '700',
     paddingTop: 2,
   },
+  numberCompact: {
+    fontSize: 9,
+  },
+  setMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'space-between',
+    minWidth: 0,
+  },
   setName: {
     color: colors.textMuted,
+    flex: 1,
     fontSize: 12,
+  },
+  setNameCompact: {
+    fontSize: 10,
+  },
+  gradedMarker: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: 3,
+  },
+  gradedMarkerText: {
+    color: colors.brand,
+    fontSize: 9,
+    fontWeight: '800',
   },
   tags: {
     alignItems: 'center',
@@ -180,12 +287,19 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minHeight: 24,
   },
+  tagsCompact: {
+    minHeight: 20,
+  },
   tag: {
     backgroundColor: colors.surfaceRaised,
     borderRadius: 4,
     maxWidth: '52%',
     paddingHorizontal: 7,
     paddingVertical: 4,
+  },
+  tagCompact: {
+    paddingHorizontal: 5,
+    paddingVertical: 3,
   },
   editionTag: {
     backgroundColor: colors.warningSurface,
@@ -196,6 +310,9 @@ const styles = StyleSheet.create({
     color: colors.burgundy,
     fontSize: 10,
     fontWeight: '700',
+  },
+  tagTextCompact: {
+    fontSize: 9,
   },
   editionTagText: {
     color: colors.brass,
@@ -209,6 +326,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     paddingTop: spacing.sm,
   },
+  priceRowCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    gap: spacing.xs,
+  },
   priceLabel: {
     color: colors.textMuted,
     fontSize: 11,
@@ -218,6 +340,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.xs,
+    minWidth: 0,
   },
   priceLabelFlagged: {
     color: colors.warning,
@@ -229,6 +352,13 @@ const styles = StyleSheet.create({
     color: colors.brand,
     fontSize: 15,
     fontWeight: '800',
+  },
+  priceLarge: {
+    fontSize: 17,
+  },
+  priceCompact: {
+    alignSelf: 'flex-end',
+    fontSize: 13,
   },
   priceUnavailable: {
     color: colors.warning,

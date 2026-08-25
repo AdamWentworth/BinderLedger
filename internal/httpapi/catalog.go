@@ -87,6 +87,11 @@ func (api *API) catalogListings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "condition is not supported")
 		return
 	}
+	gradedOnly, ok := queryBoolean(r, "graded_only", false)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "graded_only must be true or false")
+		return
+	}
 	sortValue, ok := catalog.ParseListingSort(r.URL.Query().Get("sort"))
 	if !ok {
 		writeError(w, http.StatusBadRequest, "sort is not supported")
@@ -94,14 +99,15 @@ func (api *API) catalogListings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page, err := api.catalog.ListListings(r.Context(), catalog.ListingFilter{
-		SetID:     r.URL.Query().Get("set_id"),
-		Query:     query,
-		Edition:   edition,
-		Finish:    finish,
-		Condition: condition,
-		Sort:      sortValue,
-		Limit:     limit,
-		Offset:    offset,
+		SetID:      r.URL.Query().Get("set_id"),
+		Query:      query,
+		Edition:    edition,
+		Finish:     finish,
+		GradedOnly: gradedOnly,
+		Condition:  condition,
+		Sort:       sortValue,
+		Limit:      limit,
+		Offset:     offset,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "catalog listings are unavailable")
@@ -163,6 +169,20 @@ func queryInteger(r *http.Request, key string, fallback, minimum, maximum int) (
 		return 0, false
 	}
 	return parsed, true
+}
+
+func queryBoolean(r *http.Request, key string, fallback bool) (bool, bool) {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return fallback, true
+	}
+	if value == "true" {
+		return true, true
+	}
+	if value == "false" {
+		return false, true
+	}
+	return false, false
 }
 
 func optionalCatalogValue(value string, allowed ...string) bool {

@@ -139,14 +139,15 @@ type ValuationReference struct {
 }
 
 type ListingFilter struct {
-	SetID     string
-	Query     string
-	Edition   string
-	Finish    string
-	Condition string
-	Sort      ListingSort
-	Limit     int
-	Offset    int
+	SetID      string
+	Query      string
+	Edition    string
+	Finish     string
+	GradedOnly bool
+	Condition  string
+	Sort       ListingSort
+	Limit      int
+	Offset     int
 }
 
 type ListingPage struct {
@@ -560,6 +561,18 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				)
 			)
 			  AND ($4 = '' OR quality.finish = $4)
+			  AND (
+				NOT $6
+				OR EXISTS (
+					SELECT 1
+					FROM catalog_valuation_references graded_reference
+					WHERE graded_reference.tcgplayer_product_id = c.tcgplayer_product_id
+					  AND graded_reference.edition = quality.edition
+					  AND graded_reference.finish = quality.finish
+					  AND graded_reference.language = quality.language
+					  AND graded_reference.kind = 'graded'
+				)
+			  )
 		)
 		SELECT
 			count(*) OVER()::integer,
@@ -587,10 +600,10 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			near_mint_price
 		FROM listings
 		ORDER BY
-			CASE WHEN $6 = 'price_desc' THEN current_price END DESC NULLS LAST,
-			CASE WHEN $6 = 'price_asc' THEN current_price END ASC NULLS LAST,
-			CASE WHEN $6 = 'name_asc' THEN lower(name) END ASC,
-			CASE WHEN $6 = 'name_desc' THEN lower(name) END DESC,
+			CASE WHEN $7 = 'price_desc' THEN current_price END DESC NULLS LAST,
+			CASE WHEN $7 = 'price_asc' THEN current_price END ASC NULLS LAST,
+			CASE WHEN $7 = 'name_asc' THEN lower(name) END ASC,
+			CASE WHEN $7 = 'name_desc' THEN lower(name) END DESC,
 			CASE WHEN $1 = '' THEN release_date END NULLS LAST,
 			CASE WHEN $1 = '' THEN set_display_order END NULLS LAST,
 			CASE WHEN $1 = '' THEN set_name END NULLS LAST,
@@ -599,8 +612,8 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			CASE edition WHEN 'First Edition' THEN 1 WHEN 'Shadowless' THEN 2 WHEN 'Unlimited' THEN 3 ELSE 4 END,
 			finish,
 			language
-		LIMIT $7 OFFSET $8
-	`, filter.SetID, filter.Query, filter.Edition, filter.Finish, filter.Condition, filter.Sort, filter.Limit, filter.Offset)
+		LIMIT $8 OFFSET $9
+	`, filter.SetID, filter.Query, filter.Edition, filter.Finish, filter.Condition, filter.GradedOnly, filter.Sort, filter.Limit, filter.Offset)
 	if err != nil {
 		return ListingPage{}, fmt.Errorf("query catalog listings: %w", err)
 	}

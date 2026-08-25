@@ -30,6 +30,26 @@ func TestQueryInteger(t *testing.T) {
 	}
 }
 
+func TestQueryBoolean(t *testing.T) {
+	for _, test := range []struct {
+		query    string
+		fallback bool
+		want     bool
+		wantOK   bool
+	}{
+		{query: "", fallback: true, want: true, wantOK: true},
+		{query: "?graded_only=true", want: true, wantOK: true},
+		{query: "?graded_only=false", fallback: true, want: false, wantOK: true},
+		{query: "?graded_only=1", wantOK: false},
+	} {
+		request := httptest.NewRequest("GET", "/api/catalog/listings"+test.query, nil)
+		got, ok := queryBoolean(request, "graded_only", test.fallback)
+		if got != test.want || ok != test.wantOK {
+			t.Fatalf("queryBoolean(%q) = (%v, %v), want (%v, %v)", test.query, got, ok, test.want, test.wantOK)
+		}
+	}
+}
+
 func TestOptionalCatalogValue(t *testing.T) {
 	for _, test := range []struct {
 		value string

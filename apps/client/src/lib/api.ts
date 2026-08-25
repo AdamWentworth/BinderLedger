@@ -432,6 +432,7 @@ type CatalogListingRequest = {
   query?: string;
   edition?: string;
   finish?: string;
+  gradedOnly?: boolean;
   condition: MarketCondition;
   sort?: CatalogListingSort;
   limit?: number;
@@ -444,6 +445,7 @@ export async function getCatalogListings({
   query = '',
   edition = '',
   finish = '',
+  gradedOnly = false,
   condition,
   sort = 'set_number',
   limit = 24,
@@ -460,6 +462,7 @@ export async function getCatalogListings({
   if (query) parameters.set('q', query);
   if (edition) parameters.set('edition', edition);
   if (finish) parameters.set('finish', finish);
+  if (gradedOnly) parameters.set('graded_only', 'true');
 
   const response = await fetch(`${apiURL}/api/catalog/listings?${parameters}`, { signal });
   if (!response.ok) {

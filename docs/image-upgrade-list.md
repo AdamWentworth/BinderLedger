@@ -53,6 +53,7 @@ not constitute an upgrade; an enlarged blurry scan still fails the baseline.
 
 | Completed | Card | Replacement | Resolution |
 | --- | --- | --- | --- |
+| 2026-08-24 | Venusaur, Charmander, and Impostor Professor Oak, Base Set First Edition | TCGplayer | Restored the sharper provider images after the automated PriceCharting batch selected visibly inferior alternatives. |
 | 2026-08-24 | Charizard, Base Set First Edition 004/102 | TCGplayer, 731x1000 | Restored the sharper provider image after the larger PriceCharting scan proved visibly soft and washed out. |
 | 2026-08-24 | Machamp, Base Set Shadowless 008/102 | Sports Card Investor | Replaced the softer PriceCharting image with a verified 1400x1960 delivery image showing the First Edition stamp, shadowless frame, and `1995, 96, 98, 99` copyright line. |
 | 2026-08-23 | Pikachu (Red Cheeks), Base Set First Edition 058/102 | PriceCharting, 1070x1494 | Added an exact-printing scan that clearly shows both red cheeks and the First Edition stamp. |

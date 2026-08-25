@@ -53,6 +53,9 @@ wrong printing. Every replacement requires visual review.
 
 ## Known Exceptions
 
+- Base Set First Edition keeps its exact-printing TCGplayer provider images by
+  default. Do not include `base-first-edition` in an automated PriceCharting
+  image run; replace an individual card only after comparing visual quality.
 - Every standard English Base Set Machamp is stamped First Edition. The
   shadowless-layout printing belongs to the First Edition set and is shared
   into the Shadowless checklist. The later shadowed printing belongs to the

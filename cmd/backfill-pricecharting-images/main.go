@@ -43,6 +43,7 @@ const (
 	maximumPageBytes     = 12 << 20
 	maximumImageBytes    = 24 << 20
 	userAgent            = "BinderLedger/0.1 (+https://github.com/AdamWentworth/BinderLedger)"
+	defaultTargetNames   = "base-shadowless,base-unlimited,jungle-unlimited,fossil-unlimited,team-rocket-unlimited"
 )
 
 type targetSpec struct {
@@ -187,7 +188,7 @@ func main() {
 func run(ctx context.Context, logger *slog.Logger) error {
 	targetNames := flag.String(
 		"targets",
-		"base-first-edition,base-shadowless,base-unlimited,jungle-unlimited,fossil-unlimited,team-rocket-unlimited",
+		defaultTargetNames,
 		"comma-separated image target groups",
 	)
 	cacheDir := flag.String("cache-dir", "data/pricecharting-cache", "directory for cached index pages")

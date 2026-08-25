@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+func TestDefaultTargetsPreserveFirstEditionProviderImages(t *testing.T) {
+	t.Parallel()
+
+	specs, err := parseTargetSpecs(defaultTargetNames)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, spec := range specs {
+		if spec.Key == "base-first-edition" {
+			t.Fatal("default targets include Base Set First Edition")
+		}
+	}
+}
+
 func TestParseIndexPage(t *testing.T) {
 	t.Parallel()
 

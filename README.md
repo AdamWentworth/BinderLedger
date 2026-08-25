@@ -1,23 +1,197 @@
-# BinderLedger
+# 📒 BinderLedger — Legacy Trading Card Collection & Market Tracker
 
-BinderLedger is a condition-aware collection and market tracker for legacy trading cards. The initial product covers English Pokemon cards from the Wizards of the Coast era through the EX era, with a universal Expo client, a Go API, and PostgreSQL.
+[![CI](https://github.com/AdamWentworth/BinderLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/AdamWentworth/BinderLedger/actions/workflows/ci.yml)
 
-## Repository
+BinderLedger is a condition-aware catalog, collection, and market tracker for
+legacy trading cards. Its first product scope is English Pokémon cards from the
+Wizards of the Coast era through the EX era, delivered through one Expo app for
+web, iOS, and Android.
+
+The project combines exact-printing catalog data, condition-specific pricing,
+watchlists, historical market views, and assisted card recognition in a
+resource-conscious private deployment.
+
+> [!IMPORTANT]
+> BinderLedger is currently a private, personal MVP. It has no user accounts,
+> is not intended for public internet exposure, and may operate directly on
+> production data during frontend development.
+
+---
+
+## ✨ What BinderLedger Does
+
+- **Tracks exact printings** across set, edition, finish, language, and market
+  condition instead of collapsing cards by name.
+- **Explores legacy catalogs** with search, set browsing, edition and finish
+  filters, graded-price indicators, and multiple card densities.
+- **Charts market history** for NM, LP, MP, HP, and Damaged variants while
+  flagging stale, thin, or unusually volatile price series.
+- **Builds watchlists** from exact card printings or entire set editions while
+  inheriting the selected market condition.
+- **Captures and identifies cards** from mobile camera photos or desktop image
+  uploads using an OpenCV/Tesseract worker and verified catalog candidates.
+- **Expands provider data safely** with persistent caches, resumable collectors,
+  idempotent imports, and request budgets below provider limits.
+- **Runs everywhere from one client** through Expo Router and React Native Web.
+
+The active catalog expansion targets 38 approved English Pokémon sets released
+before Diamond and Pearl.
+
+---
+
+## 🧰 Technology Stack
+
+<!-- markdownlint-disable MD013 -->
+
+| Layer | Technology | Responsibility |
+| --- | --- | --- |
+| Client | Expo 54, React Native 0.81, React 19, TypeScript | Web, iOS, Android, camera capture, local interaction state |
+| Navigation and data | Expo Router, TanStack Query | Typed routes, API caching, loading and mutation state |
+| API | Go 1.26, `net/http`, pgx | Catalog rules, market views, watchlists, scans, stable JSON contracts |
+| Database | PostgreSQL 17 | Catalog, exact printings, price observations, watchlists, scans |
+| Vision | Python, OpenCV, Tesseract | Perspective correction, feature matching, OCR, ranked candidates |
+| Collection | Node.js and Go workers | Quota-aware provider collection, normalization, refresh jobs |
+| Delivery | Docker Compose, GHCR, GitHub Actions, systemd | Tested images, migrations, deployment, timers, backups |
+
+<!-- markdownlint-enable MD013 -->
+
+---
+
+## 🏗️ Architecture
 
 ```text
-apps/client/          Expo + React Native client (web, iOS, Android)
-cmd/api/              Go JSON API
-cmd/migrate/          PostgreSQL migration command
-cmd/backfill-pricecharting-images/  Printing-specific image collector
-docs/                 Architecture and decisions
-services/vision/      OpenCV/Tesseract recognition worker
-ops/prod/             Resource-bounded production deployment
-tools/justtcg-audit/  Preserved JustTCG research collector
+                         ┌────────────────────┐
+ Web / iOS / Android ───▶│ Expo client        │
+                         └─────────┬──────────┘
+                                   │ JSON + image uploads
+                         ┌─────────▼──────────┐
+                         │ Go API             │
+                         └──────┬───────┬─────┘
+                                │       │ private media
+                     ┌──────────▼──┐    └──────────────┐
+                     │ PostgreSQL  │                   │
+                     └──────▲──────┘          card / scan images
+                            │
+              ┌─────────────┼─────────────────┐
+              │             │                 │
+       import / refresh  history jobs   vision worker
+       JustTCG + fallbacks              OpenCV + OCR
 ```
 
-## Local setup
+The client owns presentation and device capabilities. The Go API owns domain
+rules and contracts. PostgreSQL is the source of truth. Collectors and vision
+workers operate behind those boundaries rather than writing client state.
 
-Requirements: Go 1.26+, Node 24 LTS, npm, Docker Compose, and PostgreSQL 17.
+See [the architecture notes](docs/architecture.md) for the full system shape.
+
+---
+
+## 📦 Repository Layout
+
+```text
+apps/client/                         Expo + React Native universal client
+cmd/api/                             Go JSON API
+cmd/migrate/                         Embedded PostgreSQL migration command
+cmd/import-justtcg/                  Idempotent catalog and history importer
+cmd/refresh-justtcg/                 Rotating current-price refresh worker
+cmd/backfill-pkmnprices/             Controlled historical fallback worker
+cmd/backfill-pricecharting-images/   Manual printing-image curation tool
+internal/                            API, catalog, market, scan, and DB packages
+services/vision/                     OpenCV/Tesseract recognition worker
+tools/justtcg-audit/                 Discovery and historical collection tools
+ops/prod/                            Production Compose, timers, and recovery
+deploy/systemd/user/                 Legacy development-host user services
+docs/                                Architecture, policy, and workflow notes
+```
+
+Downloaded media, scans, provider output, caches, dumps, and credentials are
+intentionally ignored and backed up outside Git.
+
+---
+
+## 🚀 Frontend Development
+
+The primary development machine runs only the Expo frontend. The authoritative
+API, PostgreSQL database, vision worker, collectors, media, and backups remain
+on the trusted production host.
+
+### Prerequisites
+
+- Git
+- Node.js 24 LTS
+- npm
+- Expo Go on a phone connected to the same trusted network
+
+### Install
+
+```bash
+git clone git@github.com:AdamWentworth/BinderLedger.git
+cd BinderLedger/apps/client
+npm ci
+```
+
+Create the ignored `apps/client/.env.local`:
+
+```dotenv
+EXPO_PUBLIC_API_URL=http://<API_LAN_IP>:4000
+```
+
+### Run Web and Expo Go
+
+```bash
+cd apps/client
+npx expo start --lan --port 8082
+```
+
+One Metro process serves both targets:
+
+- Press `w` or open `http://localhost:8082` for the web app.
+- Scan the QR code with Expo Go for the native app.
+- Native builds call `EXPO_PUBLIC_API_URL` directly.
+- Web requests stay same-origin and pass through the development Metro proxy.
+
+> [!WARNING]
+> If `.env.local` points at production, watchlist changes, scan uploads, and
+> confirmations affect production data. Add staging before developing accounts,
+> catalog editing, or destructive workflows.
+
+The complete machine boundary is documented in
+[the frontend development handoff](docs/development-handoff.md).
+
+---
+
+## 🧪 Verification
+
+Run the client checks before pushing frontend work:
+
+```bash
+cd apps/client
+npm run typecheck
+npm run lint
+npx expo-doctor
+npm run export:web
+```
+
+Backend and collector checks:
+
+```bash
+go test ./cmd/... ./internal/...
+go vet ./cmd/... ./internal/...
+npm test --prefix tools/justtcg-audit
+```
+
+The CI workflow also builds and tests the deployed vision environment before it
+publishes production images.
+
+---
+
+## 🧱 Optional Isolated Full-Stack Development
+
+Backend work should use an isolated development database—never the production
+database directly.
+
+Additional requirements: Docker Compose, Go 1.26+, and PostgreSQL 17 client
+tools.
 
 ```bash
 cp .env.example .env
@@ -28,111 +202,155 @@ docker compose up -d --build vision
 go run ./cmd/api
 ```
 
-In another terminal:
+Development defaults are intentionally separate from production:
 
-```bash
-cd apps/client
-npm install
-npm run web
-```
+| Service | Development endpoint |
+| --- | --- |
+| PostgreSQL | `127.0.0.1:55432` |
+| Go API | `127.0.0.1:4001` |
+| Expo / Metro | `8082` |
+| Static web preview | `8083` |
 
-Development uses its own Compose project, PostgreSQL volume, and ports. The
-database listens only on `127.0.0.1:55432`, the API uses `4001`, Expo Go uses
-`8082`, and the static development web preview uses `8083`. These are
-separate from every production app stack on the server. A resource-limited
-development vision worker consumes scans from the development database and
-reads private scan files as the local user.
+The private TNAS handoff contains an older isolated development snapshot when
+backend restoration is explicitly required. It must never be restored over
+production.
 
-Start or stop the complete development runtime without affecting production:
+---
 
-```bash
-make dev-up
-make dev-status
-make dev-down
-```
+## 🔌 API Surface
 
-The development database persists in the dedicated
-`binderledger_dev_postgres` Docker volume when the runtime is stopped. While
-the runtime is up, the exported browser app is available at
-`http://localhost:8083` or `http://192.168.1.77:8083`, and the phone-only Metro
-server is available to Expo Go at `exp://192.168.1.77:8082`. Loopback proxies
-provide localhost access without exposing the development services on every
-network interface. Keeping web out of Metro prevents the two bundles from
-exhausting memory on this server. Run `make client-export` and refresh the
-browser after changing client code.
+<!-- markdownlint-disable MD013 -->
 
-For Expo Go on the same trusted Wi-Fi network, bind the API to this computer's
-LAN address, place the same URL in `apps/client/.env.local`, and run:
+| Area | Routes |
+| --- | --- |
+| Health | `GET /api/health` |
+| Catalog | `GET /api/catalog/sets`, `GET /api/catalog/cards`, `GET /api/catalog/listings` |
+| Set pricing | `GET /api/catalog/sets/{setID}/pricing` |
+| Images | `GET /api/catalog/images/{filename}` |
+| Market | `GET /api/market/overview`, `GET /api/market/variants/{variantID}/history` |
+| Watchlists | `GET /api/watchlists/{watchlistID}`, membership `GET`, card/set `POST` and `DELETE` routes |
+| Scans | `POST /api/scans`, `GET /api/scans/{scanID}`, `POST /api/scans/{scanID}/confirmation` |
 
-```bash
-make client-phone
-```
+<!-- markdownlint-enable MD013 -->
 
-The phone workflow currently uses Expo SDK 54 because that is the version in
-the public-store Expo Go client during the SDK 57 transition. `make
-client-phone` targets the isolated development API. `make client-phone-prod`
-uses the production API for an explicit integration test.
+Market periods are `1d`, `1w`, `1m`, `1y`, and `all`. Prices preserve market
+condition instead of blending NM, LP, MP, HP, and Damaged observations.
 
-`go run ./cmd/import-justtcg` is idempotent. It imports every collected set JSON file under `tools/justtcg-audit/output/collections` into normalized catalog, variant, and daily price tables. Rerun it after a collector pass to update the database.
+---
 
-The current API surface includes:
+## 📈 Catalog and Pricing Data
 
-- `GET /api/catalog/sets`
-- `GET /api/catalog/cards`
-- `GET /api/market/overview?period=1m&condition=Near%20Mint`
-- `GET /api/market/variants/{variantID}/history?period=1m`
-- `GET /api/watchlists/default?period=1m&condition=Near%20Mint`
-- `GET /api/watchlists/default/items`
-- `POST /api/watchlists/default/cards`
-- `DELETE /api/watchlists/default/cards/{itemID}`
-- `POST /api/watchlists/default/sets`
-- `DELETE /api/watchlists/default/sets/{itemID}`
-- `POST /api/scans`
-- `GET /api/scans/{scanID}`
-- `POST /api/scans/{scanID}/confirmation`
+BinderLedger keeps durable raw provider responses and normalizes them into
+stable set, card, printing, variant, and daily observation records.
 
-Market periods are `1d`, `1w`, `1m`, `1y`, and `all`. Market rankings keep NM, LP, MP, HP, and Damaged variants separate, exclude price series more than seven days behind the latest market observation, and label thin or unusually volatile histories.
+- **JustTCG** is the primary catalog and condition-price history source.
+- **PkmnPrices** and **PokemonPriceTracker** are controlled fallback sources.
+- **PriceCharting** supports manually reviewed graded snapshots and private
+  printing-image curation—not scheduled page collection.
+- **Bulbagarden** is used only for manual discovery of reviewed replacement
+  images.
 
-The MVP uses one database-backed local watchlist. Card entries identify an exact
-printing while inheriting the selected market condition; set entries identify a
-set and edition. The tables and routes are ready to receive ownership and named
-lists when accounts are introduced.
+Collection is resumable, quota-aware, and deliberately stays below provider
+limits. Do not add a collector or increase its schedule without reviewing
+[the provider API policy](docs/provider-api-policy.md).
 
-The scanner MVP captures photos in the native app and accepts desktop JPEG or
-PNG uploads, with a required front and optional back image in a size-limited
-multipart request. It stores private originals under
-`data/scan-images` and records dimensions and checksums in PostgreSQL. The
-resource-limited vision worker corrects perspective, combines OpenCV features,
-targeted printing regions, and Tesseract OCR, and returns up to three verified
-exact-printing candidates. The user must confirm or reject those candidates.
-Condition suggestions remain pending until a trustworthy labeled photograph set
-exists.
+---
 
-On this 8 GB server, stop Metro when phone development is finished. The static
-development preview can also be rebuilt and run directly with:
+## 📷 Recognition Workflow
 
-```bash
-make client-preview
-```
+1. The client uploads a required front image and optional back image.
+2. The API stores private originals and records dimensions and checksums.
+3. The vision worker corrects perspective and combines image features with OCR.
+4. Up to three verified exact-printing candidates are returned.
+5. The user confirms or rejects the result.
 
-Use `make client` on a development laptop when web hot reloading is useful. The
-combined web and Android Metro workload exceeded Node's heap on this machine;
-the static preview uses a small fraction of that memory.
+Condition grading remains a suggestion boundary until a trustworthy labeled
+photograph set exists. Recognition details live in
+[the card-recognition pipeline](docs/card-recognition-pipeline.md).
 
-Production runs independently from this checkout. Compose configuration and
-deployment metadata live under `/srv/binderledger`; PostgreSQL, curated card
-images, and private scans live under `/mnt/storage/binderledger`. The private-LAN
-web client is `http://192.168.1.77:8081`, and the API is
-`http://192.168.1.77:4000`. See [ops/prod/README.md](ops/prod/README.md) for
-resource limits, deployment commands, and the GitHub runner handoff.
+---
 
-Real provider keys belong only in the ignored root `.env`. The JustTCG collector reads that file through `tools/justtcg-audit/.env`, which is a local symlink. PkmnPrices uses `PKMNPRICES_API_KEY` for historical backfills and as a fallback when JustTCG omits a card.
+## 🌐 Production and CI/CD
 
-Printing-specific card images live in the ignored `data/card-images` directory. `make pricecharting-images-status` reports coverage, and `make pricecharting-images-gallery` rebuilds the local visual-review pages. Back up the image directory separately from Git.
+Production is a private-LAN Docker Compose deployment. Pushes to `main` run CI;
+a successful workflow publishes immutable SHA-tagged images and dispatches a
+repo-scoped self-hosted runner that:
 
-See [docs/architecture.md](docs/architecture.md) for the system boundaries and deployment posture. The future personal-catalog import boundary is recorded in [docs/personal-catalog-inventory.md](docs/personal-catalog-inventory.md). Printing-specific image discovery and verification are documented in [docs/image-curation.md](docs/image-curation.md), with unresolved replacements tracked in [docs/image-upgrade-list.md](docs/image-upgrade-list.md).
-Provider quotas, retry rules, and data-use boundaries are recorded in [docs/provider-api-policy.md](docs/provider-api-policy.md). Review that policy before adding a collector or changing its schedule.
+1. Selects the exact commit image tag.
+2. Validates storage mounts and server-local environment files.
+3. Pulls images from GHCR.
+4. Runs database migrations.
+5. Recreates API, vision, collector, and web services.
+6. Performs API, web, container, and resource smoke checks.
 
-Graded PriceCharting snapshots are retained as append-only observations. The
-manual review and recording workflow is documented in
-[docs/graded-price-monitoring.md](docs/graded-price-monitoring.md).
+### Published GHCR Packages
+
+| Package | Purpose |
+| --- | --- |
+| `binderledger-core` | API, migrations, refresh, and administrative commands |
+| `binderledger-web` | Static Expo web export served by nginx |
+| `binderledger-vision` | OpenCV/Tesseract recognition worker |
+| `binderledger-collector` | Quota-aware historical collection runtime |
+
+These packages are deployment artifacts produced from this repository, not
+independent libraries. Production authenticates to GHCR before pulling them.
+
+Operational commands, limits, timers, backups, and restore procedures are in
+[the production runbook](ops/prod/README.md) and
+[disaster-recovery guide](ops/prod/disaster-recovery.md).
+
+---
+
+## 🔐 Security and Data Boundaries
+
+- Provider keys live only in ignored server-local environment files.
+- PostgreSQL and the vision worker are not published directly to the network.
+- Development, production, media, scans, caches, and backups have separate
+  ownership and storage boundaries.
+- Deployments do not overwrite production secrets or persistent data.
+- Card recognition results require human confirmation.
+- Provider data must not be republished as a raw dataset or substitute API.
+- Reference-image rights must be reviewed before any public distribution.
+
+This repository is public source code, but the current deployment is not a
+public hosted service.
+
+---
+
+## 📚 Project Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Architecture](docs/architecture.md) | Components, ownership, ingestion, and deployment posture |
+| [Development handoff](docs/development-handoff.md) | Frontend-only workstation setup and production boundary |
+| [Provider API policy](docs/provider-api-policy.md) | Quotas, retries, terms, and collection rules |
+| [Recognition pipeline](docs/card-recognition-pipeline.md) | Scan processing and candidate verification |
+| [Image curation](docs/image-curation.md) | Printing-specific image sourcing and review |
+| [Graded price monitoring](docs/graded-price-monitoring.md) | Manual valuation review workflow |
+| [Personal catalog boundary](docs/personal-catalog-inventory.md) | Future import and ownership model |
+| [Production runbook](ops/prod/README.md) | Deployment, timers, runtime limits, and backups |
+| [Disaster recovery](ops/prod/disaster-recovery.md) | Replacement-host restoration procedure |
+
+---
+
+## 🧭 Roadmap
+
+- Continue the approved pre-Diamond-and-Pearl catalog expansion.
+- Add accounts, ownership, named lists, and personal collection imports.
+- Introduce isolated staging before destructive or multi-user workflows.
+- Improve recognition evidence and train condition suggestions only from a
+  trustworthy labeled photo set.
+- Resolve image-rights and provider-plan requirements before wider release.
+- Continue accessibility, responsive-layout, and device-camera refinement.
+
+---
+
+## ⚠️ Project Status and Disclaimer
+
+BinderLedger is a personal, non-commercial project under active development.
+It is not affiliated with, endorsed by, or sponsored by Nintendo, Creatures,
+GAME FREAK, The Pokémon Company, or any pricing provider. Pokémon and related
+marks belong to their respective owners.
+
+No software license is currently declared; public repository visibility does
+not grant redistribution or reuse rights.

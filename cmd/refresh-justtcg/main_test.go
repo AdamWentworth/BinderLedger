@@ -134,3 +134,48 @@ func TestClientWaitHonorsCanceledContext(t *testing.T) {
 		t.Fatal("wait returned nil for canceled context")
 	}
 }
+
+func TestSelectDailyBudgetProtectsHistoricalBootstrap(t *testing.T) {
+	tests := []struct {
+		name       string
+		setCount   int
+		wantBudget int
+		wantPhase  string
+	}{
+		{name: "bootstrap", setCount: 9, wantBudget: 20, wantPhase: "historical-bootstrap"},
+		{name: "complete", setCount: 38, wantBudget: 28, wantPhase: "steady-state"},
+		{name: "expanded", setCount: 40, wantBudget: 28, wantPhase: "steady-state"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			budget, phase := selectDailyBudget(test.setCount, 38, 20, 28)
+			if budget != test.wantBudget || phase != test.wantPhase {
+				t.Fatalf("selectDailyBudget() = (%d, %q), want (%d, %q)",
+					budget, phase, test.wantBudget, test.wantPhase)
+			}
+		})
+	}
+}
+
+func TestEstimatedRotationDays(t *testing.T) {
+	tests := []struct {
+		name          string
+		targets       int
+		requestBudget int
+		want          int
+	}{
+		{name: "empty catalog", targets: 0, requestBudget: 20, want: 0},
+		{name: "invalid budget", targets: 808, requestBudget: 0, want: 0},
+		{name: "bootstrap catalog", targets: 808, requestBudget: 20, want: 3},
+		{name: "full legacy catalog", targets: 3697, requestBudget: 28, want: 7},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := estimatedRotationDays(test.targets, test.requestBudget); got != test.want {
+				t.Fatalf("estimatedRotationDays() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}

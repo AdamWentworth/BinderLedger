@@ -11,6 +11,7 @@
     "collect-base": "node --env-file=.env src/cli.mjs collect-base",
     "collect-kanto": "node --env-file=.env src/cli.mjs collect-kanto",
     "collect-machamp": "node --env-file=.env src/cli.mjs collect-machamp",
+    "collect-legacy": "node --env-file=.env src/cli.mjs collect-legacy",
     "audit": "node --env-file=.env src/cli.mjs audit",
     "test": "node --test"
   },

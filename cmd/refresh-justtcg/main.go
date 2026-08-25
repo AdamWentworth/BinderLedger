@@ -24,7 +24,9 @@ import (
 const (
 	providerName                 = "JustTCG"
 	defaultBaseURL               = "https://api.justtcg.com/v1"
-	defaultDailyRequestBudget    = 15
+	defaultDailyRequestBudget    = 28
+	defaultBootstrapDailyBudget  = 20
+	defaultLegacyTargetSetCount  = 38
 	maximumDailyRequestBudget    = 95
 	defaultDailyRequestReserve   = 5
 	defaultMonthlyRequestReserve = 100
@@ -129,18 +131,38 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			minimumRequestDelay.Milliseconds(),
 		)
 	}
-	dailyBudget, err := positiveInteger(
+	steadyDailyBudget, err := positiveInteger(
 		"JUSTTCG_DAILY_REFRESH_REQUEST_BUDGET",
 		defaultDailyRequestBudget,
 	)
 	if err != nil {
 		return err
 	}
-	if dailyBudget > maximumDailyRequestBudget {
+	if steadyDailyBudget > maximumDailyRequestBudget {
 		return fmt.Errorf(
 			"JUSTTCG_DAILY_REFRESH_REQUEST_BUDGET must not exceed %d",
 			maximumDailyRequestBudget,
 		)
+	}
+	bootstrapDailyBudget, err := positiveInteger(
+		"JUSTTCG_BOOTSTRAP_DAILY_REFRESH_REQUEST_BUDGET",
+		defaultBootstrapDailyBudget,
+	)
+	if err != nil {
+		return err
+	}
+	if bootstrapDailyBudget > maximumDailyRequestBudget {
+		return fmt.Errorf(
+			"JUSTTCG_BOOTSTRAP_DAILY_REFRESH_REQUEST_BUDGET must not exceed %d",
+			maximumDailyRequestBudget,
+		)
+	}
+	legacyTargetSetCount, err := positiveInteger(
+		"JUSTTCG_LEGACY_TARGET_SET_COUNT",
+		defaultLegacyTargetSetCount,
+	)
+	if err != nil {
+		return err
 	}
 	dailyReserve, err := nonnegativeInteger(
 		"JUSTTCG_DAILY_REQUEST_RESERVE",
@@ -167,6 +189,17 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
+	setCount, err := catalogSetCount(ctx, db)
+	if err != nil {
+		return err
+	}
+	dailyBudget, collectionPhase := selectDailyBudget(
+		setCount,
+		legacyTargetSetCount,
+		bootstrapDailyBudget,
+		steadyDailyBudget,
+	)
+
 	usageDay := time.Now().UTC().Format(time.DateOnly)
 	requestsUsed, err := dailyRequests(ctx, db, usageDay)
 	if err != nil {
@@ -178,11 +211,16 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
+		maximumRotationDays := estimatedRotationDays(len(targets), dailyBudget)
 		logger.Info(
 			"JustTCG production refresh status",
 			"refresh_targets", len(targets),
 			"requests_used_today", requestsUsed,
 			"automation_budget", dailyBudget,
+			"maximum_rotation_days", maximumRotationDays,
+			"collection_phase", collectionPhase,
+			"catalog_sets", setCount,
+			"legacy_target_sets", legacyTargetSetCount,
 			"cards_per_request", freeTierBatchSize,
 		)
 		return nil
@@ -274,8 +312,41 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		"observations", total.Observations,
 		"skipped_variants", total.Skipped,
 		"automation_budget", dailyBudget,
+		"collection_phase", collectionPhase,
 	)
 	return nil
+}
+
+func catalogSetCount(ctx context.Context, db *pgxpool.Pool) (int, error) {
+	var count int
+	if err := db.QueryRow(ctx, `
+		SELECT count(*)::integer
+		FROM catalog_sets
+		WHERE id <> 'base-set-first-edition-pokemon'
+	`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count catalog sets: %w", err)
+	}
+	return count, nil
+}
+
+func selectDailyBudget(
+	setCount int,
+	legacyTargetSetCount int,
+	bootstrapBudget int,
+	steadyBudget int,
+) (int, string) {
+	if setCount < legacyTargetSetCount {
+		return bootstrapBudget, "historical-bootstrap"
+	}
+	return steadyBudget, "steady-state"
+}
+
+func estimatedRotationDays(targetCount int, dailyRequestBudget int) int {
+	if targetCount <= 0 || dailyRequestBudget <= 0 {
+		return 0
+	}
+	dailyCardCapacity := dailyRequestBudget * freeTierBatchSize
+	return (targetCount + dailyCardCapacity - 1) / dailyCardCapacity
 }
 
 func dueTargets(ctx context.Context, db *pgxpool.Pool, limit int) ([]refreshTarget, error) {

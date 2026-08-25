@@ -43,3 +43,77 @@ test("client stops before consuming the daily request reserve", async () => {
     await rm(cacheDirectory, { recursive: true, force: true });
   }
 });
+
+test("client stops before consuming the monthly request reserve", async () => {
+  let requests = 0;
+  const server = createServer((request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({
+      data: [],
+      _metadata: {
+        apiDailyRequestsRemaining: 80,
+        apiRequestsRemaining: 100,
+      },
+    }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const cacheDirectory = await mkdtemp(path.join(tmpdir(), "binderledger-justtcg-"));
+
+  try {
+    const client = new JustTcgClient({
+      apiKey: "test-key",
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      cacheDirectory,
+      requestIntervalMs: 0,
+      monthlyRequestReserve: 100,
+    });
+    await client.get("/first", {}, { cache: false });
+    await assert.rejects(
+      client.get("/second", {}, { cache: false }),
+      JustTcgQuotaError,
+    );
+    assert.equal(requests, 1);
+  } finally {
+    server.close();
+    await rm(cacheDirectory, { recursive: true, force: true });
+  }
+});
+
+test("client enforces a per-run network request budget", async () => {
+  let requests = 0;
+  const server = createServer((request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({
+      data: [],
+      _metadata: {
+        apiDailyRequestsRemaining: 80,
+        apiRequestsRemaining: 800,
+      },
+    }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const cacheDirectory = await mkdtemp(path.join(tmpdir(), "binderledger-justtcg-"));
+
+  try {
+    const client = new JustTcgClient({
+      apiKey: "test-key",
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      cacheDirectory,
+      requestIntervalMs: 0,
+      maximumNetworkRequests: 1,
+    });
+    await client.get("/first", {}, { cache: false });
+    await assert.rejects(
+      client.get("/second", {}, { cache: false }),
+      JustTcgQuotaError,
+    );
+    assert.equal(requests, 1);
+  } finally {
+    server.close();
+    await rm(cacheDirectory, { recursive: true, force: true });
+  }
+});

@@ -11,7 +11,7 @@ or collected by bypassing a provider's API.
 
 | Provider | BinderLedger role | Current plan limit | BinderLedger automation limit | Reset |
 | --- | --- | --- | --- | --- |
-| JustTCG | Primary catalog and condition-price history | Free: 1,000 requests/month, 100/day, 10/minute, 20 cards/request | Current-price refresh: at most 15 requests/day, at least 6.5 seconds apart; stop with 5 daily and 100 monthly requests in reserve | Daily at 00:00 UTC; monthly on account creation day |
+| JustTCG | Primary catalog and condition-price history | Free: 1,000 requests/month, 100/day, 10/minute, 20 cards/request | Current prices first: 20 requests/day during bootstrap, 28 afterward; history second: 8/day; at least 6.5 seconds apart; keep 5 daily and 100 monthly requests in reserve | Daily at 00:00 UTC; monthly on account creation day |
 | PkmnPrices | Current-price fallback; historical backfill after a Pro upgrade | Free: 100 credits/day and 60 requests/minute; the history endpoint requires Pro | History disabled on Free; otherwise at least 1.25 seconds between requests and at most 80 tracked credits/day | Daily at 00:00 UTC |
 | PokemonPriceTracker | Current condition fallback and short recent history | Free: 100 credits/day, 60 requests/minute, 3 days of history | At least 1.25 seconds between requests; at most 80 tracked credits/day | Daily at 00:00 UTC |
 | PriceCharting | Manually reviewed valuation snapshots and printing-specific image backfills | Paid pricing API only; one API call/second; one CSV call/10 minutes | No scheduled page collection; private image backfills use cached set indexes, at least 5 seconds between index requests, and at least 1 second between image assets | Subscription dependent |
@@ -51,9 +51,14 @@ BinderLedger release requires a paid plan and another terms review.
 
 The production refresher is separate from bootstrap collection. It requests no
 price history, batches up to 20 stable card UUIDs, and rotates the least recently
-refreshed catalog cards. The conservative 15-request daily budget leaves room
-for the still-active legacy-set bootstrap; reconsider it after bootstrap is
-complete, but never exceed the documented provider quota or configured reserves.
+refreshed catalog cards. It always runs before historical expansion. The
+historical collector has a persistent response cache, a hard eight-request
+per-run budget, and a 38-set allowlist ending at EX Power Keepers. Once those
+sets are present, current-price capacity automatically rises from 20 to 28
+requests/day. At the expected 3,697-card scope, that is a rotating refresh of
+up to 560 cards/day and a maximum catalog rotation of about seven days on the
+Free plan. The job still runs daily and records one observation per refreshed
+variant. Neither job may exceed the configured provider reserves.
 
 JustTCG assigns some theme-deck products to `Deck Exclusives` instead of their
 printed set. Exact-ID aliases and legacy variants requiring later review are

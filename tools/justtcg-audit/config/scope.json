@@ -4,7 +4,8 @@
   "releaseDateThrough": "2007-05-22",
   "includeUndatedSets": false,
   "excludeNamePatterns": [
-    "diamond & pearl"
+    "diamond & pearl",
+    "diamond and pearl"
   ],
   "manualIncludeSetIds": [],
   "manualExcludeSetIds": []

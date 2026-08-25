@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export type Health = {
   status: 'ok' | 'degraded';
   database: 'ok' | 'unavailable';
@@ -378,7 +380,11 @@ export type ScanSession = {
 
 export const defaultWatchlistID = 'default';
 
-export const apiURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4001';
+const configuredAPIURL = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:4001';
+
+// Web uses the same origin so the development Metro proxy and production
+// nginx proxy can forward API requests without browser CORS exceptions.
+export const apiURL = Platform.OS === 'web' ? '' : configuredAPIURL;
 
 export function resolveImageURL(value: string | null): string | null {
   if (!value || !value.startsWith('/')) return value;

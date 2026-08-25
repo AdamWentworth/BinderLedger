@@ -49,16 +49,17 @@ next network call, and treats `--fresh` as an explicit quota-consuming action.
 The Free tier is limited to personal and non-commercial work. A public or paid
 BinderLedger release requires a paid plan and another terms review.
 
-The production refresher is separate from bootstrap collection. It requests no
-price history, batches up to 20 stable card UUIDs, and rotates the least recently
-refreshed catalog cards. It always runs before historical expansion. The
-historical collector has a persistent response cache, a hard eight-request
-per-run budget, and a 38-set allowlist ending at EX Power Keepers. Once those
-sets are present, current-price capacity automatically rises from 20 to 28
-requests/day. At the expected 3,697-card scope, that is a rotating refresh of
-up to 560 cards/day and a maximum catalog rotation of about seven days on the
-Free plan. The job still runs daily and records one observation per refreshed
-variant. Neither job may exceed the configured provider reserves.
+The production refresher is separate from bootstrap collection. It batches up
+to 20 stable card UUIDs, requests the trailing 30 days of history, and rotates
+the least recently refreshed catalog cards. Every returned daily point is
+upserted, so a card revisited weekly still catches up the intervening daily chart
+data. It always runs before historical expansion. The historical collector has
+a persistent response cache, a hard eight-request per-run budget, and a 38-set
+allowlist ending at EX Power Keepers. Once those sets are present, refresh
+capacity automatically rises from 20 to 28 requests/day. At the expected
+3,697-card scope, that is up to 560 cards/day and a maximum catalog rotation of
+about seven days on the Free plan. Neither job may exceed the configured
+provider reserves.
 
 JustTCG assigns some theme-deck products to `Deck Exclusives` instead of their
 printed set. Exact-ID aliases and legacy variants requiring later review are

@@ -35,10 +35,11 @@ docker compose --env-file .env --env-file images.env --profile tools run --rm ex
 ## Price Collection
 
 Production owns both recurring JustTCG workflows. The current-price job runs
-first and rotates the least recently refreshed cards in batches of 20. It uses
-20 requests/day while historical bootstrap is active and 28 requests/day after
-all 38 approved pre-Diamond-and-Pearl sets are imported. Each successful price
-is stored as a dated observation, even when it has not changed.
+first and rotates the least recently refreshed cards in batches of 20. Each
+batch requests 30 days of history and upserts every returned daily point, so
+the rotating circuit catches up days between requests. It uses 20 requests/day
+while historical bootstrap is active and 28 requests/day after all 38 approved
+pre-Diamond-and-Pearl sets are imported.
 
 The historical job runs afterward and uses at most eight requests/day. Its
 persistent output and response cache live under

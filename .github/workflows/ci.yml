@@ -73,9 +73,53 @@ jobs:
       - name: Test matcher
         run: docker run --rm binderledger-vision:test
 
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: binderledger_ci
+          POSTGRES_USER: binderledger_ci
+          POSTGRES_PASSWORD: binderledger_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U binderledger_ci -d binderledger_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 6
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.6"
+          cache: true
+      - name: Apply every migration to an empty database
+        env:
+          DATABASE_URL: postgres://binderledger_ci:binderledger_ci@127.0.0.1:5432/binderledger_ci?sslmode=disable
+        run: go run ./cmd/migrate
+
+  operations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validate shell scripts
+        run: |
+          shellcheck ops/prod/scripts/*.sh
+          bash -n ops/prod/scripts/*.sh
+      - name: Validate production Compose
+        run: >-
+          docker compose
+          --project-directory ops/prod
+          -f ops/prod/docker-compose.yml
+          --env-file ops/prod/binderledger.env.example
+          --env-file ops/prod/images.env.example
+          config >/dev/null
+
   images:
     if: github.event_name != 'pull_request'
-    needs: [go, client, collectors, vision]
+    needs: [go, client, collectors, vision, database, operations]
     runs-on: ubuntu-latest
     permissions:
       contents: read

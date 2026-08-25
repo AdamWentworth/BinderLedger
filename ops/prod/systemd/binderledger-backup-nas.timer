@@ -1,5 +1,5 @@
 [Unit]
-Description=Synchronize BinderLedger production state to TNAS daily
+Description=Synchronize BinderLedger production state to NAS storage daily
 
 [Timer]
 OnCalendar=*-*-* 04:00:00

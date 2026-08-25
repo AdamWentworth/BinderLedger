@@ -1,0 +1,12 @@
+[Unit]
+Description=Deploy the latest CI-verified BinderLedger main commit
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/binderledger/bin/deploy-pull.sh
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

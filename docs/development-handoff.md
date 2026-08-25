@@ -1,45 +1,41 @@
-# Frontend Development Machine Handoff
+# Frontend Development Handoff
 
-BinderLedger production remains authoritative on `adam-ubuntu`. The development
-machine runs only the Expo/React Native toolchain and sends API requests to the
-production server while the MVP is read-mostly.
+The normal development workstation runs only the Expo/React Native toolchain.
+The trusted authority host owns the API, PostgreSQL, vision worker, provider
+jobs, media, backups, and production deployment.
 
 ## 1. Prerequisites
 
-Install Git, Node 24 LTS, and npm. Configure GitHub SSH access for
-`AdamWentworth`. Docker, Go, PostgreSQL, provider keys, and collector output are
-not required for frontend-only development.
+Install Git, Node.js 24 LTS, and npm. Docker, Go, PostgreSQL, provider keys, and
+collector output are not required for frontend-only development.
 
-## 2. Clone And Configure
+## 2. Clone and Configure
 
 ```bash
-mkdir -p ~/src
-git clone git@github.com:AdamWentworth/BinderLedger.git ~/src/BinderLedger
-cd ~/src/BinderLedger/apps/client
+git clone git@github.com:AdamWentworth/BinderLedger.git
+cd BinderLedger/apps/client
 npm ci
 ```
 
-Create `apps/client/.env.local` with:
+Create the ignored `apps/client/.env.local`:
 
 ```dotenv
-EXPO_PUBLIC_API_URL=http://192.168.1.77:4000
+EXPO_PUBLIC_API_URL=http://<trusted-api-host>:4000
 ```
 
-Do not restore the root `.env`, production database, provider credentials,
-JustTCG cache, or production media onto this machine. Those belong to the
-authority server and are backed up separately on TNAS.
+Do not copy production environment files, database dumps, provider caches,
+credentials, scans, or downloaded media to the frontend workstation.
 
-## 3. Start And Verify
+## 3. Start and Verify
 
 ```bash
-cd ~/src/BinderLedger/apps/client
-npm start
+cd apps/client
+npx expo start --lan --port 8082
 ```
 
-Use the QR code with Expo Go, or press `w` for the browser build. Before using a
-new browser origin, add its exact `http://<DEV_LAN_IP>:<PORT>` value to
-`CORS_ALLOWED_ORIGINS` in `/srv/binderledger/.env` on `adam-ubuntu`, then
-recreate `binderledger_api`.
+Use the QR code with Expo Go, or press `w` for the browser build. The native app
+uses `EXPO_PUBLIC_API_URL`. The web client uses Metro's same-origin development
+proxy.
 
 Before pushing:
 
@@ -54,31 +50,29 @@ npm run export:web
 
 ## 4. Production Boundary
 
-- `adam-ubuntu` owns PostgreSQL, API, web, vision, media, scans, historical
-  expansion, current-price snapshots, provider keys, backups, and deployment.
-- The development machine owns Expo/React Native source editing and local Metro
-  or web preview processes only.
-- Never enable JustTCG, PkmnPrices, PriceCharting, valuation, or backup timers on
-  the development machine.
-- Never commit `.env`, `.env.local`, provider output, scans, or media.
-- A push to `main` should deploy only through the BinderLedger production
-  workflow after CI succeeds.
+- The authority host owns all stateful services, provider schedules, media,
+  backups, and deployment automation.
+- The development workstation owns source editing and local Metro/web preview
+  processes only.
+- Never run provider collectors, valuation jobs, or backup timers from the
+  frontend workstation.
+- Never commit `.env`, `.env.local`, provider responses, scans, media, or
+  deployment metadata.
+- Pushes to `main` deploy only after GitHub CI succeeds and the authority host
+  selects that exact verified commit.
 
-Using production for frontend reads is acceptable for the current private MVP.
-Before account, catalog-editing, or destructive workflows are exercised during
-development, add an isolated staging API/database and point `.env.local` there.
+Using a production API for read-oriented frontend work is acceptable for the
+current trusted-network deployment. Use an isolated API and database before
+testing schema changes, authentication, catalog editing, or destructive flows.
 
 ## Optional Backend Work
 
-Backend development should be explicitly enabled only when needed. The private
-TNAS snapshot under `Projects/BinderLedger/Backups/2026-08-24` contains the old
-development database and ignored assets, with restore instructions and SHA-256
-manifests. It must remain isolated from `/srv/binderledger` and from production
-provider schedules.
+Backend work should be enabled explicitly and use an isolated local database.
+Follow the optional full-stack setup in the root README; never restore a
+development snapshot over production or enable production provider schedules.
 
-## Other Codex Starting Point
+## Handoff Reading Order
 
-Read `README.md`, this handoff, `docs/architecture.md`, and
-`docs/provider-api-policy.md`. Treat `adam-ubuntu` as production infrastructure
-and the other machine as a frontend client unless the user explicitly changes
-that boundary.
+Read `README.md`, this file, `docs/architecture.md`, and
+`docs/provider-api-policy.md`. Treat the configured API host as production
+infrastructure unless the project owner explicitly changes that boundary.

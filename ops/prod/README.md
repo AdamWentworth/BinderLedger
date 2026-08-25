@@ -1,13 +1,13 @@
-# BinderLedger Production
+# BinderLedger Production Runbook
 
-The production deployment is intentionally separate from the development
-checkout:
+Production separates reproducible deployment state from persistent data:
 
-- `/home/adam/src/BinderLedger` is the editable development repository.
-- `/srv/binderledger` contains Compose configuration, deployment metadata, and
-  server-local environment files.
+- `/srv/binderledger` contains Compose configuration, a read-only deployment
+  checkout, private environment files, and deployment metadata.
 - `/mnt/storage/binderledger` contains PostgreSQL data, curated card images,
-  private scan originals, and backups.
+  private scan originals, collector state, and local backups.
+
+The exact paths are configurable through the production environment.
 
 ## Runtime
 
@@ -15,11 +15,11 @@ checkout:
 | --- | ---: | --- |
 | `binderledger_db` | 0.5 CPU / 512 MB | Private PostgreSQL database |
 | `binderledger_api` | 0.5 CPU / 256 MB | Go API and scan uploads |
-| `binderledger_vision` | 1 CPU / 768 MB | One-at-a-time OpenCV/Tesseract matching |
+| `binderledger_vision` | 1 CPU / 768 MB | OpenCV/Tesseract matching worker |
 | `binderledger_web` | 0.25 CPU / 96 MB | Static Expo web export and API proxy |
 
-The database and vision worker publish no ports. The API and web client bind to
-the configured private LAN address only.
+The database and vision worker publish no ports. API and web bindings must be
+restricted to the trusted network in `/srv/binderledger/.env`.
 
 ## Server Commands
 
@@ -27,58 +27,82 @@ the configured private LAN address only.
 cd /srv/binderledger
 docker compose --env-file .env --env-file images.env ps
 docker compose --env-file .env --env-file images.env logs -f vision
-docker compose --env-file .env --env-file images.env run --rm migrate
+docker compose --env-file .env --env-file images.env --profile tools run --rm migrate
 docker compose --env-file .env --env-file images.env --profile tools run --rm refresh-justtcg
 docker compose --env-file .env --env-file images.env --profile tools run --rm expand-justtcg-history
 ```
 
-## Price Collection
+## Pull Deployment
 
-Production owns both recurring JustTCG workflows. While the catalog is
-incomplete, the current-price job is a zero-request no-op and the historical
-collector receives all 28 sustainable requests/day. It collects one year of
-history while expanding toward the 38 approved pre-Diamond-and-Pearl sets. Its
-persistent output and response cache live under
-`/mnt/storage/binderledger/justtcg-collector`, allowing quota-safe resume after
-restarts.
+GitHub-hosted CI tests Go, Expo, collectors, and vision, then builds each
+production image as a smoke test. CI does not publish runtime images.
 
-After expansion completes, the historical collector becomes a no-op and the
-current-price job automatically receives all 28 requests/day. It rotates the
-least recently refreshed cards in batches of 20, requests 30 days of history,
-and upserts every returned daily point. Both jobs stop with five daily and 100
-monthly provider requests in reserve. PkmnPrices is not a catalog-wide
-scheduled source on its Free plan.
+`binderledger-deploy-pull.timer` checks GitHub's public workflow API every five
+minutes. When a newer successful `main` run exists, the authority host:
 
-Install or update every production timer, backup job, and localhost proxy with:
+1. Fetches the exact successful commit into `/srv/binderledger/source`.
+2. Builds four commit-tagged Docker images locally.
+3. Validates the production Compose configuration.
+4. Starts PostgreSQL and applies embedded migrations.
+5. Recreates API, vision, and web services.
+6. Verifies the API commit, catalog, web route, worker readiness, and container
+   state before writing `deployments/current.json`.
+
+The poller uses no GitHub credential because the source repository and CI
+status are public. It requires outbound HTTPS only; there is no inbound runner,
+webhook, registry, or second deployment repository.
+
+Useful checks:
+
+```bash
+systemctl --user status binderledger-deploy-pull.service
+systemctl --user list-timers binderledger-deploy-pull.timer
+journalctl --user -u binderledger-deploy-pull.service -n 200
+```
+
+Run an immediate check with:
+
+```bash
+systemctl --user start binderledger-deploy-pull.service
+```
+
+## Scheduled Collection
+
+Production owns recurring provider jobs. Collector caches and progress remain
+under the configured persistent storage root, allowing quota-safe resume after
+restarts. Budgets and reserves live in the private production environment and
+must follow [the provider policy](../../docs/provider-api-policy.md).
+
+## Backups
+
+`binderledger-backup-local.timer` creates a daily PostgreSQL dump. The optional
+NAS timer mirrors database dumps, media, collector state, deployment metadata,
+and the private production environment.
+
+Keep NAS locations in `/srv/binderledger/backup.env`, mode `0600`:
+
+```dotenv
+BINDERLEDGER_NAS_BACKUP_DIR=/mounted/private/path/application
+BINDERLEDGER_NAS_SECRETS_DIR=/mounted/private/path/secrets
+BINDERLEDGER_NAS_SHARE_URL=smb://private-host/private-share
+```
+
+The installer can migrate an existing mounted GVFS share into this private
+file. It preserves an already installed backup script if discovery is not
+possible, so a deployment cannot silently replace working backup configuration.
+
+Install or update production scripts and timers with:
 
 ```bash
 bash ops/prod/scripts/install-user-services.sh
 ```
 
-Current prices run after 00:15 UTC; historical expansion runs after 01:00 UTC.
-The server also creates a daily PostgreSQL dump and mirrors dumps, media,
-collector state, deployment metadata, and production secrets to the private
-TNAS vault.
-
-## Deployment
-
-`ci.yml` tests Go, Expo, collectors, and vision, then publishes four SHA-tagged
-GHCR images. `deploy-prod.yml` runs only after successful main
-branch CI or a manual dispatch. The self-hosted runner copies the production
-Compose file into `/srv/binderledger`, pulls the exact SHA images, runs database
-migrations, recreates API/vision/web, and performs health and resource checks.
-
-The BinderLedger GitHub repository needs its own repo-scoped self-hosted runner
-with labels `linux`, `x64`, `prod`, and `binderledger`. Existing runners scoped
-to other repositories cannot execute this workflow.
-
 ## Data Safety
 
-- Deployments never overwrite `/srv/binderledger/.env` or persistent data.
-- Card and scan directories are mounted read-only in the vision worker.
-- The API and vision worker share UID/GID `10001` for private scan access.
-- Back up `/mnt/storage/binderledger` independently from Git source.
-- Review reference-image rights before public distribution.
+- Deployments never overwrite `.env`, `backup.env`, or persistent storage.
+- The vision worker mounts card and scan directories read-only.
+- API and vision use a shared private UID/GID for scan access.
+- Back up persistent storage independently from Git source.
+- Review provider-plan and media-rights requirements before wider distribution.
 
-See [`disaster-recovery.md`](disaster-recovery.md) for replacement-host restore
-steps and the authoritative TNAS paths.
+See [disaster recovery](disaster-recovery.md) for replacement-host restoration.

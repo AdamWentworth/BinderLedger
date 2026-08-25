@@ -18,7 +18,7 @@ function referenceFixture(
     grade: '9',
     amount: 100,
     currency: 'USD',
-    sourceName: 'PriceCharting',
+    sourceName: 'Licensed reference',
     sourceUrl: 'https://example.com/card',
     printingVariant: 'Unlimited Holo',
     isPrimary: true,

@@ -71,6 +71,7 @@ jobs:
           DEPLOY_ROOT: /srv/binderledger
           STORAGE_ROOT: /mnt/storage/binderledger
           IMAGE_TAG: ${{ steps.images.outputs.tag }}
+          DEPLOY_SHA: ${{ steps.images.outputs.sha }}
         run: |
           set -euo pipefail
           env_file="${DEPLOY_ROOT}/.env"
@@ -100,6 +101,7 @@ jobs:
             "${STORAGE_ROOT}/justtcg-collector"/{output,cache}
           install -m 0644 ops/prod/docker-compose.yml "${DEPLOY_ROOT}/docker-compose.yml"
           cat >"${DEPLOY_ROOT}/images.env" <<EOF
+          BINDERLEDGER_BUILD_SHA=${DEPLOY_SHA}
           BINDERLEDGER_CORE_IMAGE=ghcr.io/adamwentworth/binderledger-core:${IMAGE_TAG}
           BINDERLEDGER_VISION_IMAGE=ghcr.io/adamwentworth/binderledger-vision:${IMAGE_TAG}
           BINDERLEDGER_WEB_IMAGE=ghcr.io/adamwentworth/binderledger-web:${IMAGE_TAG}

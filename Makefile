@@ -1,4 +1,4 @@
-.PHONY: api build-server client client-export client-phone client-phone-prod client-preview db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify vision-test vision-up
+.PHONY: api build-server client client-export client-phone client-preview db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status test verify vision-test vision-up
 
 api:
 	go run ./cmd/api
@@ -13,9 +13,6 @@ client:
 
 client-phone:
 	cd apps/client && npx expo start --lan --port 8082
-
-client-phone-prod:
-	cd apps/client && EXPO_PUBLIC_API_URL=http://192.168.1.77:4000 npx expo start --lan --port 8082
 
 client-export:
 	cd apps/client && npm run export:web
@@ -67,15 +64,6 @@ pkmnprices-backfill:
 
 pkmnprices-status:
 	set -a; . ./.env; set +a; go run ./cmd/backfill-pkmnprices -status
-
-pricecharting-images:
-	go run ./cmd/backfill-pricecharting-images -max=0
-
-pricecharting-images-gallery:
-	go run ./cmd/backfill-pricecharting-images -gallery-dir=data/image-review
-
-pricecharting-images-status:
-	go run ./cmd/backfill-pricecharting-images -status
 
 test:
 	go test ./cmd/... ./internal/...

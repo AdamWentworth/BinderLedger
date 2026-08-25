@@ -28,12 +28,16 @@ export class JustTcgClient {
     cacheDirectory,
     requestIntervalMs = 6500,
     dailyRequestReserve = 5,
+    monthlyRequestReserve = 100,
+    maximumNetworkRequests = Number.POSITIVE_INFINITY,
   }) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.cacheDirectory = cacheDirectory;
     this.requestIntervalMs = requestIntervalMs;
     this.dailyRequestReserve = dailyRequestReserve;
+    this.monthlyRequestReserve = monthlyRequestReserve;
+    this.maximumNetworkRequests = maximumNetworkRequests;
     this.lastNetworkRequestAt = 0;
     this.latestMetadata = null;
     this.networkRequests = 0;
@@ -82,11 +86,18 @@ export class JustTcgClient {
   async #writeCache(cachePath, value) {
     await mkdir(path.dirname(cachePath), { recursive: true });
     const temporaryPath = `${cachePath}.${process.pid}.tmp`;
-    await writeFile(temporaryPath, `${JSON.stringify(value)}\n`, { mode: 0o600 });
+    await writeFile(temporaryPath, `${JSON.stringify(value)}\n`, { mode: 0o640 });
     await rename(temporaryPath, cachePath);
   }
 
   #assertQuotaAvailable() {
+    if (this.networkRequests >= this.maximumNetworkRequests) {
+      throw new JustTcgQuotaError(
+        `The per-run JustTCG budget of ${this.maximumNetworkRequests} requests has been reached. ` +
+          "Cached progress is safe; the next scheduled run will resume it.",
+      );
+    }
+
     const metadata = this.latestMetadata;
     if (!metadata) return;
 
@@ -96,9 +107,10 @@ export class JustTcgClient {
           "Cached progress is safe; rerun after 00:00 UTC.",
       );
     }
-    if (Number(metadata.apiRequestsRemaining) === 0) {
+    if (Number(metadata.apiRequestsRemaining) <= this.monthlyRequestReserve) {
       throw new JustTcgQuotaError(
-        "The monthly JustTCG request allowance is exhausted. Cached progress is safe; rerun after the plan reset.",
+        `The monthly JustTCG safety reserve of ${this.monthlyRequestReserve} requests has been reached. ` +
+          "Cached progress is safe; rerun after the plan reset.",
       );
     }
   }
@@ -112,6 +124,7 @@ export class JustTcgClient {
   async #fetchWithRetry(url) {
     const maximumAttempts = 4;
     for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+      this.#assertQuotaAvailable();
       await this.#throttle();
       this.lastNetworkRequestAt = Date.now();
       this.networkRequests += 1;

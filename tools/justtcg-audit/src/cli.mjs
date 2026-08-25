@@ -12,8 +12,12 @@ import {
 import { JustTcgClient, JustTcgQuotaError } from "./justtcg-client.mjs";
 
 const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const outputDirectory = path.join(projectDirectory, "output");
-const cacheDirectory = path.join(projectDirectory, ".cache");
+const outputDirectory = path.resolve(
+  process.env.JUSTTCG_OUTPUT_DIR ?? path.join(projectDirectory, "output"),
+);
+const cacheDirectory = path.resolve(
+  process.env.JUSTTCG_CACHE_DIR ?? path.join(projectDirectory, ".cache"),
+);
 const scopePath = path.join(projectDirectory, "config", "scope.json");
 const fresh = process.argv.includes("--fresh");
 const command = process.argv[2];
@@ -25,11 +29,12 @@ const commands = new Set([
   "collect-base",
   "collect-kanto",
   "collect-machamp",
+  "collect-legacy",
   "audit",
 ]);
 if (!commands.has(command)) {
   console.error(
-    "Usage: node src/cli.mjs <check-key|discover|sample|collect-base|collect-kanto|collect-machamp|audit> [--fresh]",
+    "Usage: node src/cli.mjs <check-key|discover|sample|collect-base|collect-kanto|collect-machamp|collect-legacy|audit> [--fresh]",
   );
   process.exit(1);
 }
@@ -52,12 +57,28 @@ if (!Number.isInteger(dailyRequestReserve) || dailyRequestReserve < 1) {
   process.exit(1);
 }
 
+const monthlyRequestReserve = Number(process.env.JUSTTCG_MONTHLY_REQUEST_RESERVE ?? 100);
+if (!Number.isInteger(monthlyRequestReserve) || monthlyRequestReserve < 1) {
+  console.error("JUSTTCG_MONTHLY_REQUEST_RESERVE must be a positive integer.");
+  process.exit(1);
+}
+
+const maximumNetworkRequests = Number(
+  process.env.JUSTTCG_MAX_NETWORK_REQUESTS ?? Number.POSITIVE_INFINITY,
+);
+if (!(maximumNetworkRequests > 0)) {
+  console.error("JUSTTCG_MAX_NETWORK_REQUESTS must be a positive number.");
+  process.exit(1);
+}
+
 const client = new JustTcgClient({
   apiKey,
   baseUrl: process.env.JUSTTCG_BASE_URL ?? "https://api.justtcg.com/v1",
   cacheDirectory,
   requestIntervalMs,
   dailyRequestReserve,
+  monthlyRequestReserve,
+  maximumNetworkRequests,
 });
 
 const readJson = async (filename) => JSON.parse(await readFile(filename, "utf8"));
@@ -727,7 +748,15 @@ async function readCompletedCollection(target) {
     const collection = await readJson(
       path.join(outputDirectory, "collections", `${setId}.json`),
     );
-    if (collection.collectionComplete !== true) return null;
+    const legacyCompleteCollection =
+      collection.provider === "JustTCG" &&
+      collection.set?.id === setId &&
+      Array.isArray(collection.cards) &&
+      collection.cards.length > 0;
+    if (collection.collectionComplete !== true && !legacyCompleteCollection) return null;
+    collection.collectionComplete = true;
+    collection.scope ??= target.scope;
+    collection.expectedPrintings ??= target.expectedPrintings ?? [];
     collection.requiredPrintingFamilies = target.requiredPrintingFamilies ?? [];
     collection.printingFamilyCoverage = validatePrintingFamilyCoverage(
       collection.cards,
@@ -970,6 +999,122 @@ async function collectKantoSets() {
   console.log(formatMetadata(client.latestMetadata));
 }
 
+const legacyTargetOverrides = new Map([
+  [
+    "base-set-pokemon",
+    {
+      id: "base-set-pokemon",
+      scope: "Legacy Pokemon catalog",
+      expectedPrintings: ["Unlimited"],
+    },
+  ],
+  [
+    "base-set-shadowless-pokemon",
+    {
+      id: "base-set-shadowless-pokemon",
+      scope: "Legacy Pokemon catalog",
+      expectedPrintings: ["Shadowless", "1st Edition"],
+    },
+  ],
+  ...kantoCollectionTargets.map((target) => [target.id, target]),
+]);
+
+const legacyTarget = (set) =>
+  legacyTargetOverrides.get(set.id) ?? {
+    id: set.id,
+    scope: "Legacy Pokemon catalog before Diamond and Pearl",
+    expectedPrintings: [],
+  };
+
+async function writeLegacyManifest(discovery, collections, status, error = null) {
+  const summaries = collections.map((collection) => collection.summary);
+  const findingCount = collections.reduce(
+    (total, collection) => total + (collection.quality?.findingCount ?? 0),
+    0,
+  );
+  const manifest = {
+    provider: "JustTCG",
+    apiVersion: "v1",
+    collectedAt: new Date().toISOString(),
+    status,
+    error,
+    requestedSetCount: discovery.selected.length,
+    completedSetCount: collections.length,
+    networkRequestsThisRun: client.networkRequests,
+    cacheHitsThisRun: client.cacheHits,
+    apiMetadata: client.latestMetadata,
+    scope: discovery.scope,
+    summary: mergeSummaries(summaries),
+    quality: {
+      findingCount,
+    },
+    sets: collections,
+  };
+  await writeJson(path.join(outputDirectory, "legacy-collection.json"), manifest);
+  return manifest;
+}
+
+async function collectLegacySets() {
+  const discovery = await discoverSets();
+  const expectedSetCount = Number(process.env.JUSTTCG_LEGACY_TARGET_SET_COUNT ?? 38);
+  if (!Number.isInteger(expectedSetCount) || expectedSetCount <= 0) {
+    throw new Error("JUSTTCG_LEGACY_TARGET_SET_COUNT must be a positive integer.");
+  }
+  if (discovery.selected.length !== expectedSetCount) {
+    throw new Error(
+      `Legacy scope selected ${discovery.selected.length} sets; expected ${expectedSetCount}. ` +
+        "Review config/scope.json before collecting.",
+    );
+  }
+
+  const collections = [];
+  try {
+    for (const [index, set] of discovery.selected.entries()) {
+      const target = legacyTarget(set);
+      const completed = await readCompletedCollection(target);
+      if (completed) {
+        collections.push(completed);
+        console.log(
+          `[${index + 1}/${discovery.selected.length}] Reusing completed ${set.name} collection.`,
+        );
+        continue;
+      }
+
+      console.log(`[${index + 1}/${discovery.selected.length}] Collecting ${set.name}...`);
+      const collection = await collectProviderSet(set, target);
+      collections.push(collection);
+      await writeLegacyManifest(discovery, collections, "in_progress");
+      console.log(
+        `Saved ${collection.summary.cards} cards and ${collection.summary.variants} variants.`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof JustTcgQuotaError) {
+      const manifest = await writeLegacyManifest(
+        discovery,
+        collections,
+        "paused_for_quota",
+        error.message,
+      );
+      console.error(error.message);
+      console.error(
+        `Saved ${manifest.completedSetCount}/${manifest.requestedSetCount} complete legacy sets. ` +
+          "The next production run will resume from cache.",
+      );
+      process.exitCode = 2;
+      return;
+    }
+    throw error;
+  }
+
+  const manifest = await writeLegacyManifest(discovery, collections, "complete");
+  console.log(
+    `Legacy collection complete: ${manifest.summary.cards} cards across ` +
+      `${manifest.completedSetCount} sets.`,
+  );
+  console.log(formatMetadata(client.latestMetadata));
+}
+
 async function writeAuditProgress(discovery, setReports, status, error = null) {
   const cards = setReports.flatMap((setReport) => setReport.cards);
   const report = {
@@ -1032,6 +1177,7 @@ try {
   if (command === "collect-base") await collectBaseSets();
   if (command === "collect-kanto") await collectKantoSets();
   if (command === "collect-machamp") await collectMachampAliases();
+  if (command === "collect-legacy") await collectLegacySets();
   if (command === "audit") await auditScope();
 } catch (error) {
   console.error(error.message);

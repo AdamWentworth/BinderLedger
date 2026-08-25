@@ -1,0 +1,71 @@
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /apps/client
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      expo-client:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /tools/justtcg-audit
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      collector-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /services/vision
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      vision-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directory: /apps/client
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directory: /services/vision
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directory: /tools/justtcg-audit
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]

@@ -819,7 +819,7 @@ const styles = StyleSheet.create({
   },
   cameraShade: {
     alignItems: 'center',
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center',
   },
   cardGuide: {

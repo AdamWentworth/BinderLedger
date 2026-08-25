@@ -45,7 +45,7 @@ before Diamond and Pearl.
 
 | Layer | Technology | Responsibility |
 | --- | --- | --- |
-| Client | Expo 54, React Native 0.81, React 19, TypeScript | Web, iOS, Android, camera capture, local interaction state |
+| Client | Expo 57, React Native 0.86, React 19, TypeScript | Web, iOS, Android, camera capture, local interaction state |
 | Navigation and data | Expo Router, TanStack Query | Typed routes, API caching, loading and mutation state |
 | API | Go 1.26, `net/http`, pgx | Catalog rules, market views, watchlists, scans, stable JSON contracts |
 | Database | PostgreSQL 17 | Catalog, exact printings, price observations, watchlists, scans |
@@ -166,9 +166,11 @@ Run the client checks before pushing frontend work:
 
 ```bash
 cd apps/client
+npm test
 npm run typecheck
 npm run lint
-npx expo-doctor
+npm audit --omit=dev --audit-level=high
+npm run doctor
 npm run export:web
 ```
 
@@ -177,6 +179,7 @@ Backend and collector checks:
 ```bash
 go test ./cmd/... ./internal/...
 go vet ./cmd/... ./internal/...
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 npm test --prefix tools/justtcg-audit
 ```
 
@@ -308,6 +311,8 @@ Operational commands, limits, timers, backups, and restore procedures are in
 - Development, production, media, scans, caches, and backups have separate
   ownership and storage boundaries.
 - Deployments do not overwrite production secrets or persistent data.
+- The current API is unauthenticated and binds only to the trusted private LAN;
+  it must not be forwarded to the public internet.
 - Card recognition results require human confirmation.
 - Provider data must not be republished as a raw dataset or substitute API.
 - Reference-image rights must be reviewed before any public distribution.
@@ -330,6 +335,7 @@ public hosted service.
 | [Personal catalog boundary](docs/personal-catalog-inventory.md) | Future import and ownership model |
 | [Production runbook](ops/prod/README.md) | Deployment, timers, runtime limits, and backups |
 | [Disaster recovery](ops/prod/disaster-recovery.md) | Replacement-host restoration procedure |
+| [Security policy](SECURITY.md) | Private vulnerability reporting and supported deployment boundary |
 
 ---
 
@@ -352,5 +358,6 @@ It is not affiliated with, endorsed by, or sponsored by Nintendo, Creatures,
 GAME FREAK, The Pokémon Company, or any pricing provider. Pokémon and related
 marks belong to their respective owners.
 
-No software license is currently declared; public repository visibility does
-not grant redistribution or reuse rights.
+The source is publicly visible but remains proprietary. See [LICENSE](LICENSE)
+for the applicable terms; repository visibility does not grant redistribution,
+hosting, or reuse rights.

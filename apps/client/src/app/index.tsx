@@ -56,6 +56,7 @@ import {
   selectedCatalogSetGroup,
   selectedCatalogSetView,
 } from '@/lib/catalog-set-groups';
+import { formatCatalogDate, getCatalogColumnCount } from '@/lib/catalog-layout';
 import {
   type CatalogListing,
   type CatalogListingSort,
@@ -661,31 +662,6 @@ function DensityButton({
         {label}
       </Text>
     </Pressable>
-  );
-}
-
-function getCatalogColumnCount(
-  availableWidth: number,
-  density: CatalogDensity,
-  gap: number,
-): number {
-  const minimumWidth: Record<CatalogDensity, number> = {
-    large: 300,
-    standard: 205,
-    compact: 150,
-  };
-  const maximumColumns: Record<CatalogDensity, number> = {
-    large: 2,
-    standard: 3,
-    compact: 4,
-  };
-  const fittedColumns = Math.floor((availableWidth + gap) / (minimumWidth[density] + gap));
-  return Math.max(1, Math.min(maximumColumns[density], fittedColumns));
-}
-
-function formatCatalogDate(value: string): string {
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
-    new Date(`${value}T00:00:00`),
   );
 }
 

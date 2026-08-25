@@ -1,4 +1,4 @@
-FROM golang:1.26-bookworm AS importer-build
+FROM golang:1.26.6-bookworm AS importer-build
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -8,7 +8,7 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
     -o /out/binderledger-import-justtcg ./cmd/import-justtcg
 
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates \

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import {
+  BadgeCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -84,6 +86,7 @@ export default function CatalogScreen() {
   const [setSearch, setSetSearch] = useState('');
   const [edition, setEdition] = useState<CatalogEdition>('');
   const [finish, setFinish] = useState<CatalogFinish>('');
+  const [gradedOnly, setGradedOnly] = useState(false);
   const [sort, setSort] = useState<CatalogListingSort>('set_number');
   const [offset, setOffset] = useState(0);
   const [selectedListing, setSelectedListing] = useState<CatalogListing | null>(null);
@@ -101,6 +104,7 @@ export default function CatalogScreen() {
       cardSearch,
       edition,
       finish,
+      gradedOnly,
       condition,
       sort,
       offset,
@@ -111,6 +115,7 @@ export default function CatalogScreen() {
         query: cardSearch,
         edition,
         finish,
+        gradedOnly,
         condition,
         sort,
         limit: pageSize,
@@ -264,6 +269,39 @@ export default function CatalogScreen() {
                   }}
                   options={finishOptions}
                   value={finish}
+                />
+              </View>
+              <View
+                style={[
+                  styles.gradedFilter,
+                  compact && styles.filterMenuCompact,
+                  gradedOnly && styles.gradedFilterSelected,
+                ]}>
+                <View style={styles.gradedFilterCopy}>
+                  <Text style={styles.filterLabel}>Pricing</Text>
+                  <View style={styles.gradedFilterValue}>
+                    <BadgeCheck
+                      color={gradedOnly ? colors.brand : colors.textMuted}
+                      size={16}
+                    />
+                    <Text
+                      style={[
+                        styles.gradedFilterText,
+                        gradedOnly && styles.gradedFilterTextSelected,
+                      ]}>
+                      Graded only
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  accessibilityLabel="Show only printings with graded prices"
+                  onValueChange={(value) => {
+                    setGradedOnly(value);
+                    setOffset(0);
+                  }}
+                  thumbColor={gradedOnly ? colors.text : colors.textMuted}
+                  trackColor={{ false: colors.surfaceQuiet, true: colors.brandPressed }}
+                  value={gradedOnly}
                 />
               </View>
               <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
@@ -760,6 +798,7 @@ const styles = StyleSheet.create({
   },
   filterMenus: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     flexShrink: 1,
     gap: spacing.sm,
     justifyContent: 'flex-end',
@@ -776,6 +815,41 @@ const styles = StyleSheet.create({
   filterMenuCompact: {
     flexBasis: '48%',
     flexGrow: 1,
+  },
+  gradedFilter: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+    minHeight: 48,
+    minWidth: 148,
+    paddingHorizontal: 12,
+  },
+  gradedFilterSelected: {
+    backgroundColor: colors.onlineSurface,
+    borderColor: colors.onlineBorder,
+  },
+  gradedFilterCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  gradedFilterValue: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  gradedFilterText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  gradedFilterTextSelected: {
+    color: colors.text,
   },
   catalogLayout: {
     alignItems: 'flex-start',

@@ -93,7 +93,7 @@ cmd/backfill-pkmnprices/     Controlled API fallback worker
 internal/                    API, catalog, market, scan, and DB packages
 services/vision/             OpenCV/Tesseract recognition worker
 tools/justtcg-audit/         Discovery and historical collection tools
-ops/prod/                    Compose, pull deployment, timers, and recovery
+ops/prod/                    Compose, runner deployment, timers, and recovery
 docs/                        Architecture, policy, and workflow notes
 ```
 
@@ -256,15 +256,16 @@ Production is a private-network Docker Compose deployment with a deliberately
 small trust surface:
 
 1. Pushes to `main` run GitHub-hosted CI.
-2. The production host polls GitHub for the latest successful `main` CI run.
-3. It fetches that exact public commit and builds images locally.
-4. It validates Compose, runs migrations, and recreates application services.
+2. CI builds and security-scans four immutable, private GHCR images.
+3. A dedicated production runner pulls the exact successful commit images.
+4. The runner validates Compose, runs migrations, and recreates services.
 5. API, web, vision, and container smoke checks must pass before the deployment
    is recorded.
 
-The host needs no inbound deployment access, GitHub runner, registry package,
-or long-lived GitHub credential. Operational details are in the
-[production runbook](ops/prod/README.md).
+The production host compiles no application images. GHCR packages are private
+deployment artifacts rather than source repositories, and the deployment
+workflow has read-only source and package permissions. Operational details are
+in the [production runbook](ops/prod/README.md).
 
 ---
 

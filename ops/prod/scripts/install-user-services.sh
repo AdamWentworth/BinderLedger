@@ -16,7 +16,12 @@ elif [[ -x "${deploy_root}/bin/backup-nas.sh" ]]; then
 else
   echo "Private NAS locations were not discovered; configure ${deploy_root}/backup.env before enabling NAS backup." >&2
 fi
-install -m 0755 "${script_dir}/deploy-pull.sh" "${deploy_root}/bin/deploy-pull.sh"
+systemctl --user disable --now binderledger-deploy-pull.timer 2>/dev/null || true
+systemctl --user stop binderledger-deploy-pull.service 2>/dev/null || true
+rm -f \
+  "${unit_dir}/binderledger-deploy-pull.service" \
+  "${unit_dir}/binderledger-deploy-pull.timer" \
+  "${deploy_root}/bin/deploy-pull.sh"
 
 for unit in "${prod_dir}"/systemd/*; do
   install -m 0644 "${unit}" "${unit_dir}/$(basename "${unit}")"
@@ -27,7 +32,6 @@ enabled_units=(
   binderledger-justtcg-refresh.timer
   binderledger-justtcg-history.timer
   binderledger-backup-local.timer
-  binderledger-deploy-pull.timer
   binderledger-localhost-proxy@8081.socket
 )
 if [[ -x "${deploy_root}/bin/backup-nas.sh" ]]; then

@@ -6,21 +6,30 @@ umask 027
 deploy_root=${BINDERLEDGER_DEPLOY_ROOT:-/srv/binderledger}
 storage_mount=${BINDERLEDGER_STORAGE_MOUNT:-/mnt/storage}
 storage_root=${BINDERLEDGER_STORAGE_ROOT:-${storage_mount}/binderledger}
-repository=${BINDERLEDGER_GITHUB_REPOSITORY:-AdamWentworth/BinderLedger}
-repository_url=${BINDERLEDGER_REPOSITORY_URL:-https://github.com/${repository}.git}
-github_api=${BINDERLEDGER_GITHUB_API:-https://api.github.com/repos/${repository}}
-source_dir=${BINDERLEDGER_SOURCE_DIR:-${deploy_root}/source}
+source_dir=${BINDERLEDGER_SOURCE_DIR:?BINDERLEDGER_SOURCE_DIR is required}
+target_sha=${BINDERLEDGER_TARGET_SHA:?BINDERLEDGER_TARGET_SHA is required}
+deploy_run_id=${BINDERLEDGER_DEPLOY_RUN_ID:-manual}
 env_file=${deploy_root}/.env
 images_file=${deploy_root}/images.env
 compose_file=${deploy_root}/docker-compose.yml
 deployment_file=${deploy_root}/deployments/current.json
 lock_file=${deploy_root}/deployments/deploy.lock
 
+if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Invalid deployment commit SHA." >&2
+  exit 1
+fi
+checked_out_sha=$(git -C "${source_dir}" rev-parse HEAD)
+if [[ "${checked_out_sha}" != "${target_sha}" ]]; then
+  echo "Checked out ${checked_out_sha}, expected ${target_sha}." >&2
+  exit 1
+fi
+
 mkdir -p "${deploy_root}/deployments"
 exec 9>"${lock_file}"
 if ! flock -n 9; then
-  echo "Another BinderLedger deployment is already running; skipping."
-  exit 0
+  echo "Another BinderLedger deployment is already running." >&2
+  exit 1
 fi
 
 if ! findmnt "${storage_mount}" >/dev/null 2>&1; then
@@ -43,34 +52,6 @@ if [[ ! "${password}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
   exit 1
 fi
 
-workflow_runs=$(curl \
-  --fail \
-  --silent \
-  --show-error \
-  --location \
-  --retry 3 \
-  --connect-timeout 10 \
-  --max-time 30 \
-  --header 'Accept: application/vnd.github+json' \
-  --header 'X-GitHub-Api-Version: 2022-11-28' \
-  --header 'User-Agent: BinderLedger-production-deployer' \
-  "${github_api}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1")
-
-target_sha=$(python3 -c '
-import json
-import sys
-
-payload = json.load(sys.stdin)
-runs = payload.get("workflow_runs", [])
-if not runs:
-    raise SystemExit("No successful main CI run is available")
-print(runs[0]["head_sha"])
-' <<<"${workflow_runs}")
-if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "GitHub returned an invalid commit SHA." >&2
-  exit 1
-fi
-
 current_sha=""
 if [[ -f "${deployment_file}" ]]; then
   current_sha=$(python3 -c '
@@ -84,52 +65,16 @@ except (OSError, ValueError):
     pass
 ' "${deployment_file}")
 fi
-if [[ "${current_sha}" == "${target_sha}" ]]; then
-  echo "BinderLedger ${target_sha} is already deployed."
-  exit 0
-fi
-
-if [[ ! -d "${source_dir}/.git" ]]; then
-  if [[ -e "${source_dir}" ]]; then
-    echo "${source_dir} exists but is not a Git checkout; refusing to replace it." >&2
-    exit 1
-  fi
-  mkdir -p "$(dirname "${source_dir}")"
-  git clone --filter=blob:none --no-checkout "${repository_url}" "${source_dir}"
-else
-  git -C "${source_dir}" remote set-url origin "${repository_url}"
-fi
-git -C "${source_dir}" fetch --force --prune --depth=1 origin "${target_sha}"
-git -C "${source_dir}" checkout --force --detach FETCH_HEAD
-checked_out_sha=$(git -C "${source_dir}" rev-parse HEAD)
-if [[ "${checked_out_sha}" != "${target_sha}" ]]; then
-  echo "Fetched ${checked_out_sha}, expected ${target_sha}." >&2
-  exit 1
-fi
 
 image_tag="sha-${target_sha}"
-core_image="binderledger-core:${image_tag}"
-vision_image="binderledger-vision:${image_tag}"
-web_image="binderledger-web:${image_tag}"
-collector_image="binderledger-collector:${image_tag}"
-source_label="https://github.com/${repository}"
+core_image="ghcr.io/adamwentworth/binderledger-core:${image_tag}"
+vision_image="ghcr.io/adamwentworth/binderledger-vision:${image_tag}"
+web_image="ghcr.io/adamwentworth/binderledger-web:${image_tag}"
+collector_image="ghcr.io/adamwentworth/binderledger-collector:${image_tag}"
 
-docker build --pull \
-  --label "org.opencontainers.image.source=${source_label}" \
-  --label "org.opencontainers.image.revision=${target_sha}" \
-  -t "${core_image}" -f "${source_dir}/Dockerfile" "${source_dir}"
-docker build --pull --target runtime \
-  --label "org.opencontainers.image.source=${source_label}" \
-  --label "org.opencontainers.image.revision=${target_sha}" \
-  -t "${vision_image}" -f "${source_dir}/services/vision/Dockerfile" "${source_dir}"
-docker build --pull \
-  --label "org.opencontainers.image.source=${source_label}" \
-  --label "org.opencontainers.image.revision=${target_sha}" \
-  -t "${web_image}" -f "${source_dir}/apps/client/Dockerfile" "${source_dir}"
-docker build --pull \
-  --label "org.opencontainers.image.source=${source_label}" \
-  --label "org.opencontainers.image.revision=${target_sha}" \
-  -t "${collector_image}" -f "${source_dir}/tools/justtcg-audit/Dockerfile" "${source_dir}"
+for image in "${core_image}" "${vision_image}" "${web_image}" "${collector_image}"; do
+  docker pull "${image}"
+done
 
 mkdir -p \
   "${storage_root}"/{postgres,card-images,scan-images,backups/daily} \
@@ -174,11 +119,16 @@ rollback() {
   exit_code=$?
   trap - ERR
   set +e
+  echo "Deployment failed; collecting diagnostics." >&2
+  docker ps -a --filter 'name=binderledger_' >&2
+  for service in api vision web; do
+    compose logs --tail 200 "${service}" >&2 || true
+  done
   if [[ "${switched}" -eq 1 ]]; then
-    echo "Deployment failed; restoring the previous Compose and image selection." >&2
+    echo "Restoring the previous Compose and image selection." >&2
     [[ -f "${previous_compose}" ]] && cp "${previous_compose}" "${compose_file}"
     [[ -f "${previous_images}" ]] && cp "${previous_images}" "${images_file}"
-    compose up -d --no-deps --force-recreate api vision web
+    compose up -d --no-deps --force-recreate api vision web || true
   fi
   exit "${exit_code}"
 }
@@ -209,7 +159,6 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 if [[ "${api_ok}" -ne 1 ]]; then
-  compose logs --tail 200 api
   false
 fi
 
@@ -223,7 +172,6 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 if [[ "${web_ok}" -ne 1 ]]; then
-  compose logs --tail 200 web
   false
 fi
 
@@ -236,7 +184,6 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 if [[ "${vision_ok}" -ne 1 ]]; then
-  compose logs --tail 200 vision
   false
 fi
 
@@ -255,7 +202,8 @@ cat >"${deployment_file}" <<EOF
   "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "gitSha": "${target_sha}",
   "imageTag": "${image_tag}",
-  "deploymentSource": "production-pull-agent"
+  "deploymentSource": "github-self-hosted-runner",
+  "runId": "${deploy_run_id}"
 }
 EOF
 chmod 0640 "${deployment_file}"
@@ -264,10 +212,10 @@ switched=0
 trap - ERR
 docker image prune --force --filter 'until=168h' >/dev/null
 for repository_name in \
-  binderledger-core \
-  binderledger-vision \
-  binderledger-web \
-  binderledger-collector; do
+  ghcr.io/adamwentworth/binderledger-core \
+  ghcr.io/adamwentworth/binderledger-vision \
+  ghcr.io/adamwentworth/binderledger-web \
+  ghcr.io/adamwentworth/binderledger-collector; do
   while IFS= read -r tag; do
     [[ "${tag}" == sha-* ]] || continue
     [[ "${tag}" == "${image_tag}" ]] && continue
@@ -275,4 +223,4 @@ for repository_name in \
     docker image rm "${repository_name}:${tag}" >/dev/null 2>&1 || true
   done < <(docker image ls "${repository_name}" --format '{{.Tag}}')
 done
-echo "Deployed BinderLedger ${target_sha} after successful GitHub CI."
+echo "Deployed BinderLedger ${target_sha} from CI-published GHCR images."

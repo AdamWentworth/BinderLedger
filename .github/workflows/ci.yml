@@ -121,15 +121,23 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: [go, client, collectors, vision, database, operations]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CORE_IMAGE: ghcr.io/adamwentworth/binderledger-core
+      VISION_IMAGE: ghcr.io/adamwentworth/binderledger-vision
+      WEB_IMAGE: ghcr.io/adamwentworth/binderledger-web
+      COLLECTOR_IMAGE: ghcr.io/adamwentworth/binderledger-collector
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Build images
         run: |
-          docker build --pull -t binderledger-core:ci -f Dockerfile .
-          docker build --pull --target runtime -t binderledger-vision:ci -f services/vision/Dockerfile .
-          docker build --pull -t binderledger-web:ci -f apps/client/Dockerfile .
-          docker build --pull -t binderledger-collector:ci -f tools/justtcg-audit/Dockerfile .
+          docker build --pull -t binderledger-core:ci-${GITHUB_SHA} -f Dockerfile .
+          docker build --pull --target runtime -t binderledger-vision:ci-${GITHUB_SHA} -f services/vision/Dockerfile .
+          docker build --pull -t binderledger-web:ci-${GITHUB_SHA} -f apps/client/Dockerfile .
+          docker build --pull -t binderledger-collector:ci-${GITHUB_SHA} -f tools/justtcg-audit/Dockerfile .
 
       - name: Smoke test hardened web image
         run: |
@@ -146,7 +154,7 @@ jobs:
             --tmpfs /var/cache/nginx:size=16m,uid=101,gid=101 \
             --tmpfs /var/run:size=2m,uid=101,gid=101 \
             --publish 127.0.0.1:8081:8080 \
-            binderledger-web:ci
+            binderledger-web:ci-${GITHUB_SHA}
           trap 'docker logs binderledger-web-ci; docker rm --force binderledger-web-ci' EXIT
           for _ in $(seq 1 30); do
             if curl --fail --silent --show-error http://127.0.0.1:8081/ >/dev/null; then
@@ -156,3 +164,42 @@ jobs:
           done
           curl --fail --silent --show-error http://127.0.0.1:8081/ >/dev/null
           curl --fail --silent --show-error http://127.0.0.1:8081/scan >/dev/null
+
+      - name: Scan production images
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.cache/trivy"
+          for image in \
+            binderledger-core:ci-${GITHUB_SHA} \
+            binderledger-vision:ci-${GITHUB_SHA} \
+            binderledger-web:ci-${GITHUB_SHA} \
+            binderledger-collector:ci-${GITHUB_SHA}; do
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$HOME/.cache/trivy:/root/.cache/" \
+              ghcr.io/aquasecurity/trivy:0.65.0 \
+              image \
+              --pkg-types os,library \
+              --severity CRITICAL,HIGH \
+              --ignore-unfixed \
+              --exit-code 1 \
+              "$image"
+          done
+
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Publish immutable images
+        run: |
+          set -euo pipefail
+          for spec in \
+            "binderledger-core:ci-${GITHUB_SHA} ${CORE_IMAGE}" \
+            "binderledger-vision:ci-${GITHUB_SHA} ${VISION_IMAGE}" \
+            "binderledger-web:ci-${GITHUB_SHA} ${WEB_IMAGE}" \
+            "binderledger-collector:ci-${GITHUB_SHA} ${COLLECTOR_IMAGE}"; do
+            set -- $spec
+            docker tag "$1" "$2:sha-${GITHUB_SHA}"
+            docker tag "$1" "$2:latest"
+            docker push "$2:sha-${GITHUB_SHA}"
+            docker push "$2:latest"
+          done

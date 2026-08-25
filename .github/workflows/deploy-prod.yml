@@ -1,0 +1,97 @@
+name: deploy-prod
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      git_sha:
+        description: "Full main commit SHA to deploy; blank selects current main"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: [self-hosted, linux, x64, prod, binderledger]
+    environment: production
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-binderledger-prod
+      cancel-in-progress: false
+
+    steps:
+      - name: Select CI-approved revision
+        id: revision
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_SHA: ${{ inputs.git_sha }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_sha="$(git ls-remote "https://github.com/${REPOSITORY}.git" refs/heads/main | cut -f1)"
+          if [[ ! "${main_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not resolve the current main commit." >&2
+            exit 1
+          fi
+
+          if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            if [[ "${TRIGGER_SHA}" != "${main_sha}" ]]; then
+              echo "main advanced past ${TRIGGER_SHA}; its own successful CI run will deploy instead."
+              echo "should_deploy=false" >>"${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            target_sha="${TRIGGER_SHA}"
+          else
+            target_sha="${REQUESTED_SHA:-${main_sha}}"
+          fi
+
+          if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Deployment requires a full 40-character Git commit SHA." >&2
+            exit 1
+          fi
+          echo "sha=${target_sha}" >>"${GITHUB_OUTPUT}"
+          echo "should_deploy=true" >>"${GITHUB_OUTPUT}"
+
+      - name: Checkout deployment revision
+        if: steps.revision.outputs.should_deploy == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.revision.outputs.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Retire pull deployer
+        if: steps.revision.outputs.should_deploy == 'true'
+        shell: bash
+        run: |
+          systemctl --user disable --now binderledger-deploy-pull.timer 2>/dev/null || true
+          systemctl --user stop binderledger-deploy-pull.service 2>/dev/null || true
+
+      - name: Log in to GHCR
+        if: steps.revision.outputs.should_deploy == 'true'
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull and deploy CI images
+        if: steps.revision.outputs.should_deploy == 'true'
+        shell: bash
+        env:
+          BINDERLEDGER_DEPLOY_ROOT: /srv/binderledger
+          BINDERLEDGER_SOURCE_DIR: ${{ github.workspace }}
+          BINDERLEDGER_STORAGE_ROOT: /mnt/storage/binderledger
+          BINDERLEDGER_TARGET_SHA: ${{ steps.revision.outputs.sha }}
+          BINDERLEDGER_DEPLOY_RUN_ID: ${{ github.run_id }}
+        run: bash ops/prod/scripts/deploy-runner.sh

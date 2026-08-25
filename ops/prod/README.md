@@ -32,38 +32,45 @@ docker compose --env-file .env --env-file images.env --profile tools run --rm re
 docker compose --env-file .env --env-file images.env --profile tools run --rm expand-justtcg-history
 ```
 
-## Pull Deployment
+## Runner Deployment
 
 GitHub-hosted CI tests Go, Expo, collectors, and vision, then builds each
-production image as a smoke test. CI does not publish runtime images.
+production image, scans it for high and critical vulnerabilities, and publishes
+private commit-addressed images to GHCR.
 
-`binderledger-deploy-pull.timer` checks GitHub's public workflow API every five
-minutes. When a newer successful `main` run exists, the authority host:
+A dedicated repository runner handles only production deployment after a
+successful `main` CI run:
 
-1. Fetches the exact successful commit into `/srv/binderledger/source`.
-2. Builds four commit-tagged Docker images locally.
+1. Checks out the exact successful commit.
+2. Pulls its four `sha-<commit>` images from private GHCR packages.
 3. Validates the production Compose configuration.
 4. Starts PostgreSQL and applies embedded migrations.
 5. Recreates API, vision, and web services.
 6. Verifies the API commit, catalog, web route, worker readiness, and container
    state before writing `deployments/current.json`.
 
-The poller uses no GitHub credential because the source repository and CI
-status are public. It requires outbound HTTPS only; there is no inbound runner,
-webhook, registry, or second deployment repository.
+The low-resource production host does not compile application images. The
+runner connects outbound to GitHub, receives read-only source and package
+permissions, and never runs pull-request jobs. GHCR packages contain private
+runtime artifacts; they are not additional source repositories.
+
+Runner requirements:
+
+- Register it at repository scope with the `prod` and `binderledger` labels.
+- Treat its operating-system account as production-admin because Docker control
+  is effectively host-admin access.
+- Never target the runner from a `pull_request` or `pull_request_target` job.
+- Do not commit registration tokens, package tokens, or runner credentials.
+- Keep the runner service current and remove its GitHub registration before
+  retiring or repurposing the host.
 
 Useful checks:
 
 ```bash
-systemctl --user status binderledger-deploy-pull.service
-systemctl --user list-timers binderledger-deploy-pull.timer
-journalctl --user -u binderledger-deploy-pull.service -n 200
-```
-
-Run an immediate check with:
-
-```bash
-systemctl --user start binderledger-deploy-pull.service
+docker compose --project-directory /srv/binderledger \
+  -f /srv/binderledger/docker-compose.yml \
+  --env-file /srv/binderledger/.env \
+  --env-file /srv/binderledger/images.env ps
 ```
 
 ## Scheduled Collection

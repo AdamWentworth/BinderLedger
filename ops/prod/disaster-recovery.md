@@ -40,10 +40,10 @@ docker compose --env-file .env --env-file images.env --profile tools run --rm mi
 8. Start API, vision, and web; verify `/api/health`, a catalog request, the web
    scan route, worker readiness, and container state.
 9. Run `bash ops/prod/scripts/install-user-services.sh`, confirm user lingering
-   is enabled, and verify the deployment, provider, and backup timers.
-10. Start `binderledger-deploy-pull.service`. It will select the latest
-    CI-verified `main` commit, build local images, and return the host to the
-    normal deployment path.
+   is enabled, and verify the provider and backup timers.
+10. Reconnect the dedicated repository runner, then dispatch `deploy-prod` for
+    a CI-verified `main` commit. It will pull the corresponding private GHCR
+    images and return the host to the normal deployment path.
 
 Only clear collector completion markers when the restored output is newer than
 the database dump. Imports are idempotent, but unnecessary replay wastes time

@@ -13,6 +13,8 @@ FROM node:24-bookworm-slim
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
     && groupadd --gid 10001 binderledger \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin binderledger
 

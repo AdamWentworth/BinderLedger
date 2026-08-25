@@ -169,22 +169,26 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.cache/trivy"
+          scan_failed=0
           for image in \
             binderledger-core:ci-${GITHUB_SHA} \
             binderledger-vision:ci-${GITHUB_SHA} \
             binderledger-web:ci-${GITHUB_SHA} \
             binderledger-collector:ci-${GITHUB_SHA}; do
-            docker run --rm \
+            if ! docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$HOME/.cache/trivy:/root/.cache/" \
-              ghcr.io/aquasecurity/trivy:0.65.0 \
+              ghcr.io/aquasecurity/trivy:0.74.0 \
               image \
               --pkg-types os,library \
               --severity CRITICAL,HIGH \
               --ignore-unfixed \
               --exit-code 1 \
-              "$image"
+              "$image"; then
+              scan_failed=1
+            fi
           done
+          exit "$scan_failed"
 
       - name: Log in to GHCR
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin

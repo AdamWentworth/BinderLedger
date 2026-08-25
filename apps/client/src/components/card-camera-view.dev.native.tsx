@@ -106,7 +106,7 @@ export const CardCamera = forwardRef<CardCameraHandle, CardCameraProps>(function
 
   const frameOutput = useFrameOutput({
     dropFramesWhileBusy: true,
-    enablePhysicalBufferRotation: true,
+    enablePhysicalBufferRotation: false,
     pixelFormat: 'native',
     onFrame(frame) {
       'worklet';

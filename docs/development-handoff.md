@@ -44,8 +44,11 @@ recreate `binderledger_api`.
 Before pushing:
 
 ```bash
+npm test
 npm run typecheck
 npm run lint
+npm audit --omit=dev --audit-level=high
+npm run doctor
 npm run export:web
 ```
 

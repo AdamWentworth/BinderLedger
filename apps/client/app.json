@@ -39,7 +39,11 @@
           "cameraPermission": "Allow BinderLedger to photograph cards for cataloging and condition review.",
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

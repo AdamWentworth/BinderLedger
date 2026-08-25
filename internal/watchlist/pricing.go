@@ -96,6 +96,7 @@ func (repository *Repository) cards(ctx context.Context, filter Filter) ([]Card,
 			  AND reference.finish = item.finish
 			  AND reference.language = item.language
 			  AND reference.kind = 'ungraded'
+			  AND reference.is_primary
 			ORDER BY reference.checked_on DESC, reference.sort_order, reference.id
 			LIMIT 1
 		) fallback ON true

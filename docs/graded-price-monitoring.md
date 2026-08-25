@@ -6,14 +6,17 @@ BinderLedger records manually reviewed PriceCharting values as append-only
 observations. The goal is to measure how often these estimates move before
 paying for automated API access, not to reproduce PriceCharting's dataset.
 
-Migration `00016_valuation_observations.sql` seeds one baseline observation for
-every existing valuation reference using its original `checked_on` date. The
-baseline contains 708 reference observations across 59 exact card printings;
-707 currently have numeric prices and one records an unavailable grade.
+Migrations `00016_valuation_observations.sql` and
+`00021_gym_graded_anchors.sql` seed one baseline observation for every
+valuation reference using its original `checked_on` date. The baseline
+contains 984 reference observations across 81 exact card printings;
+979 currently have numeric prices and five record an unavailable grade. The 81
+printings correspond to 82 source ladders because corrected and energy-error
+Unlimited Blaine's Charizard are monitored independently.
 
 ## Monthly Review
 
-Divide the 59 printings into four stable cohorts of roughly 15 printings. Review
+Divide the 82 source ladders into four stable cohorts of roughly 20 ladders. Review
 one cohort each week so every tracked printing is checked approximately once
 per month. High-value corrective anchors may be checked more often when their
 stored condition prices are known to conflict.

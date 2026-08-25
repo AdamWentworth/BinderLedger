@@ -32,6 +32,7 @@ import { colors, spacing } from '@/constants/theme';
 import { useWatchlistCardMembership } from '@/hooks/use-watchlist-membership';
 import {
   type CatalogListing,
+  type CatalogValuationReference,
   formatCurrency,
   formatPercent,
   getVariantHistory,
@@ -71,13 +72,11 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
   const pendingHistoryScroll = useRef(false);
   const selectedVariant = listing.variants.find((variant) => variant.id === selectedVariantID);
   const ungradedReference = listing.valuationReferences.find(
-    (reference) => reference.kind === 'ungraded',
+    (reference) => reference.kind === 'ungraded' && reference.isPrimary,
   );
-  const gradedReferences = listing.valuationReferences.filter(
-    (reference) => reference.kind === 'graded',
-  );
+  const valuationGroups = groupValuationReferences(listing.valuationReferences);
   const estimatedPricing = listing.valuationKind === 'ungraded_reference';
-  const hasGradedPricing = gradedReferences.length > 0;
+  const hasGradedPricing = valuationGroups.some((group) => group.graded.length > 0);
   const conditionSource = listing.variants[0]?.sourceProvider ?? 'Unknown provider';
   const hasQualityWarning =
     listing.priceQuality.status !== 'current' || listing.priceQuality.reason !== null;
@@ -213,49 +212,61 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
 
                   {priceView === 'graded' && hasGradedPricing ? (
                     <>
-                      {ungradedReference ? (
-                        <View style={[styles.variantRow, styles.estimateRow]}>
-                          <View>
-                            <Text style={styles.estimateLabel}>Ungraded benchmark</Text>
-                            <Text style={styles.estimateMeta}>Exact printing</Text>
+                      {valuationGroups.map((group, groupIndex) => (
+                        <View
+                          key={group.key}
+                          style={[
+                            styles.valuationGroup,
+                            groupIndex > 0 && styles.valuationGroupDivider,
+                          ]}>
+                          {group.variant ? (
+                            <Text style={styles.valuationVariant}>{group.variant}</Text>
+                          ) : null}
+                          {group.ungraded ? (
+                            <View style={[styles.variantRow, styles.estimateRow]}>
+                              <View>
+                                <Text style={styles.estimateLabel}>Ungraded benchmark</Text>
+                                <Text style={styles.estimateMeta}>Exact printing</Text>
+                              </View>
+                              <Text style={styles.estimateAmount}>
+                                {formatCurrency(group.ungraded.amount)}
+                              </Text>
+                            </View>
+                          ) : null}
+                          <Text style={styles.gradeHeading}>Grade benchmarks</Text>
+                          {group.graded.map((reference) => (
+                            <View key={reference.id} style={styles.variantRow}>
+                              <Text style={styles.condition}>{reference.label}</Text>
+                              <Text
+                                style={[
+                                  styles.variantPrice,
+                                  reference.amount === null && styles.variantPriceUnavailable,
+                                ]}>
+                                {reference.amount === null
+                                  ? 'Unavailable'
+                                  : formatCurrency(reference.amount)}
+                              </Text>
+                            </View>
+                          ))}
+                          <View style={styles.sourceAttribution}>
+                            <Pressable
+                              accessibilityLabel={`Open this ${group.sourceName} valuation source`}
+                              accessibilityRole="link"
+                              onPress={() => void Linking.openURL(group.sourceUrl)}
+                              style={({ pressed }) => [
+                                styles.sourceLink,
+                                pressed && styles.sourceLinkPressed,
+                              ]}>
+                              <Text style={styles.sourceLinkText}>{group.sourceName}</Text>
+                              <ExternalLink color={colors.brand} size={13} strokeWidth={2} />
+                            </Pressable>
+                            <Text style={styles.estimateFootnote}>
+                              Snapshot from {formatQualityDate(group.checkedOn)}. Values are
+                              independent of the raw-card condition prices.
+                            </Text>
                           </View>
-                          <Text style={styles.estimateAmount}>
-                            {formatCurrency(ungradedReference.amount)}
-                          </Text>
-                        </View>
-                      ) : null}
-                      <Text style={styles.gradeHeading}>Grade benchmarks</Text>
-                      {gradedReferences.map((reference) => (
-                        <View key={reference.id} style={styles.variantRow}>
-                          <Text style={styles.condition}>{reference.label}</Text>
-                          <Text
-                            style={[
-                              styles.variantPrice,
-                              reference.amount === null && styles.variantPriceUnavailable,
-                            ]}>
-                            {reference.amount === null
-                              ? 'Unavailable'
-                              : formatCurrency(reference.amount)}
-                          </Text>
                         </View>
                       ))}
-                      <View style={styles.sourceAttribution}>
-                        <Pressable
-                          accessibilityLabel="Open this PriceCharting valuation source"
-                          accessibilityRole="link"
-                          onPress={() => void Linking.openURL(gradedReferences[0].sourceUrl)}
-                          style={({ pressed }) => [
-                            styles.sourceLink,
-                            pressed && styles.sourceLinkPressed,
-                          ]}>
-                          <Text style={styles.sourceLinkText}>PriceCharting</Text>
-                          <ExternalLink color={colors.brand} size={13} strokeWidth={2} />
-                        </Pressable>
-                        <Text style={styles.estimateFootnote}>
-                          Snapshot from {formatQualityDate(gradedReferences[0].checkedOn)}. Values
-                          are independent of the raw-card condition prices.
-                        </Text>
-                      </View>
                     </>
                   ) : (
                     <>
@@ -380,6 +391,41 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
       </SafeAreaView>
     </Modal>
   );
+}
+
+type ValuationGroup = {
+  key: string;
+  variant: string;
+  sourceName: string;
+  sourceUrl: string;
+  checkedOn: string;
+  ungraded?: CatalogValuationReference;
+  graded: CatalogValuationReference[];
+};
+
+function groupValuationReferences(references: CatalogValuationReference[]): ValuationGroup[] {
+  const groups = new Map<string, ValuationGroup>();
+
+  for (const reference of references) {
+    const key = `${reference.printingVariant}:${reference.sourceUrl}`;
+    const group = groups.get(key) ?? {
+      key,
+      variant: reference.printingVariant,
+      sourceName: reference.sourceName,
+      sourceUrl: reference.sourceUrl,
+      checkedOn: reference.checkedOn,
+      graded: [],
+    };
+
+    if (reference.kind === 'ungraded') {
+      group.ungraded = reference;
+    } else {
+      group.graded.push(reference);
+    }
+    groups.set(key, group);
+  }
+
+  return [...groups.values()].filter((group) => group.graded.length > 0);
 }
 
 const styles = StyleSheet.create({
@@ -617,6 +663,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
     textTransform: 'uppercase',
+  },
+  valuationGroup: {
+    gap: spacing.xs,
+  },
+  valuationGroupDivider: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+  },
+  valuationVariant: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   estimateFootnote: {
     color: colors.textMuted,

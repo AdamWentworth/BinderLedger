@@ -20,7 +20,10 @@ jobs:
   deploy:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: [self-hosted, linux, x64, prod, binderledger]
     environment: production
     concurrency:
@@ -30,19 +33,39 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: refs/heads/main
+          persist-credentials: false
 
       - name: Select images
         id: images
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
-          requested="${{ inputs.image_tag }}"
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ "${EVENT_NAME}" == "workflow_run" && "${TRIGGER_SHA}" != "${checked_out_sha}" ]]; then
+            echo "main advanced past ${TRIGGER_SHA}; a newer successful CI run will deploy instead."
+            echo "should_deploy=false" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          requested="${REQUESTED_TAG}"
+          if [[ -n "${requested}" && ! "${requested}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "Invalid image tag." >&2
+            exit 1
+          fi
+
+          sha="${checked_out_sha}"
           tag="${requested:-sha-${sha}}"
           echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
+          echo "sha=${sha}" >>"${GITHUB_OUTPUT}"
+          echo "should_deploy=true" >>"${GITHUB_OUTPUT}"
 
       - name: Prepare deployment state
+        if: steps.images.outputs.should_deploy == 'true'
         shell: bash
         env:
           DEPLOY_ROOT: /srv/binderledger
@@ -104,9 +127,14 @@ jobs:
             bash ops/prod/scripts/install-user-services.sh
 
       - name: Log in to GHCR
-        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        if: steps.images.outputs.should_deploy == 'true'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
 
       - name: Deploy and migrate
+        if: steps.images.outputs.should_deploy == 'true'
         shell: bash
         env:
           DEPLOY_ROOT: /srv/binderledger
@@ -168,9 +196,11 @@ jobs:
           fi
 
       - name: Smoke test and record deployment
+        if: steps.images.outputs.should_deploy == 'true'
         shell: bash
         env:
           DEPLOY_ROOT: /srv/binderledger
+          DEPLOY_SHA: ${{ steps.images.outputs.sha }}
           IMAGE_TAG: ${{ steps.images.outputs.tag }}
         run: |
           set -euo pipefail
@@ -184,7 +214,7 @@ jobs:
           cat >"${DEPLOY_ROOT}/deployments/current.json" <<EOF
           {
             "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "gitSha": "${{ github.event.workflow_run.head_sha || github.sha }}",
+            "gitSha": "${DEPLOY_SHA}",
             "imageTag": "${IMAGE_TAG}",
             "runId": "${GITHUB_RUN_ID}"
           }

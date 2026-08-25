@@ -1,0 +1,10 @@
+[Unit]
+Description=Synchronize BinderLedger production backups and media to TNAS
+After=binderledger-backup-local.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/binderledger/bin/backup-nas.sh
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=2h

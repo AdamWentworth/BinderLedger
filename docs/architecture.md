@@ -28,7 +28,12 @@ without changing the saved-item identities.
 
 The existing JustTCG audit tool and its downloaded responses remain the durable raw source. `cmd/import-justtcg` normalizes collected set files into PostgreSQL sets, cards, exact printings, conditions, current prices, and daily price observations. The import uses stable provider IDs and conflict updates, so it is safe to rerun after collection.
 
-The next ingestion milestone is a rate-aware scheduled collector followed by this normalization step. Durable job scheduling should use PostgreSQL-backed jobs so this machine does not need Redis merely to run background work.
+Production ingestion uses two rate-aware one-shot containers scheduled by
+systemd. Current-price observations run first; a resumable historical collector
+then expands the approved legacy scope from persistent cache. Provider metadata,
+per-run budgets, and daily/monthly reserves protect the shared Free-tier quota.
+PostgreSQL remains the durable catalog and observation store; Redis is not
+required for these background jobs.
 
 ## Deployment posture
 

@@ -134,7 +134,7 @@ jobs:
       - name: Smoke test hardened web image
         run: |
           set -euo pipefail
-          docker run --detach --rm \
+          docker run --detach \
             --name binderledger-web-ci \
             --user 101:101 \
             --read-only \
@@ -147,7 +147,7 @@ jobs:
             --tmpfs /var/run:size=2m,uid=101,gid=101 \
             --publish 127.0.0.1:8081:8080 \
             binderledger-web:ci
-          trap 'docker logs binderledger-web-ci; docker stop binderledger-web-ci' EXIT
+          trap 'docker logs binderledger-web-ci; docker rm --force binderledger-web-ci' EXIT
           for _ in $(seq 1 30); do
             if curl --fail --silent --show-error http://127.0.0.1:8081/ >/dev/null; then
               break

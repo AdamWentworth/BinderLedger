@@ -51,10 +51,12 @@ make dev-down
 The development database persists in the dedicated
 `binderledger_dev_postgres` Docker volume when the runtime is stopped. While
 the runtime is up, the exported browser app is available at
-`http://PRODUCTION_HOST:8083` and the phone-only Metro server is available to
-Expo Go at `exp://PRODUCTION_HOST:8082`. Keeping web out of Metro prevents the two
-bundles from exhausting memory on this server. Run `make client-export` and
-refresh the browser after changing client code.
+`http://localhost:8083` or `http://PRODUCTION_HOST:8083`, and the phone-only Metro
+server is available to Expo Go at `exp://PRODUCTION_HOST:8082`. Loopback proxies
+provide localhost access without exposing the development services on every
+network interface. Keeping web out of Metro prevents the two bundles from
+exhausting memory on this server. Run `make client-export` and refresh the
+browser after changing client code.
 
 For Expo Go on the same trusted Wi-Fi network, bind the API to this computer's
 LAN address, place the same URL in `apps/client/.env.local`, and run:

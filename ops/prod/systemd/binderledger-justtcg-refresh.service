@@ -1,0 +1,11 @@
+[Unit]
+Description=BinderLedger production JustTCG current-price refresh
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/binderledger
+ExecStart=/usr/bin/docker compose --env-file /srv/binderledger/.env --env-file /srv/binderledger/images.env -f /srv/binderledger/docker-compose.yml --profile tools run --rm refresh-justtcg
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=15min

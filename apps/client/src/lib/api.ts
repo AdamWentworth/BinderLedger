@@ -98,6 +98,10 @@ export type CatalogListingPage = {
   total: number;
   limit: number;
   offset: number;
+  pricing: {
+    currency: string;
+    asOf: string | null;
+  };
 };
 
 export type CatalogListingSort =

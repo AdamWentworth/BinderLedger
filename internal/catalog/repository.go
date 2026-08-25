@@ -151,10 +151,16 @@ type ListingFilter struct {
 }
 
 type ListingPage struct {
-	Listings []Listing `json:"listings"`
-	Total    int       `json:"total"`
-	Limit    int       `json:"limit"`
-	Offset   int       `json:"offset"`
+	Listings []Listing      `json:"listings"`
+	Total    int            `json:"total"`
+	Limit    int            `json:"limit"`
+	Offset   int            `json:"offset"`
+	Pricing  PricingContext `json:"pricing"`
+}
+
+type PricingContext struct {
+	Currency string  `json:"currency"`
+	AsOf     *string `json:"asOf"`
 }
 
 type SetPricingFilter struct {
@@ -447,6 +453,21 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 	filter.Finish = strings.TrimSpace(filter.Finish)
 	filter.Condition = strings.TrimSpace(filter.Condition)
 
+	page := ListingPage{
+		Listings: make([]Listing, 0, filter.Limit),
+		Limit:    filter.Limit,
+		Offset:   filter.Offset,
+		Pricing: PricingContext{
+			Currency: "USD",
+		},
+	}
+	if err := repository.db.QueryRow(ctx, `
+		SELECT to_char(max(observed_on), 'YYYY-MM-DD')
+		FROM price_observations
+	`).Scan(&page.Pricing.AsOf); err != nil {
+		return ListingPage{}, fmt.Errorf("query catalog pricing context: %w", err)
+	}
+
 	rows, err := repository.db.Query(ctx, `
 		WITH listings AS (
 			SELECT
@@ -619,11 +640,6 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 	}
 	defer rows.Close()
 
-	page := ListingPage{
-		Listings: make([]Listing, 0, filter.Limit),
-		Limit:    filter.Limit,
-		Offset:   filter.Offset,
-	}
 	listingIndex := make(map[string]int, filter.Limit)
 	cardIDs := make([]string, 0, filter.Limit)
 	seenCardIDs := make(map[string]struct{}, filter.Limit)

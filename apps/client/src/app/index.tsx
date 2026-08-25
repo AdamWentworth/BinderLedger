@@ -10,7 +10,10 @@ import {
   Grid3X3,
   Layers3,
   Library,
+  RotateCcw,
+  SlidersHorizontal,
   Square,
+  X,
 } from 'lucide-react-native';
 import { useState } from 'react';
 import {
@@ -25,9 +28,20 @@ import {
 
 import { CardDetailModal } from '@/components/card-detail-modal';
 import { CatalogCardTile } from '@/components/catalog-card';
+import {
+  catalogEditionOptions,
+  type CatalogFilterValues,
+  CatalogFilterSheet,
+  catalogFinishOptions,
+  catalogSortOptions,
+  type CatalogFinish,
+} from '@/components/catalog-filter-sheet';
 import { CatalogSetTile } from '@/components/catalog-set';
 import { EmptyState } from '@/components/empty-state';
-import { MarketConditionControl } from '@/components/market-condition-control';
+import {
+  MarketConditionControl,
+  shortCondition,
+} from '@/components/market-condition-control';
 import { Screen } from '@/components/screen';
 import { SearchField } from '@/components/search-field';
 import { SelectionMenu } from '@/components/selection-menu';
@@ -56,27 +70,12 @@ import {
 
 const pageSize = 24;
 type CatalogMode = 'cards' | 'sets';
-type CatalogFinish = '' | 'Normal' | 'Holofoil' | 'Reverse Holofoil';
 
-const editionOptions: { label: string; value: CatalogEdition }[] = [
-  { label: 'All editions', value: '' },
-  { label: 'First Edition', value: 'First Edition' },
-  { label: 'Shadowless', value: 'Shadowless' },
-  { label: 'Unlimited', value: 'Unlimited' },
-];
-const finishOptions: { label: string; value: CatalogFinish }[] = [
-  { label: 'All finishes', value: '' },
-  { label: 'Normal', value: 'Normal' },
-  { label: 'Holofoil', value: 'Holofoil' },
-  { label: 'Reverse Holofoil', value: 'Reverse Holofoil' },
-];
-const sortOptions: { label: string; value: CatalogListingSort }[] = [
-  { label: 'Set number', value: 'set_number' },
-  { label: 'Price: high to low', value: 'price_desc' },
-  { label: 'Price: low to high', value: 'price_asc' },
-  { label: 'Name: A to Z', value: 'name_asc' },
-  { label: 'Name: Z to A', value: 'name_desc' },
-];
+type ActiveCatalogFilter = {
+  key: string;
+  label: string;
+  onRemove: () => void;
+};
 
 export default function CatalogScreen() {
   const { condition, density, setCondition, setDensity } = useCatalogPreferences();
@@ -102,6 +101,7 @@ export default function CatalogScreen() {
   const [gradedOnly, setGradedOnly] = useState(false);
   const [sort, setSort] = useState<CatalogListingSort>('set_number');
   const [offset, setOffset] = useState(0);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<CatalogListing | null>(null);
   const [selectedPricingSet, setSelectedPricingSet] = useState<CatalogSet | null>(null);
 
@@ -153,6 +153,12 @@ export default function CatalogScreen() {
   const pageEnd = Math.min(offset + pageSize, total);
   const hasPrevious = offset > 0;
   const hasNext = offset + pageSize < total;
+  const pricingContext = listingsQuery.data?.pricing;
+  const pricingContextLabel = pricingContext
+    ? `${pricingContext.currency} prices${
+        pricingContext.asOf ? ` / Latest data ${formatCatalogDate(pricingContext.asOf)}` : ''
+      }`
+    : null;
   const summary = setsQuery.isSuccess
     ? `${totalPrintingCount} printings across ${setGroups.length} collected set families.`
     : 'Browse collected legacy Pokemon printings and condition prices.';
@@ -179,6 +185,72 @@ export default function CatalogScreen() {
     setCondition(value);
     setOffset(0);
   };
+  const resetFilters = () => {
+    setCondition('Near Mint');
+    if (!selectedSet) setEdition('');
+    setFinish('');
+    setGradedOnly(false);
+    setSort('set_number');
+    setOffset(0);
+  };
+  const applyFilters = (values: CatalogFilterValues) => {
+    setCondition(values.condition);
+    setEdition(values.edition);
+    setFinish(values.finish);
+    setGradedOnly(values.gradedOnly);
+    setSort(values.sort);
+    setOffset(0);
+    setFilterSheetOpen(false);
+  };
+
+  const activeFilters: ActiveCatalogFilter[] = [];
+  if (condition !== 'Near Mint') {
+    activeFilters.push({
+      key: 'condition',
+      label: shortCondition(condition),
+      onRemove: () => changeCondition('Near Mint'),
+    });
+  }
+  if (!selectedSet && edition) {
+    activeFilters.push({
+      key: 'edition',
+      label: edition,
+      onRemove: () => {
+        setEdition('');
+        setOffset(0);
+      },
+    });
+  }
+  if (finish) {
+    activeFilters.push({
+      key: 'finish',
+      label: finish,
+      onRemove: () => {
+        setFinish('');
+        setOffset(0);
+      },
+    });
+  }
+  if (gradedOnly) {
+    activeFilters.push({
+      key: 'graded',
+      label: 'Graded pricing',
+      onRemove: () => {
+        setGradedOnly(false);
+        setOffset(0);
+      },
+    });
+  }
+  if (sort !== 'set_number') {
+    activeFilters.push({
+      key: 'sort',
+      label: catalogSortOptions.find((option) => option.value === sort)?.label ?? sort,
+      onRemove: () => {
+        setSort('set_number');
+        setOffset(0);
+      },
+    });
+  }
 
   return (
     <Screen
@@ -252,85 +324,94 @@ export default function CatalogScreen() {
             </>
           ) : null}
 
-          <View style={[styles.filterBar, compact && styles.filterBarCompact]}>
-            <View style={[styles.conditionFilter, compact && styles.conditionFilterCompact]}>
-              <Text style={styles.filterLabel}>Price condition</Text>
-              <MarketConditionControl condition={condition} onChange={changeCondition} />
-            </View>
-            <View style={[styles.filterMenus, compact && styles.filterMenusCompact]}>
-              {!selectedSet ? (
-                <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
+          {compact ? (
+            <MobileFilterButton
+              activeCount={activeFilters.length}
+              condition={condition}
+              onPress={() => setFilterSheetOpen(true)}
+              sort={sort}
+            />
+          ) : (
+            <View style={styles.filterBar}>
+              <View style={styles.conditionFilter}>
+                <Text style={styles.filterLabel}>Price condition</Text>
+                <MarketConditionControl condition={condition} onChange={changeCondition} />
+              </View>
+              <View style={styles.filterMenus}>
+                {!selectedSet ? (
+                  <View style={styles.filterMenu}>
+                    <SelectionMenu
+                      accessibilityLabel="Filter by edition"
+                      label="Edition"
+                      onChange={(value) => {
+                        setEdition(value);
+                        setOffset(0);
+                      }}
+                      options={catalogEditionOptions}
+                      value={edition}
+                    />
+                  </View>
+                ) : null}
+                <View style={styles.filterMenu}>
                   <SelectionMenu
-                    accessibilityLabel="Filter by edition"
-                    label="Edition"
+                    accessibilityLabel="Filter by finish"
+                    label="Finish"
                     onChange={(value) => {
-                      setEdition(value);
+                      setFinish(value);
                       setOffset(0);
                     }}
-                    options={editionOptions}
-                    value={edition}
+                    options={catalogFinishOptions}
+                    value={finish}
                   />
                 </View>
-              ) : null}
-              <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
-                <SelectionMenu
-                  accessibilityLabel="Filter by finish"
-                  label="Finish"
-                  onChange={(value) => {
-                    setFinish(value);
-                    setOffset(0);
-                  }}
-                  options={finishOptions}
-                  value={finish}
-                />
-              </View>
-              <View
-                style={[
-                  styles.gradedFilter,
-                  compact && styles.filterMenuCompact,
-                  gradedOnly && styles.gradedFilterSelected,
-                ]}>
-                <View style={styles.gradedFilterCopy}>
-                  <Text style={styles.filterLabel}>Pricing</Text>
-                  <View style={styles.gradedFilterValue}>
-                    <BadgeCheck
-                      color={gradedOnly ? colors.brand : colors.textMuted}
-                      size={16}
-                    />
-                    <Text
-                      style={[
-                        styles.gradedFilterText,
-                        gradedOnly && styles.gradedFilterTextSelected,
-                      ]}>
-                      Graded only
-                    </Text>
+                <View
+                  style={[styles.gradedFilter, gradedOnly && styles.gradedFilterSelected]}>
+                  <View style={styles.gradedFilterCopy}>
+                    <Text style={styles.filterLabel}>Pricing</Text>
+                    <View style={styles.gradedFilterValue}>
+                      <BadgeCheck
+                        color={gradedOnly ? colors.brand : colors.textMuted}
+                        size={16}
+                      />
+                      <Text
+                        style={[
+                          styles.gradedFilterText,
+                          gradedOnly && styles.gradedFilterTextSelected,
+                        ]}>
+                        Graded only
+                      </Text>
+                    </View>
                   </View>
+                  <Switch
+                    accessibilityLabel="Show only printings with graded prices"
+                    onValueChange={(value) => {
+                      setGradedOnly(value);
+                      setOffset(0);
+                    }}
+                    thumbColor={gradedOnly ? colors.text : colors.textMuted}
+                    trackColor={{ false: colors.surfaceQuiet, true: colors.brandPressed }}
+                    value={gradedOnly}
+                  />
                 </View>
-                <Switch
-                  accessibilityLabel="Show only printings with graded prices"
-                  onValueChange={(value) => {
-                    setGradedOnly(value);
-                    setOffset(0);
-                  }}
-                  thumbColor={gradedOnly ? colors.text : colors.textMuted}
-                  trackColor={{ false: colors.surfaceQuiet, true: colors.brandPressed }}
-                  value={gradedOnly}
-                />
-              </View>
-              <View style={[styles.filterMenu, compact && styles.filterMenuCompact]}>
-                <SelectionMenu
-                  accessibilityLabel="Sort catalog"
-                  label="Sort"
-                  onChange={(value) => {
-                    setSort(value);
-                    setOffset(0);
-                  }}
-                  options={sortOptions}
-                  value={sort}
-                />
+                <View style={styles.filterMenu}>
+                  <SelectionMenu
+                    accessibilityLabel="Sort catalog"
+                    label="Sort"
+                    onChange={(value) => {
+                      setSort(value);
+                      setOffset(0);
+                    }}
+                    options={catalogSortOptions}
+                    value={sort}
+                  />
+                </View>
               </View>
             </View>
-          </View>
+          )}
+
+          {activeFilters.length > 0 ? (
+            <ActiveFilterStrip filters={activeFilters} onReset={resetFilters} />
+          ) : null}
 
           <View style={styles.catalogLayout}>
             {!compact ? (
@@ -346,15 +427,20 @@ export default function CatalogScreen() {
 
             <View style={styles.results}>
               <View style={styles.resultsHeader}>
-                <View style={styles.resultCountWrap}>
-                  <Layers3 color={colors.brass} size={17} />
-                  <Text style={styles.resultCount}>
-                    {listingsQuery.isPending
-                      ? 'Loading catalog'
-                      : total === 0
-                        ? '0 printings'
-                        : `${pageStart}-${pageEnd} of ${total} printings`}
-                  </Text>
+                <View style={styles.resultSummary}>
+                  <View style={styles.resultCountWrap}>
+                    <Layers3 color={colors.brass} size={17} />
+                    <Text style={styles.resultCount}>
+                      {listingsQuery.isPending
+                        ? 'Loading catalog'
+                        : total === 0
+                          ? '0 printings'
+                          : `${pageStart}-${pageEnd} of ${total} printings`}
+                    </Text>
+                  </View>
+                  {pricingContextLabel ? (
+                    <Text style={styles.pricingContext}>{pricingContextLabel}</Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.resultsActions}>
@@ -428,9 +514,96 @@ export default function CatalogScreen() {
         </>
       )}
 
+      {compact && filterSheetOpen ? (
+        <CatalogFilterSheet
+          onApply={applyFilters}
+          onClose={() => setFilterSheetOpen(false)}
+          showEdition={!selectedSet}
+          values={{ condition, edition, finish, gradedOnly, sort }}
+        />
+      ) : null}
       <CardDetailModal listing={selectedListing} onClose={() => setSelectedListing(null)} />
       <SetDetailModal set={selectedPricingSet} onClose={() => setSelectedPricingSet(null)} />
     </Screen>
+  );
+}
+
+function MobileFilterButton({
+  activeCount,
+  condition,
+  onPress,
+  sort,
+}: {
+  activeCount: number;
+  condition: CatalogFilterValues['condition'];
+  onPress: () => void;
+  sort: CatalogListingSort;
+}) {
+  const sortLabel = catalogSortOptions.find((option) => option.value === sort)?.label ?? sort;
+
+  return (
+    <Pressable
+      accessibilityLabel={`Open catalog filters, ${activeCount} active`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.mobileFilterButton, pressed && styles.mobileFilterPressed]}>
+      <View style={styles.mobileFilterIdentity}>
+        <SlidersHorizontal color={colors.brass} size={17} />
+        <Text style={styles.mobileFilterTitle}>Filters</Text>
+        {activeCount > 0 ? (
+          <View style={styles.mobileFilterCount}>
+            <Text style={styles.mobileFilterCountText}>{activeCount}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text numberOfLines={1} style={styles.mobileFilterSummary}>
+        {shortCondition(condition)} / {sortLabel}
+      </Text>
+      <ChevronRight color={colors.textMuted} size={17} />
+    </Pressable>
+  );
+}
+
+function ActiveFilterStrip({
+  filters,
+  onReset,
+}: {
+  filters: ActiveCatalogFilter[];
+  onReset: () => void;
+}) {
+  return (
+    <View style={styles.activeFilterRow}>
+      <ScrollView
+        accessibilityLabel="Active catalog filters"
+        contentContainerStyle={styles.activeFilterStrip}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.activeFilterScroll}>
+        {filters.map((filter) => (
+          <Pressable
+            accessibilityLabel={`Remove ${filter.label} filter`}
+            accessibilityRole="button"
+            key={filter.key}
+            onPress={filter.onRemove}
+            style={({ pressed }) => [
+              styles.activeFilterChip,
+              pressed && styles.activeFilterPressed,
+            ]}>
+            <Text numberOfLines={1} style={styles.activeFilterText}>
+              {filter.label}
+            </Text>
+            <X color={colors.brand} size={13} />
+          </Pressable>
+        ))}
+      </ScrollView>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onReset}
+        style={({ pressed }) => [styles.resetFiltersButton, pressed && styles.activeFilterPressed]}>
+        <RotateCcw color={colors.textMuted} size={13} />
+        <Text style={styles.resetFiltersText}>Reset</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -508,6 +681,12 @@ function getCatalogColumnCount(
   };
   const fittedColumns = Math.floor((availableWidth + gap) / (minimumWidth[density] + gap));
   return Math.max(1, Math.min(maximumColumns[density], fittedColumns));
+}
+
+function formatCatalogDate(value: string): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+    new Date(`${value}T00:00:00`),
+  );
 }
 
 function CatalogModeControl({
@@ -870,6 +1049,54 @@ const styles = StyleSheet.create({
   modeButtonTextSelected: {
     color: colors.text,
   },
+  mobileFilterButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  mobileFilterPressed: {
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.brand,
+  },
+  mobileFilterIdentity: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  mobileFilterTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  mobileFilterCount: {
+    alignItems: 'center',
+    backgroundColor: colors.onlineSurface,
+    borderColor: colors.onlineBorder,
+    borderRadius: 4,
+    borderWidth: 1,
+    height: 20,
+    justifyContent: 'center',
+    minWidth: 20,
+    paddingHorizontal: 4,
+  },
+  mobileFilterCountText: {
+    color: colors.brand,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  mobileFilterSummary: {
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: 11,
+    textAlign: 'right',
+  },
   filterBar: {
     alignItems: 'flex-end',
     borderBottomColor: colors.border,
@@ -879,20 +1106,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     paddingVertical: spacing.md,
-  },
-  filterBarCompact: {
-    alignItems: 'stretch',
-    flexDirection: 'column',
   },
   conditionFilter: {
     flexShrink: 0,
     gap: spacing.xs,
     width: 280,
-  },
-  conditionFilterCompact: {
-    width: '100%',
   },
   filterLabel: {
     color: colors.textMuted,
@@ -908,17 +1128,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     minWidth: 0,
   },
-  filterMenusCompact: {
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-  },
   filterMenu: {
     flexShrink: 1,
     minWidth: 0,
-  },
-  filterMenuCompact: {
-    flexBasis: '48%',
-    flexGrow: 1,
   },
   gradedFilter: {
     alignItems: 'center',
@@ -954,6 +1166,52 @@ const styles = StyleSheet.create({
   },
   gradedFilterTextSelected: {
     color: colors.text,
+  },
+  activeFilterRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  activeFilterScroll: {
+    flex: 1,
+  },
+  activeFilterStrip: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingRight: spacing.xs,
+  },
+  activeFilterChip: {
+    alignItems: 'center',
+    backgroundColor: colors.onlineSurface,
+    borderColor: colors.onlineBorder,
+    borderRadius: 4,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 32,
+    paddingHorizontal: 9,
+  },
+  activeFilterPressed: {
+    backgroundColor: colors.surfaceRaised,
+  },
+  activeFilterText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '700',
+    maxWidth: 160,
+  },
+  resetFiltersButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 32,
+    paddingHorizontal: spacing.sm,
+  },
+  resetFiltersText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
   },
   catalogLayout: {
     alignItems: 'flex-start',
@@ -1109,6 +1367,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     minHeight: 38,
   },
+  resultSummary: {
+    gap: 3,
+  },
   resultCountWrap: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1118,6 +1379,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
+  },
+  pricingContext: {
+    color: colors.textMuted,
+    fontSize: 10,
+    paddingLeft: 25,
   },
   resultsActions: {
     alignItems: 'center',

@@ -5,12 +5,6 @@ on:
     workflows: ["ci"]
     types: [completed]
   workflow_dispatch:
-    inputs:
-      git_sha:
-        description: "Full main commit SHA to deploy; blank selects current main"
-        required: false
-        default: ""
-        type: string
 
 permissions:
   contents: read
@@ -37,7 +31,6 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          REQUESTED_SHA: ${{ inputs.git_sha }}
           TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
           REPOSITORY: ${{ github.repository }}
         run: |
@@ -56,7 +49,7 @@ jobs:
             fi
             target_sha="${TRIGGER_SHA}"
           else
-            target_sha="${REQUESTED_SHA:-${main_sha}}"
+            target_sha="${main_sha}"
           fi
 
           if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then

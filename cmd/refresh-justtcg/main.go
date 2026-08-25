@@ -26,7 +26,7 @@ const (
 	providerName                 = "JustTCG"
 	defaultBaseURL               = "https://api.justtcg.com/v1"
 	defaultDailyRequestBudget    = 28
-	defaultBootstrapDailyBudget  = 20
+	defaultBootstrapDailyBudget  = 0
 	defaultLegacyTargetSetCount  = 38
 	maximumDailyRequestBudget    = 95
 	defaultDailyRequestReserve   = 5
@@ -159,7 +159,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			maximumDailyRequestBudget,
 		)
 	}
-	bootstrapDailyBudget, err := positiveInteger(
+	bootstrapDailyBudget, err := nonnegativeInteger(
 		"JUSTTCG_BOOTSTRAP_DAILY_REFRESH_REQUEST_BUDGET",
 		defaultBootstrapDailyBudget,
 	)

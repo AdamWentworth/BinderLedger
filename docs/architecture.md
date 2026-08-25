@@ -29,12 +29,13 @@ without changing the saved-item identities.
 The existing JustTCG audit tool and its downloaded responses remain the durable raw source. `cmd/import-justtcg` normalizes collected set files into PostgreSQL sets, cards, exact printings, conditions, current prices, and daily price observations. The import uses stable provider IDs and conflict updates, so it is safe to rerun after collection.
 
 Production ingestion uses two rate-aware one-shot containers scheduled by
-systemd. A rotating 30-day catch-up job runs first and upserts current and daily
-historical observations; a resumable historical collector then expands the
-approved legacy scope from persistent cache. Provider metadata, per-run budgets,
-and daily/monthly reserves protect the shared Free-tier quota. PostgreSQL
-remains the durable catalog and observation store; Redis is not required for
-these background jobs.
+systemd. During bootstrap, a resumable historical collector receives the full
+sustainable request budget and expands the approved legacy scope from
+persistent cache. Once all approved sets are present, it automatically yields
+the budget to a rotating 30-day catch-up job that upserts current and daily
+historical observations. Provider metadata, per-run budgets, and daily/monthly
+reserves protect the shared Free-tier quota. PostgreSQL remains the durable
+catalog and observation store; Redis is not required for these background jobs.
 
 ## Deployment posture
 

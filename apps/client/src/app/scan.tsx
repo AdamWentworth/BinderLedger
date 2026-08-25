@@ -1,10 +1,12 @@
 import { CameraCapturedPicture, CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import {
   Camera,
   Check,
   CircleCheck,
   Flashlight,
   FlashlightOff,
+  ImagePlus,
   RotateCcw,
   ScanLine,
   Search,
@@ -19,6 +21,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -44,6 +47,7 @@ const sideLabel: Record<CardSide, string> = {
 
 export default function ScanScreen() {
   const camera = useRef<CameraView>(null);
+  const { height: viewportHeight } = useWindowDimensions();
   const [permission, requestPermission] = useCameraPermissions();
   const [activeSide, setActiveSide] = useState<CardSide>('front');
   const [goal, setGoal] = useState<ScanGoal>('identify');
@@ -56,6 +60,7 @@ export default function ScanScreen() {
   const [session, setSession] = useState<ScanSession | null>(null);
   const activeScanID = session?.id;
   const activeScanStatus = session?.status;
+  const scannerStageMinHeight = Platform.OS === 'web' ? Math.max(420, viewportHeight - 270) : undefined;
 
   useEffect(() => {
     if (
@@ -121,6 +126,34 @@ export default function ScanScreen() {
     }
   }
 
+  async function selectPhoto(side: CardSide) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        exif: false,
+        mediaTypes: ['images'],
+        quality: 1,
+      });
+      if (result.canceled) return;
+
+      const capture = toPickerCapture(result.assets[0]);
+      const nextCaptures = { ...captures, [side]: capture };
+      setCaptures(nextCaptures);
+      if (goal === 'condition' && (!nextCaptures.front || !nextCaptures.back)) {
+        setActiveSide(nextCaptures.front ? 'back' : 'front');
+      } else {
+        setMode('review');
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The photo could not be selected.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function retake(side: CardSide) {
     setActiveSide(side);
     setCameraReady(false);
@@ -178,156 +211,258 @@ export default function ScanScreen() {
 
   return (
     <Screen
-      subtitle="Photograph cards for identification and condition review."
+      subtitle="Photograph or upload cards for identification and condition review."
       title="Card scanner">
-      {!permission ? (
-        <View style={styles.centerState}>
-          <ActivityIndicator color={colors.brand} size="large" />
-        </View>
-      ) : !permission.granted ? (
-        <PermissionState canAskAgain={permission.canAskAgain} request={requestPermission} />
-      ) : mode === 'camera' ? (
-        <View style={styles.workspace}>
-          <View accessibilityRole="tablist" style={styles.goalControl}>
-            <GoalButton
-              label="Front only"
-              onPress={() => selectGoal('identify')}
-              selected={goal === 'identify'}
+      <View style={[styles.scannerStage, { minHeight: scannerStageMinHeight }]}>
+        {mode === 'camera' ? (
+          Platform.OS === 'web' ? (
+            <DesktopUploadState
+              activeSide={activeSide}
+              busy={busy}
+              captures={captures}
+              error={error}
+              goal={goal}
+              onPick={selectPhoto}
+              onSelectGoal={selectGoal}
             />
-            <GoalButton
-              label="Condition"
-              onPress={() => selectGoal('condition')}
-              selected={goal === 'condition'}
-            />
-          </View>
-          {goal === 'condition' ? (
-            <View style={styles.progressRow}>
-              <ProgressStep complete={Boolean(captures.front)} label="Front" selected={activeSide === 'front'} />
-              <View style={styles.progressRule} />
-              <ProgressStep complete={Boolean(captures.back)} label="Back" selected={activeSide === 'back'} />
+          ) : !permission ? (
+            <View style={styles.centerState}>
+              <ActivityIndicator color={colors.brand} size="large" />
             </View>
-          ) : null}
-
-          <View style={styles.cameraFrame}>
-            <CameraView
-              enableTorch={torch}
-              facing="back"
-              mode="picture"
-              onCameraReady={() => {
-                if (Platform.OS === 'web') {
-                  setTimeout(() => setCameraReady(true), 2500);
-                  return;
-                }
-                setCameraReady(true);
-              }}
-              onMountError={({ message }) => setError(message)}
-              ref={camera}
-              style={StyleSheet.absoluteFill}
-            />
-            <View pointerEvents="none" style={styles.cameraShade}>
-              <View style={styles.cardGuide} />
-            </View>
-            <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-              <View style={styles.cameraTopBar}>
-                <View style={styles.sideBadge}>
-                  <ScanLine color={colors.text} size={17} />
-                  <Text style={styles.sideBadgeText}>{sideLabel[activeSide]}</Text>
+          ) : !permission.granted ? (
+            <PermissionState canAskAgain={permission.canAskAgain} request={requestPermission} />
+          ) : (
+            <View style={styles.workspace}>
+              <View accessibilityRole="tablist" style={styles.goalControl}>
+                <GoalButton
+                  label="Front only"
+                  onPress={() => selectGoal('identify')}
+                  selected={goal === 'identify'}
+                />
+                <GoalButton
+                  label="Condition"
+                  onPress={() => selectGoal('condition')}
+                  selected={goal === 'condition'}
+                />
+              </View>
+              {goal === 'condition' ? (
+                <View style={styles.progressRow}>
+                  <ProgressStep
+                    complete={Boolean(captures.front)}
+                    label="Front"
+                    selected={activeSide === 'front'}
+                  />
+                  <View style={styles.progressRule} />
+                  <ProgressStep
+                    complete={Boolean(captures.back)}
+                    label="Back"
+                    selected={activeSide === 'back'}
+                  />
                 </View>
-                <Pressable
-                  accessibilityLabel={torch ? 'Turn flash off' : 'Turn flash on'}
-                  disabled={busy}
-                  onPress={() => setTorch((current) => !current)}
-                  style={({ pressed }) => [styles.iconButton, pressed && styles.buttonPressed]}>
-                  {torch ? (
-                    <FlashlightOff color={colors.text} size={21} />
-                  ) : (
-                    <Flashlight color={colors.text} size={21} />
-                  )}
-                </Pressable>
-              </View>
-              <View style={styles.captureBar}>
-                <Pressable
-                  accessibilityLabel={`Photograph card ${activeSide}`}
-                  disabled={!cameraReady || busy}
-                  onPress={capturePhoto}
-                  style={({ pressed }) => [
-                    styles.shutterOuter,
-                    (!cameraReady || busy) && styles.buttonDisabled,
-                    pressed && styles.shutterPressed,
-                  ]}>
-                  {busy ? (
-                    <ActivityIndicator color={colors.canvas} />
-                  ) : (
-                    <View style={styles.shutterInner} />
-                  )}
-                </Pressable>
-              </View>
-            </View>
-          </View>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        </View>
-      ) : mode === 'review' ? (
-        <View style={styles.workspace}>
-          <View style={styles.reviewHeader}>
-            <CircleCheck color={colors.brand} size={24} />
-            <View style={styles.reviewHeadingCopy}>
-              <Text style={styles.sectionTitle}>
-                {goal === 'condition' ? 'Both sides ready' : 'Card face ready'}
-              </Text>
-              <Text style={styles.sectionSubtitle}>
-                {goal === 'condition' ? 'Review the full card and visible surface detail.' : 'Review the card face.'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.previewGrid}>
-            {(goal === 'condition' ? (['front', 'back'] as const) : (['front'] as const)).map((side) => (
-              <View key={side} style={styles.previewItem}>
-                <View style={styles.previewImageFrame}>
-                  {captures[side] ? (
-                    <Image source={{ uri: captures[side]?.uri }} style={styles.previewImage} />
-                  ) : null}
-                  <View style={styles.previewLabel}>
-                    <Text style={styles.previewLabelText}>{sideLabel[side]}</Text>
+              ) : null}
+
+              <View style={styles.cameraFrame}>
+                <CameraView
+                  enableTorch={torch}
+                  facing="back"
+                  mode="picture"
+                  onCameraReady={() => {
+                    if (Platform.OS === 'web') {
+                      setTimeout(() => setCameraReady(true), 2500);
+                      return;
+                    }
+                    setCameraReady(true);
+                  }}
+                  onMountError={({ message }) => setError(message)}
+                  ref={camera}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View pointerEvents="none" style={styles.cameraShade}>
+                  <View style={styles.cardGuide} />
+                </View>
+                <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                  <View style={styles.cameraTopBar}>
+                    <View style={styles.sideBadge}>
+                      <ScanLine color={colors.text} size={17} />
+                      <Text style={styles.sideBadgeText}>{sideLabel[activeSide]}</Text>
+                    </View>
+                    <Pressable
+                      accessibilityLabel={torch ? 'Turn flash off' : 'Turn flash on'}
+                      disabled={busy}
+                      onPress={() => setTorch((current) => !current)}
+                      style={({ pressed }) => [styles.iconButton, pressed && styles.buttonPressed]}>
+                      {torch ? (
+                        <FlashlightOff color={colors.text} size={21} />
+                      ) : (
+                        <Flashlight color={colors.text} size={21} />
+                      )}
+                    </Pressable>
+                  </View>
+                  <View style={styles.captureBar}>
+                    <Pressable
+                      accessibilityLabel={`Photograph card ${activeSide}`}
+                      disabled={!cameraReady || busy}
+                      onPress={capturePhoto}
+                      style={({ pressed }) => [
+                        styles.shutterOuter,
+                        (!cameraReady || busy) && styles.buttonDisabled,
+                        pressed && styles.shutterPressed,
+                      ]}>
+                      {busy ? (
+                        <ActivityIndicator color={colors.canvas} />
+                      ) : (
+                        <View style={styles.shutterInner} />
+                      )}
+                    </Pressable>
                   </View>
                 </View>
-                <Pressable
-                  onPress={() => retake(side)}
-                  style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}>
-                  <RotateCcw color={colors.text} size={17} />
-                  <Text style={styles.secondaryButtonText}>Retake</Text>
-                </Pressable>
               </View>
-            ))}
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            </View>
+          )
+        ) : mode === 'review' ? (
+          <View style={styles.workspace}>
+            <View style={styles.reviewHeader}>
+              <CircleCheck color={colors.brand} size={24} />
+              <View style={styles.reviewHeadingCopy}>
+                <Text style={styles.sectionTitle}>
+                  {goal === 'condition' ? 'Both sides ready' : 'Card face ready'}
+                </Text>
+                <Text style={styles.sectionSubtitle}>
+                  {goal === 'condition'
+                    ? 'Review the full card and visible surface detail.'
+                    : 'Review the card face.'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.previewGrid}>
+              {(goal === 'condition' ? (['front', 'back'] as const) : (['front'] as const)).map(
+                (side) => (
+                  <View key={side} style={styles.previewItem}>
+                    <View style={styles.previewImageFrame}>
+                      {captures[side] ? (
+                        <Image source={{ uri: captures[side]?.uri }} style={styles.previewImage} />
+                      ) : null}
+                      <View style={styles.previewLabel}>
+                        <Text style={styles.previewLabelText}>{sideLabel[side]}</Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      onPress={() => retake(side)}
+                      style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}>
+                      <RotateCcw color={colors.text} size={17} />
+                      <Text style={styles.secondaryButtonText}>Retake</Text>
+                    </Pressable>
+                  </View>
+                ),
+              )}
+            </View>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <Pressable
+              disabled={busy}
+              onPress={uploadScan}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                busy && styles.buttonDisabled,
+                pressed && styles.buttonPressed,
+              ]}>
+              {busy ? (
+                <ActivityIndicator color={colors.canvas} />
+              ) : (
+                <Upload color={colors.canvas} size={19} />
+              )}
+              <Text style={styles.primaryButtonText}>
+                {busy ? 'Saving' : goal === 'identify' ? 'Match card' : 'Save and match'}
+              </Text>
+            </Pressable>
           </View>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          <Pressable
-            disabled={busy}
-            onPress={uploadScan}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              busy && styles.buttonDisabled,
-              pressed && styles.buttonPressed,
-            ]}>
-            {busy ? (
-              <ActivityIndicator color={colors.canvas} />
-            ) : (
-              <Upload color={colors.canvas} size={19} />
-            )}
-            <Text style={styles.primaryButtonText}>
-              {busy ? 'Saving' : goal === 'identify' ? 'Match card' : 'Save and match'}
-            </Text>
-          </Pressable>
-        </View>
-      ) : (
-        <RecognitionState
-          busy={busy}
-          error={error}
-          onConfirm={confirmMatch}
-          onReset={reset}
-          session={session}
-        />
-      )}
+        ) : (
+          <RecognitionState
+            busy={busy}
+            error={error}
+            onConfirm={confirmMatch}
+            onReset={reset}
+            session={session}
+          />
+        )}
+      </View>
     </Screen>
+  );
+}
+
+function DesktopUploadState({
+  activeSide,
+  busy,
+  captures,
+  error,
+  goal,
+  onPick,
+  onSelectGoal,
+}: {
+  activeSide: CardSide;
+  busy: boolean;
+  captures: Partial<Record<CardSide, ScanCapture>>;
+  error: string | null;
+  goal: ScanGoal;
+  onPick: (side: CardSide) => Promise<void>;
+  onSelectGoal: (goal: ScanGoal) => void;
+}) {
+  const currentCapture = captures[activeSide];
+
+  return (
+    <View style={styles.desktopUploadState}>
+      <View accessibilityRole="tablist" style={styles.goalControl}>
+        <GoalButton
+          label="Front only"
+          onPress={() => onSelectGoal('identify')}
+          selected={goal === 'identify'}
+        />
+        <GoalButton
+          label="Condition"
+          onPress={() => onSelectGoal('condition')}
+          selected={goal === 'condition'}
+        />
+      </View>
+      {goal === 'condition' ? (
+        <View style={styles.progressRow}>
+          <ProgressStep complete={Boolean(captures.front)} label="Front" selected={activeSide === 'front'} />
+          <View style={styles.progressRule} />
+          <ProgressStep complete={Boolean(captures.back)} label="Back" selected={activeSide === 'back'} />
+        </View>
+      ) : null}
+
+      <View style={styles.uploadPanel}>
+        {currentCapture ? (
+          <Image resizeMode="contain" source={{ uri: currentCapture.uri }} style={styles.uploadPreview} />
+        ) : (
+          <View style={styles.uploadIcon}>
+            <ImagePlus color={colors.brass} size={32} />
+          </View>
+        )}
+        <View style={styles.uploadCopy}>
+          <Text style={styles.sectionTitle}>Card {activeSide}</Text>
+          <Text style={styles.sectionSubtitle}>JPEG or PNG, up to 12 MB</Text>
+        </View>
+        <Pressable
+          accessibilityLabel={`Choose card ${activeSide} photo`}
+          disabled={busy}
+          onPress={() => void onPick(activeSide)}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            styles.uploadButton,
+            busy && styles.buttonDisabled,
+            pressed && styles.buttonPressed,
+          ]}>
+          {busy ? (
+            <ActivityIndicator color={colors.canvas} />
+          ) : (
+            <ImagePlus color={colors.canvas} size={19} />
+          )}
+          <Text style={styles.primaryButtonText}>{currentCapture ? 'Replace photo' : 'Choose photo'}</Text>
+        </Pressable>
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
   );
 }
 
@@ -552,6 +687,28 @@ function toScanCapture(picture: CameraCapturedPicture): ScanCapture {
   };
 }
 
+function toPickerCapture(asset: ImagePicker.ImagePickerAsset): ScanCapture {
+  const mimeType = asset.mimeType?.toLowerCase();
+  const filename = asset.fileName?.toLowerCase() ?? '';
+  let format: ScanCapture['format'];
+  if (mimeType === 'image/png' || filename.endsWith('.png')) {
+    format = 'png';
+  } else if (mimeType === 'image/jpeg' || filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+    format = 'jpg';
+  } else {
+    throw new Error('Choose a JPEG or PNG image.');
+  }
+  if (asset.width <= 0 || asset.height <= 0) {
+    throw new Error('The selected image dimensions could not be read.');
+  }
+  return {
+    format,
+    height: asset.height,
+    uri: asset.uri,
+    width: asset.width,
+  };
+}
+
 function scanPlatform(): 'android' | 'ios' | 'web' | 'unknown' {
   if (Platform.OS === 'android' || Platform.OS === 'ios' || Platform.OS === 'web') {
     return Platform.OS;
@@ -564,6 +721,10 @@ function pause(milliseconds: number): Promise<void> {
 }
 
 const styles = StyleSheet.create({
+  scannerStage: {
+    justifyContent: 'center',
+    width: '100%',
+  },
   workspace: {
     alignSelf: 'center',
     gap: spacing.md,
@@ -748,6 +909,47 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
+  },
+  desktopUploadState: {
+    alignSelf: 'center',
+    gap: spacing.md,
+    maxWidth: 620,
+    width: '100%',
+  },
+  uploadPanel: {
+    alignItems: 'center',
+    backgroundColor: colors.navigation,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    gap: spacing.md,
+    justifyContent: 'center',
+    minHeight: 310,
+    padding: spacing.xl,
+    width: '100%',
+  },
+  uploadIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.warningSurface,
+    borderColor: colors.warningBorder,
+    borderRadius: 30,
+    borderWidth: 1,
+    height: 60,
+    justifyContent: 'center',
+    width: 60,
+  },
+  uploadPreview: {
+    height: 168,
+    width: 120,
+  },
+  uploadCopy: {
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  uploadButton: {
+    maxWidth: 260,
+    width: '100%',
   },
   previewGrid: {
     flexDirection: 'row',

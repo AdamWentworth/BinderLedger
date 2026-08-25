@@ -89,6 +89,8 @@ func TestProductBelongsToTarget(t *testing.T) {
 	jungle := availableTargets["jungle-unlimited"]
 	fossil := availableTargets["fossil-unlimited"]
 	teamRocket := availableTargets["team-rocket-unlimited"]
+	gymHeroes := availableTargets["gym-heroes-unlimited"]
+	gymChallenge := availableTargets["gym-challenge-unlimited"]
 	if !productBelongsToTarget(firstEdition, product{Title: "Alakazam [1st Edition] #1"}) {
 		t.Error("first-edition product did not match")
 	}
@@ -136,6 +138,18 @@ func TestProductBelongsToTarget(t *testing.T) {
 	}
 	if productBelongsToTarget(teamRocket, product{Title: "Dark Dragonite [Error] #5"}) {
 		t.Error("Dark Dragonite error matched regular Unlimited target")
+	}
+	if !productBelongsToTarget(gymHeroes, product{Title: "Blaine's Moltres #1"}) {
+		t.Error("unlimited Gym Heroes product did not match")
+	}
+	if productBelongsToTarget(gymHeroes, product{Title: "Blaine's Moltres [1st Edition] #1"}) {
+		t.Error("first-edition Gym Heroes product matched unlimited")
+	}
+	if !productBelongsToTarget(gymChallenge, product{Title: "Blaine's Charizard #2"}) {
+		t.Error("unlimited Gym Challenge product did not match")
+	}
+	if productBelongsToTarget(gymChallenge, product{Title: "Misty's Seadra [Prerelease] #9"}) {
+		t.Error("prerelease Gym Challenge product matched unlimited")
 	}
 }
 
@@ -211,5 +225,50 @@ func TestMatchTargetsSelectsRegularDarkDragoniteHolo(t *testing.T) {
 	}
 	if matches["regular-holo"].PageURL != "regular-holo" {
 		t.Errorf("Dark Dragonite match = %q", matches["regular-holo"].PageURL)
+	}
+}
+
+func TestMatchTargetsUsesNameToResolveDuplicateNumbers(t *testing.T) {
+	t.Parallel()
+
+	spec := availableTargets["gym-heroes-unlimited"]
+	targets := []catalogTarget{
+		{CardID: "vermilion-city-gym", Name: "Vermilion City Gym", Number: 120},
+	}
+	products := []product{
+		{Title: "Vermilion City Gym #120", Number: 120, PageURL: "correct-spelling"},
+		{Title: "Vermillion City Gym #120", Number: 120, PageURL: "incorrect-spelling"},
+	}
+
+	matches, err := matchTargets(spec, targets, products)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches[targets[0].CardID].PageURL != "correct-spelling" {
+		t.Errorf("Vermilion City Gym match = %q", matches[targets[0].CardID].PageURL)
+	}
+}
+
+func TestMatchTargetsUsesKogaImageFallback(t *testing.T) {
+	t.Parallel()
+
+	spec := availableTargets["gym-challenge-unlimited"]
+	targets := []catalogTarget{
+		{
+			CardID: "pokemon-gym-challenge-koga-106-rare",
+			Name:   "Koga (106)", Number: 106, Edition: "Unlimited", Finish: "Normal",
+		},
+	}
+	products := []product{
+		{Title: "Koga #106", Number: 106, PageURL: "malformed-pricecharting-image"},
+	}
+
+	matches, err := matchTargets(spec, targets, products)
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := matches[targets[0].CardID]
+	if match.Source != "TCGplayer" || !strings.Contains(match.ImageURL, "86503") {
+		t.Errorf("Koga image match = %#v", match)
 	}
 }

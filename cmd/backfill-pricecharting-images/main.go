@@ -43,7 +43,7 @@ const (
 	maximumPageBytes     = 12 << 20
 	maximumImageBytes    = 24 << 20
 	userAgent            = "BinderLedger/0.1 (+https://github.com/AdamWentworth/BinderLedger)"
-	defaultTargetNames   = "base-shadowless,base-unlimited,jungle-unlimited,fossil-unlimited,team-rocket-unlimited"
+	defaultTargetNames   = "base-shadowless,base-unlimited,jungle-unlimited,fossil-unlimited,team-rocket-unlimited,gym-heroes-unlimited,gym-challenge-unlimited"
 )
 
 type targetSpec struct {
@@ -94,6 +94,18 @@ var availableTargets = map[string]targetSpec{
 		Editions:    []string{"Unlimited"},
 		ConsolePath: "/console/pokemon-team-rocket?sort=model-number",
 	},
+	"gym-heroes-unlimited": {
+		Key:         "gym-heroes-unlimited",
+		SetID:       "gym-heroes-pokemon",
+		Editions:    []string{"Unlimited"},
+		ConsolePath: "/console/pokemon-gym-heroes?sort=model-number",
+	},
+	"gym-challenge-unlimited": {
+		Key:         "gym-challenge-unlimited",
+		SetID:       "gym-challenge-pokemon",
+		Editions:    []string{"Unlimited"},
+		ConsolePath: "/console/pokemon-gym-challenge?sort=model-number",
+	},
 }
 
 var baseUnlimitedOverrides = map[string]product{
@@ -115,6 +127,16 @@ var baseUnlimitedOverrides = map[string]product{
 	"pokemon-base-set-super-energy-removal-rare": tcgplayerProduct(
 		"Super Energy Removal #79", 79, "42424", "super-energy-removal",
 	),
+}
+
+var gymChallengeUnlimitedOverrides = map[string]product{
+	"pokemon-gym-challenge-koga-106-rare": {
+		Source:   "TCGplayer",
+		Title:    "Koga #106",
+		PageURL:  "https://www.tcgplayer.com/product/86503/pokemon-gym-challenge-koga-106",
+		ImageURL: "https://product-images.tcgplayer.com/fit-in/437x437/86503.jpg",
+		Number:   106,
+	},
 }
 
 type catalogTarget struct {
@@ -559,7 +581,7 @@ func productBelongsToTarget(spec targetSpec, item product) bool {
 		return strings.Contains(item.Title, "[Shadowless")
 	case "base-unlimited":
 		return !strings.Contains(item.Title, "[")
-	case "jungle-unlimited", "fossil-unlimited":
+	case "jungle-unlimited", "fossil-unlimited", "gym-heroes-unlimited", "gym-challenge-unlimited":
 		return !strings.Contains(item.Title, "[")
 	case "team-rocket-unlimited":
 		return !strings.Contains(item.Title, "[") || item.Title == "Dark Dragonite [Holo] #5"
@@ -579,7 +601,7 @@ func matchTargets(
 	}
 	result := make(map[string]product, len(targets))
 	for _, target := range targets {
-		if override, ok := baseUnlimitedOverrides[target.CardID]; spec.Key == "base-unlimited" && ok {
+		if override, ok := imageOverride(spec, target); ok {
 			result[target.CardID] = override
 			continue
 		}
@@ -595,6 +617,11 @@ func matchTargets(
 				return item.Title == "Dark Dragonite [Holo] #5"
 			})
 		}
+		if len(candidates) > 1 {
+			candidates = filterProducts(candidates, func(item product) bool {
+				return strings.EqualFold(productName(item), target.Name)
+			})
+		}
 		if len(candidates) != 1 {
 			return nil, fmt.Errorf(
 				"%s %s #%d matched %d PriceCharting products",
@@ -607,6 +634,23 @@ func matchTargets(
 		result[target.CardID] = candidates[0]
 	}
 	return result, nil
+}
+
+func imageOverride(spec targetSpec, target catalogTarget) (product, bool) {
+	switch spec.Key {
+	case "base-unlimited":
+		item, ok := baseUnlimitedOverrides[target.CardID]
+		return item, ok
+	case "gym-challenge-unlimited":
+		item, ok := gymChallengeUnlimitedOverrides[target.CardID]
+		return item, ok
+	default:
+		return product{}, false
+	}
+}
+
+func productName(item product) string {
+	return strings.TrimSuffix(item.Title, fmt.Sprintf(" #%d", item.Number))
 }
 
 func tcgplayerProduct(title string, number int, productID string, slug string) product {

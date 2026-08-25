@@ -8,7 +8,7 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
     -o /out/binderledger-import-justtcg ./cmd/import-justtcg
 
-FROM node:24-bookworm-slim
+FROM node:25-bookworm-slim
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates \

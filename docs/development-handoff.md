@@ -130,6 +130,9 @@ Open the web preview at `http://localhost:8083`. Expo Go should connect to
 - Never commit `.env`, `.env.local`, `data/`, or collector output.
 - Provider collection remains quota-aware. Read `docs/provider-api-policy.md`
   before running collection or backfill jobs.
+- `adam-ubuntu` owns the enabled production JustTCG daily refresh timer. Do not
+  enable another recurring JustTCG or PkmnPrices job on the development machine;
+  manual provider work must leave room for the production collector's quota.
 - Once this new development runtime is verified, shut down the old one on
   `adam-ubuntu` with `make dev-down`. Production remains available at
   `http://PRODUCTION_HOST:8081`.

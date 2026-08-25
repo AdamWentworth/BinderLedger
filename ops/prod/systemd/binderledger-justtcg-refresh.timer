@@ -1,0 +1,12 @@
+[Unit]
+Description=Run BinderLedger production JustTCG refresh daily
+
+[Timer]
+OnCalendar=*-*-* 00:15:00 UTC
+Persistent=true
+RandomizedDelaySec=20min
+AccuracySec=5min
+Unit=binderledger-justtcg-refresh.service
+
+[Install]
+WantedBy=timers.target

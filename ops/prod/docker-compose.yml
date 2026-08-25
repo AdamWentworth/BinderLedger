@@ -150,6 +150,29 @@ services:
       db:
         condition: service_healthy
 
+  refresh-justtcg:
+    profiles: ["tools"]
+    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    entrypoint: ["/usr/local/bin/binderledger-refresh-justtcg"]
+    restart: "no"
+    cpus: "0.25"
+    mem_limit: 128m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-binderledger}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-binderledger}?sslmode=disable
+      JUSTTCG_API_KEY: ${JUSTTCG_API_KEY:?JUSTTCG_API_KEY is required}
+      JUSTTCG_BASE_URL: ${JUSTTCG_BASE_URL:-https://api.justtcg.com/v1}
+      JUSTTCG_REQUEST_INTERVAL_MS: ${JUSTTCG_REQUEST_INTERVAL_MS:-6500}
+      JUSTTCG_DAILY_REFRESH_REQUEST_BUDGET: ${JUSTTCG_DAILY_REFRESH_REQUEST_BUDGET:-15}
+      JUSTTCG_DAILY_REQUEST_RESERVE: ${JUSTTCG_DAILY_REQUEST_RESERVE:-5}
+      JUSTTCG_MONTHLY_REQUEST_RESERVE: ${JUSTTCG_MONTHLY_REQUEST_RESERVE:-100}
+    depends_on:
+      db:
+        condition: service_healthy
+
 networks:
   default:
     name: binderledger_private

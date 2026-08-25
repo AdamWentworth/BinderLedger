@@ -98,8 +98,9 @@ printing while inheriting the selected market condition; set entries identify a
 set and edition. The tables and routes are ready to receive ownership and named
 lists when accounts are introduced.
 
-The scanner MVP accepts a required front and optional back JPEG or PNG in a
-size-limited multipart request. It stores private originals under
+The scanner MVP captures photos in the native app and accepts desktop JPEG or
+PNG uploads, with a required front and optional back image in a size-limited
+multipart request. It stores private originals under
 `data/scan-images` and records dimensions and checksums in PostgreSQL. The
 resource-limited vision worker corrects perspective, combines OpenCV features,
 targeted printing regions, and Tesseract OCR, and returns up to three verified

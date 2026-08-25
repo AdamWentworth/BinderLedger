@@ -29,6 +29,8 @@ visible card before activation:
 - Base Set First Edition must show the First Edition stamp and must not show the
   later drop shadow beside the artwork frame.
 - Jungle Unlimited must not have a First Edition stamp.
+- Fossil, Team Rocket, Gym Heroes, and Gym Challenge Unlimited must not have a
+  First Edition stamp.
 - Base Set Shadowless must not have a First Edition stamp and its copyright
   line must include `1995, 96, 98, 99`.
 - Base Set Unlimited must have the later artwork-frame shadow and no First
@@ -69,7 +71,7 @@ wrong printing. Every replacement requires visual review.
 
 ## Current Coverage
 
-The Kanto MVP catalog has 516 verified exact-printing references:
+The catalog has 780 verified exact-printing references:
 
 | Catalog group | Verified references |
 | --- | ---: |
@@ -79,9 +81,17 @@ The Kanto MVP catalog has 516 verified exact-printing references:
 | Jungle Unlimited | 64 |
 | Fossil Unlimited | 62 |
 | Team Rocket Unlimited | 83 |
+| Gym Heroes Unlimited | 132 |
+| Gym Challenge Unlimited | 132 |
 
 The Base Set batch was checked by layout family: all First Edition Pokemon,
 Trainer, and Energy images visibly contain their stamps; all ordinary Unlimited
 images are unstamped; and the later shadowed Machamp is the sole stamped
 Unlimited-checklist exception. Five low-resolution PriceCharting Trainer images
 and the later Machamp image use their exact TCGplayer product images instead.
+
+The Gym Heroes and Gym Challenge Unlimited batches were visually reviewed as
+complete-set contact sheets. All 264 images are unstamped and match their
+catalog number and finish. PriceCharting's malformed landscape image for Koga
+#106 is replaced by the exact Unlimited TCGplayer product image. Lower-resolution
+but exact-printing scans remain catalog-safe and are tracked as future upgrades.

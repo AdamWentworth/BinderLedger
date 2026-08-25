@@ -1,6 +1,6 @@
 # Card Image Upgrade List
 
-Last audited: 2026-08-23
+Last audited: 2026-08-24
 
 This is the durable backlog for catalog images that should eventually be
 replaced, including with original BinderLedger photography. The original
@@ -37,11 +37,15 @@ not constitute an upgrade; an enlarged blurry scan still fails the baseline.
 | High | Muk (28), Fossil 28/62 | PriceCharting, 180x255 | Correct Unlimited non-holo, but substantially below the JustTCG clarity baseline. | Unlimited non-holo #28 with no First Edition stamp. |
 | High | Dark Flareon, Team Rocket 35/82 | PriceCharting, 240x330 | Correct Unlimited card, but substantially below the JustTCG clarity baseline. | Unlimited #35 with no First Edition stamp. |
 | High | Dark Wartortle, Team Rocket 46/82 | PriceCharting, 240x330 | Correct Unlimited card, but substantially below the JustTCG clarity baseline. | Unlimited #46 with no First Edition stamp. |
+| High | 4 Gym Heroes Unlimited cards: Rocket's Moltres 12, Brock's Lickitung 41, Blaine's Gamble 121, and Energy Flow 122 | PriceCharting, 180-241px wide | Correct and usable, but substantially below the JustTCG clarity baseline. | Exact Unlimited printing with no First Edition stamp at 319x437 or better. |
+| High | Max Revive, Gym Challenge 117/132 | PriceCharting, 255x350 | Correct Unlimited card, but substantially below the JustTCG clarity baseline. | Unlimited #117 with no First Edition stamp at 319x437 or better. |
 | Medium | Dodrio, Jungle 34/64 | PriceCharting, 291x400 | Correct and usable, but slightly below the JustTCG size and clarity baseline. The Bulbagarden image is First Edition. | Unlimited, non-holo #34 with no First Edition stamp. |
 | Medium | 15 Fossil Unlimited cards: Gengar 05, Hitmonlee 22, Magneton 26, Graveler 37, Magmar 39, Omastar 40, Slowbro 43, Ekans 46, Geodude 47, Kabuto 50, Krabby 51, Omanyte 52, Psyduck 53, Shellder 54, Slowpoke 55 | PriceCharting, 263-291px wide | Correct and usable, but slightly below the JustTCG size and clarity baseline. | Exact Unlimited printing at 319x437 or better. |
 | Medium | 2 Fossil Unlimited cards: Mr. Fuji 58 and Recycle 61 | PriceCharting, 291x400 | Correct and usable, but slightly below the JustTCG size and clarity baseline. | Exact Unlimited printing at 319x437 or better. |
 | Medium | 8 Team Rocket Unlimited cards: Dark Slowbro 29, Dark Primeape 43, Ekans 56, Magnemite 60, Mankey 61, Challenge! 74, Nightly Garbage Run 77, Goop Gas Attack 78 | PriceCharting, 286-291px wide | Correct and usable, but slightly below the JustTCG size and clarity baseline. | Exact Unlimited printing at 319x437 or better. |
 | Medium | 3 Team Rocket Unlimited cards: Sleep! 79, Full Heal Energy 81, and Potion Energy 82 | PriceCharting, 287-291px wide | Correct and usable, but slightly below the JustTCG size and clarity baseline. | Exact Unlimited printing at 319x437 or better. |
+| Medium | 18 Gym Heroes Unlimited cards: Misty's Tentacruel 10, Rocket's Hitmonchan 11, Rocket's Scyther 13, Misty's Goldeen 30, Brock's Geodude 38 and 66, Erika's Dratini 42, Sabrina's Jynx 59, Brock's Onix 69, Brock's Sandshrew 71 and 72, Lt. Surge's Pikachu 81, Lt. Surge's Rattata 82, Sabrina's Abra 91, Cerulean City Gym 108, Fire Energy 128, Grass Energy 129, and Water Energy 132 | PriceCharting, 282-295px wide | Correct and usable, but slightly below the JustTCG size and clarity baseline. | Exact Unlimited printing with no First Edition stamp at 319x437 or better. |
+| Medium | 2 Gym Challenge Unlimited cards: Fuchsia City Gym 114 and Fighting Energy 127 | PriceCharting, 287-291px wide | Correct and usable, but slightly below the JustTCG size and clarity baseline. | Exact Unlimited printing with no First Edition stamp at 319x437 or better. |
 
 ## Cosmetic Upgrade
 

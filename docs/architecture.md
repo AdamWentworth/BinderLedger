@@ -49,8 +49,8 @@ sustainable request budget and expands the approved legacy scope from its
 persistent cache. Once all approved sets are present, it yields the budget to a
 rotating 30-day catch-up job that upserts current and daily observations.
 Provider metadata, per-run budgets, and daily/monthly reserves protect the
-shared free-tier quota. PostgreSQL remains the durable catalog and observation
-store; Redis is not required for these background jobs.
+configured account quota. PostgreSQL remains the durable catalog and
+observation store; Redis is not required for these background jobs.
 
 ## Deployment Posture
 
@@ -61,9 +61,10 @@ development database for explicit backend work. The primary development
 machine normally runs only Expo and targets the private-LAN production API.
 
 The API, vision worker, and static Expo web export run as hardened containers.
-Systemd timers launch quota-aware collector jobs and backups, while the
-self-hosted GitHub Actions runner deploys immutable SHA-tagged images after
-successful CI.
+Systemd timers launch quota-aware collector jobs and backups. A credential-free
+production poller selects the latest successful `main` CI run, fetches that
+exact commit, builds immutable SHA-tagged images locally, applies migrations,
+and completes health checks before recording the deployment.
 
 Metro runs only on the primary frontend development machine, where hot reload
 serves both the browser and Expo Go. Production serves the static web export

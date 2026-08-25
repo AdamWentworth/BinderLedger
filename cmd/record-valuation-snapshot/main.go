@@ -21,6 +21,7 @@ import (
 
 type manualSnapshot struct {
 	ObservedOn string              `json:"observedOn"`
+	SourceName string              `json:"sourceName"`
 	SourceURL  string              `json:"sourceUrl"`
 	Values     map[string]*float64 `json:"values"`
 }
@@ -69,7 +70,7 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer db.Close()
 
-	references, err := findReferences(ctx, db, snapshot.SourceURL)
+	references, err := findReferences(ctx, db, snapshot.SourceName, snapshot.SourceURL)
 	if err != nil {
 		return err
 	}
@@ -118,15 +119,16 @@ func readSnapshot(path string) (manualSnapshot, error) {
 func findReferences(
 	ctx context.Context,
 	db *pgxpool.Pool,
+	sourceName string,
 	sourceURL string,
 ) ([]referenceTarget, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id, label, currency, checked_on
 		FROM catalog_valuation_references
-		WHERE source_name = 'PriceCharting'
-		  AND source_url = $1
+		WHERE source_name = $1
+		  AND source_url = $2
 		ORDER BY sort_order, label
-	`, strings.TrimSpace(sourceURL))
+	`, strings.TrimSpace(sourceName), strings.TrimSpace(sourceURL))
 	if err != nil {
 		return nil, fmt.Errorf("query valuation references: %w", err)
 	}
@@ -149,7 +151,11 @@ func findReferences(
 		return nil, fmt.Errorf("read valuation references: %w", err)
 	}
 	if len(references) == 0 {
-		return nil, fmt.Errorf("no PriceCharting references match source URL %q", sourceURL)
+		return nil, fmt.Errorf(
+			"no %s references match source URL %q",
+			strings.TrimSpace(sourceName),
+			sourceURL,
+		)
 	}
 	return references, nil
 }
@@ -169,6 +175,9 @@ func validateSnapshot(
 	}
 	if strings.TrimSpace(snapshot.SourceURL) == "" {
 		return nil, time.Time{}, errors.New("sourceUrl is required")
+	}
+	if strings.TrimSpace(snapshot.SourceName) == "" {
+		return nil, time.Time{}, errors.New("sourceName is required")
 	}
 
 	expected := make(map[string]referenceTarget, len(references))

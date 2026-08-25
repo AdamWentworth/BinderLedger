@@ -33,7 +33,7 @@ services:
 
   migrate:
     profiles: ["tools"]
-    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    image: ${BINDERLEDGER_CORE_IMAGE:-binderledger-core:latest}
     entrypoint: ["/usr/local/bin/binderledger-migrate"]
     restart: "no"
     read_only: true
@@ -47,7 +47,7 @@ services:
         condition: service_healthy
 
   api:
-    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    image: ${BINDERLEDGER_CORE_IMAGE:-binderledger-core:latest}
     container_name: binderledger_api
     restart: unless-stopped
     cpus: "0.50"
@@ -61,6 +61,7 @@ services:
     cap_drop: ["ALL"]
     environment:
       HTTP_ADDR: :4000
+      BINDERLEDGER_BUILD_SHA: ${BINDERLEDGER_BUILD_SHA:-development}
       DATABASE_URL: postgres://${POSTGRES_USER:-binderledger}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-binderledger}?sslmode=disable
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:8081}
       CARD_IMAGE_DIR: /data/card-images
@@ -83,7 +84,7 @@ services:
         condition: service_healthy
 
   vision:
-    image: ${BINDERLEDGER_VISION_IMAGE:-ghcr.io/adamwentworth/binderledger-vision:latest}
+    image: ${BINDERLEDGER_VISION_IMAGE:-binderledger-vision:latest}
     container_name: binderledger_vision
     restart: unless-stopped
     cpus: "1.0"
@@ -111,7 +112,7 @@ services:
         condition: service_healthy
 
   web:
-    image: ${BINDERLEDGER_WEB_IMAGE:-ghcr.io/adamwentworth/binderledger-web:latest}
+    image: ${BINDERLEDGER_WEB_IMAGE:-binderledger-web:latest}
     container_name: binderledger_web
     restart: unless-stopped
     cpus: "0.25"
@@ -135,7 +136,7 @@ services:
 
   record-valuations:
     profiles: ["tools"]
-    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    image: ${BINDERLEDGER_CORE_IMAGE:-binderledger-core:latest}
     entrypoint: ["/usr/local/bin/binderledger-record-valuations"]
     restart: "no"
     cpus: "0.25"
@@ -152,7 +153,7 @@ services:
 
   refresh-justtcg:
     profiles: ["tools"]
-    image: ${BINDERLEDGER_CORE_IMAGE:-ghcr.io/adamwentworth/binderledger-core:latest}
+    image: ${BINDERLEDGER_CORE_IMAGE:-binderledger-core:latest}
     entrypoint: ["/usr/local/bin/binderledger-refresh-justtcg"]
     restart: "no"
     cpus: "0.25"
@@ -178,7 +179,7 @@ services:
 
   expand-justtcg-history:
     profiles: ["tools"]
-    image: ${BINDERLEDGER_COLLECTOR_IMAGE:-ghcr.io/adamwentworth/binderledger-collector:latest}
+    image: ${BINDERLEDGER_COLLECTOR_IMAGE:-binderledger-collector:latest}
     restart: "no"
     cpus: "0.35"
     mem_limit: 384m

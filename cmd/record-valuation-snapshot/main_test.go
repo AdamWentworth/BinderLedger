@@ -13,7 +13,8 @@ func TestValidateSnapshotRequiresEveryStoredLabel(t *testing.T) {
 	}
 	snapshot := manualSnapshot{
 		ObservedOn: "2026-08-24",
-		SourceURL:  "https://www.pricecharting.com/game/pokemon-base-set/pikachu-shadowless-red-cheeks-58",
+		SourceName: "Licensed reference",
+		SourceURL:  "https://example.com/reference/1",
 		Values:     map[string]*float64{"Ungraded": price(53.81)},
 	}
 
@@ -30,7 +31,8 @@ func TestValidateSnapshotNormalizesAmounts(t *testing.T) {
 	}
 	snapshot := manualSnapshot{
 		ObservedOn: "2026-08-24",
-		SourceURL:  "https://www.pricecharting.com/game/pokemon-base-set/pikachu-shadowless-red-cheeks-58",
+		SourceName: "Licensed reference",
+		SourceURL:  "https://example.com/reference/1",
 		Values: map[string]*float64{
 			"Ungraded": price(53.81),
 			"Grade 9":  price(356.5),
@@ -61,7 +63,8 @@ func TestValidateSnapshotRejectsFutureDate(t *testing.T) {
 	references := []referenceTarget{{ID: "ungraded", Label: "Ungraded", Currency: "USD"}}
 	snapshot := manualSnapshot{
 		ObservedOn: "2026-08-25",
-		SourceURL:  "https://www.pricecharting.com/game/pokemon-base-set/pikachu-shadowless-red-cheeks-58",
+		SourceName: "Licensed reference",
+		SourceURL:  "https://example.com/reference/1",
 		Values:     map[string]*float64{"Ungraded": price(53.81)},
 	}
 
@@ -75,7 +78,8 @@ func TestValidateSnapshotPreservesUnavailableGrade(t *testing.T) {
 	references := []referenceTarget{{ID: "grade-1", Label: "Grade 1", Currency: "USD"}}
 	snapshot := manualSnapshot{
 		ObservedOn: "2026-08-24",
-		SourceURL:  "https://www.pricecharting.com/game/pokemon-base-set/example-card-1",
+		SourceName: "Licensed reference",
+		SourceURL:  "https://example.com/reference/1",
 		Values:     map[string]*float64{"Grade 1": nil},
 	}
 

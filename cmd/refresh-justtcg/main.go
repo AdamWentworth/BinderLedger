@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ const (
 	defaultDailyRequestReserve   = 5
 	defaultMonthlyRequestReserve = 100
 	defaultRequestDelay          = 6500 * time.Millisecond
+	defaultRefreshHistoryWindow  = "30d"
 	minimumRequestDelay          = 6000 * time.Millisecond
 	freeTierBatchSize            = 20
 	maximumResponseBytes         = 16 << 20
@@ -51,9 +53,8 @@ type refreshTarget struct {
 }
 
 type batchLookup struct {
-	CardID              string `json:"cardId,omitempty"`
-	TCGPlayerID         string `json:"tcgplayerId,omitempty"`
-	IncludePriceHistory string `json:"include_price_history"`
+	CardID      string `json:"cardId,omitempty"`
+	TCGPlayerID string `json:"tcgplayerId,omitempty"`
 }
 
 type providerCard struct {
@@ -64,14 +65,20 @@ type providerCard struct {
 }
 
 type providerVariant struct {
-	ID                string   `json:"id"`
-	UUID              string   `json:"uuid"`
-	Condition         string   `json:"condition"`
-	Printing          string   `json:"printing"`
-	Language          string   `json:"language"`
-	Price             *float64 `json:"price"`
-	PriceChange24Hour *float64 `json:"priceChange24hr"`
-	LastUpdated       int64    `json:"lastUpdated"`
+	ID                string               `json:"id"`
+	UUID              string               `json:"uuid"`
+	Condition         string               `json:"condition"`
+	Printing          string               `json:"printing"`
+	Language          string               `json:"language"`
+	Price             *float64             `json:"price"`
+	PriceChange24Hour *float64             `json:"priceChange24hr"`
+	LastUpdated       int64                `json:"lastUpdated"`
+	PriceHistory      []providerPricePoint `json:"priceHistory"`
+}
+
+type providerPricePoint struct {
+	Price     *float64 `json:"p"`
+	Timestamp int64    `json:"t"`
 }
 
 type usageMetadata struct {
@@ -90,18 +97,26 @@ type batchResponse struct {
 }
 
 type importStats struct {
-	Cards        int
-	Variants     int
-	Observations int
-	Skipped      int
+	Cards                  int
+	Variants               int
+	Observations           int
+	HistoricalObservations int
+	Skipped                int
+}
+
+type priceObservation struct {
+	VariantID  string
+	ObservedOn time.Time
+	Price      float64
 }
 
 type justTCGClient struct {
-	apiKey      string
-	baseURL     string
-	httpClient  *http.Client
-	delay       time.Duration
-	lastRequest time.Time
+	apiKey        string
+	baseURL       string
+	httpClient    *http.Client
+	delay         time.Duration
+	historyWindow string
+	lastRequest   time.Time
 }
 
 func main() {
@@ -178,6 +193,13 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	historyWindow, err := priceHistoryWindow(
+		"JUSTTCG_REFRESH_HISTORY_DURATION",
+		defaultRefreshHistoryWindow,
+	)
+	if err != nil {
+		return err
+	}
 
 	appConfig, err := config.Load()
 	if err != nil {
@@ -218,6 +240,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			"requests_used_today", requestsUsed,
 			"automation_budget", dailyBudget,
 			"maximum_rotation_days", maximumRotationDays,
+			"history_duration", historyWindow,
 			"collection_phase", collectionPhase,
 			"catalog_sets", setCount,
 			"legacy_target_sets", legacyTargetSetCount,
@@ -244,10 +267,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	client := &justTCGClient{
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 45 * time.Second},
-		delay:      delay,
+		apiKey:        apiKey,
+		baseURL:       baseURL,
+		httpClient:    &http.Client{Timeout: 45 * time.Second},
+		delay:         delay,
+		historyWindow: historyWindow,
 	}
 	total := importStats{}
 	requestsMade := 0
@@ -275,6 +299,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		total.Cards += stats.Cards
 		total.Variants += stats.Variants
 		total.Observations += stats.Observations
+		total.HistoricalObservations += stats.HistoricalObservations
 		total.Skipped += stats.Skipped
 
 		logger.Info(
@@ -284,6 +309,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			"returned_cards", len(response.Data),
 			"updated_variants", stats.Variants,
 			"observations", stats.Observations,
+			"historical_observations", stats.HistoricalObservations,
 			"skipped_variants", stats.Skipped,
 			"provider_monthly_remaining", response.Metadata.APIRequestsRemaining,
 			"provider_daily_remaining", response.Metadata.APIDailyRequestsRemaining,
@@ -310,6 +336,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		"cards", total.Cards,
 		"variants", total.Variants,
 		"observations", total.Observations,
+		"historical_observations", total.HistoricalObservations,
 		"skipped_variants", total.Skipped,
 		"automation_budget", dailyBudget,
 		"collection_phase", collectionPhase,
@@ -415,7 +442,7 @@ func dueTargets(ctx context.Context, db *pgxpool.Pool, limit int) ([]refreshTarg
 func targetLookups(targets []refreshTarget) []batchLookup {
 	lookups := make([]batchLookup, 0, len(targets))
 	for _, target := range targets {
-		lookup := batchLookup{IncludePriceHistory: "false"}
+		lookup := batchLookup{}
 		if target.ProviderUUID != nil && strings.TrimSpace(*target.ProviderUUID) != "" {
 			lookup.CardID = strings.TrimSpace(*target.ProviderUUID)
 		} else if target.TCGPlayerProductID != nil {
@@ -453,7 +480,7 @@ func saveBatch(
 	defer tx.Rollback(ctx)
 
 	stats := importStats{}
-	observedOn := observedAt.UTC().Format(time.DateOnly)
+	observations := make(map[string]priceObservation)
 	for _, card := range cards {
 		if _, ok := expectedUUIDs[card.UUID]; !ok {
 			if _, ok := expectedProducts[card.TCGPlayerID]; !ok {
@@ -504,28 +531,124 @@ func saveBatch(
 			}
 			stats.Variants++
 
-			if variant.Price == nil {
-				continue
+			variantObservations, historicalCount, err := observationsForVariant(
+				storedID,
+				variant,
+				observedAt,
+			)
+			if err != nil {
+				return importStats{}, err
 			}
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO price_observations (
-					variant_id, observed_on, price, source_provider, imported_at
-				) VALUES ($1, $2, $3, $4, now())
-				ON CONFLICT (variant_id, observed_on) DO UPDATE SET
-					price = EXCLUDED.price,
-					source_provider = EXCLUDED.source_provider,
-					imported_at = now()
-			`, storedID, observedOn, *variant.Price, providerName); err != nil {
-				return importStats{}, fmt.Errorf("save observation for %s: %w", storedID, err)
+			for key, observation := range variantObservations {
+				observations[key] = observation
 			}
-			stats.Observations++
+			stats.HistoricalObservations += historicalCount
 		}
 	}
+
+	if err := saveObservations(ctx, tx, observations); err != nil {
+		return importStats{}, err
+	}
+	stats.Observations = len(observations)
 
 	if err := tx.Commit(ctx); err != nil {
 		return importStats{}, fmt.Errorf("commit JustTCG refresh import: %w", err)
 	}
 	return stats, nil
+}
+
+func observationsForVariant(
+	storedID string,
+	variant providerVariant,
+	observedAt time.Time,
+) (map[string]priceObservation, int, error) {
+	observations := make(map[string]priceObservation, len(variant.PriceHistory)+1)
+	historicalCount := 0
+	for _, point := range variant.PriceHistory {
+		if point.Price == nil {
+			continue
+		}
+		if *point.Price < 0 {
+			return nil, 0, fmt.Errorf("variant %s has a negative historical price", variant.ID)
+		}
+		observedAt := parseUnixTime(point.Timestamp)
+		if observedAt == nil {
+			continue
+		}
+		date := observedAt.Format(time.DateOnly)
+		key := storedID + "\x00" + date
+		observations[key] = priceObservation{
+			VariantID:  storedID,
+			ObservedOn: dayStart(*observedAt),
+			Price:      *point.Price,
+		}
+		historicalCount++
+	}
+	if variant.Price != nil {
+		currentDay := dayStart(observedAt)
+		key := storedID + "\x00" + currentDay.Format(time.DateOnly)
+		observations[key] = priceObservation{
+			VariantID:  storedID,
+			ObservedOn: currentDay,
+			Price:      *variant.Price,
+		}
+	}
+	return observations, historicalCount, nil
+}
+
+func dayStart(value time.Time) time.Time {
+	utc := value.UTC()
+	return time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func saveObservations(
+	ctx context.Context,
+	tx pgx.Tx,
+	observations map[string]priceObservation,
+) error {
+	if len(observations) == 0 {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `
+		CREATE TEMP TABLE justtcg_price_observation_import (
+			variant_id text NOT NULL,
+			observed_on date NOT NULL,
+			price numeric NOT NULL
+		) ON COMMIT DROP
+	`); err != nil {
+		return fmt.Errorf("create JustTCG observation staging table: %w", err)
+	}
+
+	rows := make([][]any, 0, len(observations))
+	for _, observation := range observations {
+		rows = append(rows, []any{
+			observation.VariantID,
+			observation.ObservedOn,
+			observation.Price,
+		})
+	}
+	if _, err := tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"justtcg_price_observation_import"},
+		[]string{"variant_id", "observed_on", "price"},
+		pgx.CopyFromRows(rows),
+	); err != nil {
+		return fmt.Errorf("stage JustTCG observations: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO price_observations (
+			variant_id, observed_on, price, source_provider, imported_at
+		)
+		SELECT variant_id, observed_on, price, $1, now()
+		FROM justtcg_price_observation_import
+		ON CONFLICT (variant_id, observed_on) DO UPDATE SET
+			price = EXCLUDED.price,
+			source_provider = EXCLUDED.source_provider,
+			imported_at = now()
+	`, providerName); err != nil {
+		return fmt.Errorf("save JustTCG observations: %w", err)
+	}
+	return nil
 }
 
 func findStoredVariant(
@@ -602,10 +725,18 @@ func (client *justTCGClient) batch(ctx context.Context, lookups []batchLookup) (
 	if err != nil {
 		return batchResponse{}, fmt.Errorf("encode JustTCG batch: %w", err)
 	}
+	endpoint, err := url.Parse(client.baseURL + "/cards")
+	if err != nil {
+		return batchResponse{}, fmt.Errorf("parse JustTCG batch URL: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("include_price_history", "true")
+	query.Set("priceHistoryDuration", client.historyWindow)
+	endpoint.RawQuery = query.Encode()
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		client.baseURL+"/cards",
+		endpoint.String(),
 		bytes.NewReader(body),
 	)
 	if err != nil {
@@ -701,6 +832,20 @@ func nonnegativeInteger(name string, fallback int) (int, error) {
 		return 0, fmt.Errorf("%s must be a nonnegative integer", name)
 	}
 	return parsed, nil
+}
+
+func priceHistoryWindow(name string, fallback string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		value = fallback
+	}
+	allowed := map[string]struct{}{
+		"7d": {}, "30d": {}, "90d": {}, "180d": {}, "1y": {},
+	}
+	if _, ok := allowed[value]; !ok {
+		return "", fmt.Errorf("%s must be one of 7d, 30d, 90d, 180d, or 1y", name)
+	}
+	return value, nil
 }
 
 func parseInt64(value string) *int64 {

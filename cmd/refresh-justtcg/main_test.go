@@ -26,11 +26,6 @@ func TestTargetLookupsPreferStableUUID(t *testing.T) {
 	if lookups[1].TCGPlayerID != productID || lookups[1].CardID != "" {
 		t.Fatalf("second lookup = %#v, want TCGplayer lookup", lookups[1])
 	}
-	for _, lookup := range lookups {
-		if lookup.IncludePriceHistory != "false" {
-			t.Fatalf("history setting = %q, want false", lookup.IncludePriceHistory)
-		}
-	}
 }
 
 func TestClientBatchUsesOfficialV1BatchShape(t *testing.T) {
@@ -41,6 +36,12 @@ func TestClientBatchUsesOfficialV1BatchShape(t *testing.T) {
 		if got := request.Header.Get("x-api-key"); got != "test-key" {
 			t.Errorf("x-api-key = %q, want test-key", got)
 		}
+		if got := request.URL.Query().Get("include_price_history"); got != "true" {
+			t.Errorf("include_price_history = %q, want true", got)
+		}
+		if got := request.URL.Query().Get("priceHistoryDuration"); got != "30d" {
+			t.Errorf("priceHistoryDuration = %q, want 30d", got)
+		}
 		var body []map[string]string
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatalf("decode request: %v", err)
@@ -48,27 +49,29 @@ func TestClientBatchUsesOfficialV1BatchShape(t *testing.T) {
 		if len(body) != 1 || body[0]["cardId"] != "card-uuid" {
 			t.Fatalf("request body = %#v", body)
 		}
-		if body[0]["include_price_history"] != "false" {
-			t.Fatalf("include_price_history = %q, want false", body[0]["include_price_history"])
+		if _, ok := body[0]["include_price_history"]; ok {
+			t.Fatalf("batch lookup unexpectedly contains include_price_history: %#v", body[0])
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{
-			"data":[{"id":"card-slug","uuid":"card-uuid","tcgplayerId":"42","variants":[]}],
+			"data":[{"id":"card-slug","uuid":"card-uuid","tcgplayerId":"42","variants":[{
+				"id":"variant-id","price":12.5,"priceHistory":[{"p":11.5,"t":1780272000}]
+			}]}],
 			"_metadata":{"apiPlan":"Free Tier","apiRequestsRemaining":900,"apiDailyRequestsRemaining":90}
 		}`))
 	}))
 	defer server.Close()
 
 	client := &justTCGClient{
-		apiKey:     "test-key",
-		baseURL:    server.URL,
-		httpClient: server.Client(),
-		delay:      minimumRequestDelay,
+		apiKey:        "test-key",
+		baseURL:       server.URL,
+		httpClient:    server.Client(),
+		delay:         minimumRequestDelay,
+		historyWindow: "30d",
 	}
 	response, err := client.batch(context.Background(), []batchLookup{{
-		CardID:              "card-uuid",
-		IncludePriceHistory: "false",
+		CardID: "card-uuid",
 	}})
 	if err != nil {
 		t.Fatalf("batch returned error: %v", err)
@@ -78,6 +81,9 @@ func TestClientBatchUsesOfficialV1BatchShape(t *testing.T) {
 	}
 	if response.Metadata.APIRequestsRemaining != 900 {
 		t.Fatalf("monthly remaining = %d, want 900", response.Metadata.APIRequestsRemaining)
+	}
+	if got := len(response.Data[0].Variants[0].PriceHistory); got != 1 {
+		t.Fatalf("history points = %d, want 1", got)
 	}
 }
 
@@ -177,5 +183,50 @@ func TestEstimatedRotationDays(t *testing.T) {
 				t.Fatalf("estimatedRotationDays() = %d, want %d", got, test.want)
 			}
 		})
+	}
+}
+
+func TestObservationsForVariantPreservesHistoryAndCurrentPrice(t *testing.T) {
+	historicalPrice := 10.0
+	currentPrice := 12.0
+	variant := providerVariant{
+		ID:    "variant-id",
+		Price: &currentPrice,
+		PriceHistory: []providerPricePoint{
+			{Price: &historicalPrice, Timestamp: 1780272000},
+			{Price: &historicalPrice, Timestamp: 0},
+		},
+	}
+
+	observations, historicalCount, err := observationsForVariant(
+		"stored-variant",
+		variant,
+		time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("observationsForVariant() error = %v", err)
+	}
+	if historicalCount != 1 {
+		t.Fatalf("historicalCount = %d, want 1", historicalCount)
+	}
+	if len(observations) != 2 {
+		t.Fatalf("observations = %d, want 2", len(observations))
+	}
+	current := observations["stored-variant\x002026-06-02"]
+	if current.Price != currentPrice {
+		t.Fatalf("current observation price = %.2f, want %.2f", current.Price, currentPrice)
+	}
+}
+
+func TestObservationsForVariantRejectsNegativeHistory(t *testing.T) {
+	price := -1.0
+	_, _, err := observationsForVariant("stored-variant", providerVariant{
+		ID: "variant-id",
+		PriceHistory: []providerPricePoint{
+			{Price: &price, Timestamp: 1780272000},
+		},
+	}, time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("observationsForVariant() returned nil error for negative history")
 	}
 }

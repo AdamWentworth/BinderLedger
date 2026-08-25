@@ -948,6 +948,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   uploadButton: {
+    alignSelf: 'center',
     maxWidth: 260,
     width: '100%',
   },
@@ -1163,6 +1164,7 @@ const styles = StyleSheet.create({
     width: 40,
   },
   scanAnotherButton: {
+    alignSelf: 'center',
     marginTop: spacing.sm,
     maxWidth: 260,
     width: '100%',
@@ -1193,6 +1195,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   permissionButton: {
+    alignSelf: 'center',
     maxWidth: 260,
     width: '100%',
   },

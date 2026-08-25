@@ -29,37 +29,38 @@ docker compose --env-file .env --env-file images.env ps
 docker compose --env-file .env --env-file images.env logs -f vision
 docker compose --env-file .env --env-file images.env run --rm migrate
 docker compose --env-file .env --env-file images.env --profile tools run --rm refresh-justtcg
+docker compose --env-file .env --env-file images.env --profile tools run --rm expand-justtcg-history
 ```
 
 ## Price Collection
 
-Production owns the recurring JustTCG current-price refresh. The job runs once
-per day, requests cards in Free-tier batches of 20, and rotates the least
-recently refreshed cards first. Its default 15-request budget updates as many as
-300 cards per day, covering the current catalog about every three days while
-leaving quota for catalog bootstrap and manual diagnostics. Each successful
-price is stored as a dated observation, even when it has not changed.
+Production owns both recurring JustTCG workflows. The current-price job runs
+first and rotates the least recently refreshed cards in batches of 20. It uses
+20 requests/day while historical bootstrap is active and 28 requests/day after
+all 38 approved pre-Diamond-and-Pearl sets are imported. Each successful price
+is stored as a dated observation, even when it has not changed.
 
-Install the production user timer on the server with:
+The historical job runs afterward and uses at most eight requests/day. Its
+persistent output and response cache live under
+`/mnt/storage/binderledger/justtcg-collector`, allowing quota-safe resume after
+restarts. Both jobs stop with five daily and 100 monthly provider requests in
+reserve. PkmnPrices is not a catalog-wide scheduled source on its Free plan.
+
+Install or update every production timer, backup job, and localhost proxy with:
 
 ```bash
-install -Dm644 ops/prod/systemd/binderledger-justtcg-refresh.service \
-  ~/.config/systemd/user/binderledger-justtcg-refresh.service
-install -Dm644 ops/prod/systemd/binderledger-justtcg-refresh.timer \
-  ~/.config/systemd/user/binderledger-justtcg-refresh.timer
-systemctl --user daemon-reload
-systemctl --user enable --now binderledger-justtcg-refresh.timer
+bash ops/prod/scripts/install-user-services.sh
 ```
 
-The timer runs after 00:15 UTC with a randomized delay. Provider metadata can
-stop a run before either the five-request daily reserve or the 100-request
-monthly reserve. PkmnPrices is not a catalog-wide scheduled source on its Free
-plan; keep it for explicitly selected fallback records.
+Current prices run after 00:15 UTC; historical expansion runs after 01:00 UTC.
+The server also creates a daily PostgreSQL dump and mirrors dumps, media,
+collector state, deployment metadata, and production secrets to the private
+TNAS vault.
 
 ## Deployment
 
-`ci.yml` tests Go, Expo, and the deployed vision environment, then publishes
-three SHA-tagged GHCR images. `deploy-prod.yml` runs only after successful main
+`ci.yml` tests Go, Expo, collectors, and vision, then publishes four SHA-tagged
+GHCR images. `deploy-prod.yml` runs only after successful main
 branch CI or a manual dispatch. The self-hosted runner copies the production
 Compose file into `/srv/binderledger`, pulls the exact SHA images, runs database
 migrations, recreates API/vision/web, and performs health and resource checks.
@@ -75,3 +76,6 @@ to other repositories cannot execute this workflow.
 - The API and vision worker share UID/GID `10001` for private scan access.
 - Back up `/mnt/storage/binderledger` independently from Git source.
 - Review reference-image rights before public distribution.
+
+See [`disaster-recovery.md`](disaster-recovery.md) for replacement-host restore
+steps and the authoritative TNAS paths.

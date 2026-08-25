@@ -1,0 +1,9 @@
+[Unit]
+Description=BinderLedger production localhost proxy for port %i
+Requires=binderledger-localhost-proxy@%i.socket
+After=network-online.target
+
+[Service]
+EnvironmentFile=/srv/binderledger/.env
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd ${BINDERLEDGER_BIND_HOST}:%i
+MemoryMax=32M

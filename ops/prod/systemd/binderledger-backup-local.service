@@ -1,0 +1,10 @@
+[Unit]
+Description=Create a BinderLedger production PostgreSQL backup
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/binderledger/bin/backup-local.sh
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=30min

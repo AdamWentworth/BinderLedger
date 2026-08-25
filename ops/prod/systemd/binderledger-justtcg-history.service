@@ -1,0 +1,11 @@
+[Unit]
+Description=BinderLedger production legacy JustTCG history expansion
+After=docker.service binderledger-justtcg-refresh.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/binderledger
+ExecStart=/usr/bin/docker compose --env-file /srv/binderledger/.env --env-file /srv/binderledger/images.env -f /srv/binderledger/docker-compose.yml --profile tools run --rm expand-justtcg-history
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=30min

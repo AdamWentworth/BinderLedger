@@ -30,6 +30,14 @@ export type CardCameraProps = {
   torch: boolean;
 };
 
+export function isCameraLifecycleCancellation(message: string): boolean {
+  return (
+    message.includes('CameraControl$OperationCanceledException') ||
+    message.includes('CameraControlOperationCanceledException') ||
+    message.includes('Camera is not active')
+  );
+}
+
 const TARGET = { height: 0.69, width: 0.66, x: 0.17, y: 0.105 };
 
 export function isCardAligned(bounds: CardBounds): boolean {

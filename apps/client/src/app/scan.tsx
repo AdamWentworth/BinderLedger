@@ -285,7 +285,10 @@ export default function ScanScreen() {
                   onAutoCapture={capturePhoto}
                   onBoundsChange={setCardBounds}
                   onError={setError}
-                  onReady={() => setCameraReady(true)}
+                  onReady={() => {
+                    setCameraReady(true);
+                    setError(null);
+                  }}
                   onStatusChange={setCameraStatus}
                   ref={camera}
                   resetKey={`${activeSide}-${goal}`}

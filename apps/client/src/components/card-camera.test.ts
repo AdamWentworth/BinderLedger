@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { isCardAligned, isStableCard } from './card-camera';
+import {
+  isCameraLifecycleCancellation,
+  isCardAligned,
+  isStableCard,
+} from './card-camera';
 
 describe('card auto-capture state', () => {
   it('accepts a centered upright trading card', () => {
@@ -24,5 +28,16 @@ describe('card auto-capture state', () => {
     expect(isStableCard([...stable.slice(0, 4), { height: 0.7, width: 0.5, x: 0.32, y: 0.1 }])).toBe(
       false,
     );
+  });
+});
+
+describe('camera lifecycle errors', () => {
+  it('recognizes Android torch cancellation while a camera session is stopping', () => {
+    expect(
+      isCameraLifecycleCancellation(
+        'androidx.camera.core.CameraControl$OperationCanceledException: Camera is not active.',
+      ),
+    ).toBe(true);
+    expect(isCameraLifecycleCancellation('Camera device disconnected unexpectedly.')).toBe(false);
   });
 });

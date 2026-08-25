@@ -14,11 +14,19 @@ import {
 } from 'react-native-fast-opencv';
 import {
   Camera,
+  CameraRef,
   useFrameOutput,
   usePhotoOutput,
 } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { Image, StyleSheet } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -27,6 +35,7 @@ import {
   CardBounds,
   CardCameraHandle,
   CardCameraProps,
+  isCameraLifecycleCancellation,
   isCardAligned,
   isStableCard,
 } from './card-camera';
@@ -48,8 +57,11 @@ export const CardCamera = forwardRef<CardCameraHandle, CardCameraProps>(function
   },
   ref,
 ) {
+  const nativeCamera = useRef<CameraRef>(null);
   const history = useRef<CardBounds[]>([]);
   const armed = useRef(true);
+  const appliedTorch = useRef(false);
+  const [previewActive, setPreviewActive] = useState(false);
   const frameCounter = useSharedValue(0);
   const photoOutput = usePhotoOutput({
     containerFormat: 'jpeg',
@@ -75,6 +87,47 @@ export const CardCamera = forwardRef<CardCameraHandle, CardCameraProps>(function
   useEffect(() => {
     if (resizerError) onError(resizerError.message);
   }, [onError, resizerError]);
+
+  useEffect(() => {
+    if (!active || !previewActive || torch === appliedTorch.current) return;
+    const controller = nativeCamera.current?.controller;
+    if (!controller) return;
+
+    let current = true;
+    controller
+      .setTorchMode(torch ? 'on' : 'off')
+      .then(() => {
+        if (current) appliedTorch.current = torch;
+      })
+      .catch((caught: unknown) => {
+        const message = caught instanceof Error ? caught.message : String(caught);
+        if (current && !isCameraLifecycleCancellation(message)) {
+          onError('The camera light could not be changed. You can continue scanning without it.');
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [active, onError, previewActive, torch]);
+
+  const handlePreviewStarted = useCallback(() => {
+    appliedTorch.current = false;
+    setPreviewActive(true);
+    onReady();
+  }, [onReady]);
+
+  const handlePreviewStopped = useCallback(() => {
+    appliedTorch.current = false;
+    setPreviewActive(false);
+  }, []);
+
+  const handleCameraError = useCallback(
+    (message: string) => {
+      if (isCameraLifecycleCancellation(message)) return;
+      onError('The camera session stopped unexpectedly. Return to Scan and try again.');
+    },
+    [onError],
+  );
 
   const receiveDetection = useCallback(
     (bounds: CardBounds | null) => {
@@ -202,13 +255,14 @@ export const CardCamera = forwardRef<CardCameraHandle, CardCameraProps>(function
       device="back"
       enableNativeTapToFocusGesture
       isActive={active}
-      onError={(error) => onError(error.message)}
-      onPreviewStarted={onReady}
+      onError={(error) => handleCameraError(error.message)}
+      onPreviewStarted={handlePreviewStarted}
+      onPreviewStopped={handlePreviewStopped}
       orientationSource="interface"
       outputs={[photoOutput, frameOutput]}
+      ref={nativeCamera}
       resizeMode="cover"
       style={StyleSheet.absoluteFill}
-      torchMode={torch ? 'on' : 'off'}
     />
   );
 });

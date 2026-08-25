@@ -661,6 +661,12 @@ const kantoCollectionTargets = [
     scope: "Kanto expansion",
     expectedPrintings: ["Unlimited", "1st Edition"],
     requiredPrintingFamilies: ["Unlimited", "1st Edition"],
+    excludedCards: [
+      {
+        id: "pokemon-gym-challenge-s-chansey-duplicate-ultra-rare",
+        reason: "JustTCG duplicate provider record outside the 132-card set checklist",
+      },
+    ],
   },
   {
     id: "base-set-2-pokemon",
@@ -778,7 +784,13 @@ async function writeCollectionSidecars(collection) {
 async function collectProviderSet(set, target) {
   const inventory = uniqueCards(await fetchSetCards(set.id));
   const sealedProducts = inventory.filter(isSealedProduct);
-  const collectibleInventory = inventory.filter((card) => !isSealedProduct(card));
+  const excludedCardsById = new Map(
+    (target.excludedCards ?? []).map((excludedCard) => [excludedCard.id, excludedCard]),
+  );
+  const excludedProviderCards = inventory.filter((card) => excludedCardsById.has(card.id));
+  const collectibleInventory = inventory.filter(
+    (card) => !isSealedProduct(card) && !excludedCardsById.has(card.id),
+  );
   const historyResult = await fetchFullHistoryBySearch(set.id, collectibleInventory);
   const cards = historyResult.cards;
   const printingFamilyCoverage = validatePrintingFamilyCoverage(cards, target, set.name);
@@ -804,6 +816,12 @@ async function collectProviderSet(set, target) {
       uuid: product.uuid ?? null,
       id: product.id ?? null,
       name: product.name ?? null,
+    })),
+    excludedProviderCards: excludedProviderCards.map((card) => ({
+      uuid: card.uuid ?? null,
+      id: card.id ?? null,
+      name: card.name ?? null,
+      reason: excludedCardsById.get(card.id).reason,
     })),
     summary: summarizeCards(cards.map(analyzeCard)),
     cards,

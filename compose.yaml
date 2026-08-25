@@ -21,6 +21,39 @@ services:
     mem_limit: 512m
     memswap_limit: 768m
     pids_limit: 128
+
+  vision:
+    build:
+      context: .
+      dockerfile: services/vision/Dockerfile
+      target: runtime
+    image: binderledger-vision:dev
+    user: "${BINDERLEDGER_DEV_UID:-1000}:${BINDERLEDGER_DEV_GID:-1000}"
+    restart: "on-failure:5"
+    cpus: "0.75"
+    cpu_shares: 32
+    mem_limit: 640m
+    memswap_limit: 768m
+    pids_limit: 128
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    environment:
+      DATABASE_URL: postgres://binder_ledger_dev:binder_ledger_dev@postgres:5432/binder_ledger_dev?sslmode=disable
+      CARD_IMAGE_DIR: /data/card-images
+      SCAN_IMAGE_DIR: /data/scan-images
+      VISION_POLL_SECONDS: 3
+      VISION_TESSERACT_ENABLED: "true"
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    volumes:
+      - ./data/card-images:/data/card-images:ro
+      - ./data/scan-images:/data/scan-images:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   binder_ledger_postgres:
     name: binderledger_dev_postgres

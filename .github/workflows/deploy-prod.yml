@@ -35,37 +35,43 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          main_sha="$(git ls-remote "https://github.com/${REPOSITORY}.git" refs/heads/main | cut -f1)"
-          if [[ ! "${main_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Could not resolve the current main commit." >&2
-            exit 1
-          fi
-
           if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            main_sha="$(git ls-remote "https://github.com/${REPOSITORY}.git" refs/heads/main | cut -f1)"
+            if [[ ! "${main_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Could not resolve the current main commit." >&2
+              exit 1
+            fi
             if [[ "${TRIGGER_SHA}" != "${main_sha}" ]]; then
               echo "main advanced past ${TRIGGER_SHA}; its own successful CI run will deploy instead."
               echo "should_deploy=false" >>"${GITHUB_OUTPUT}"
               exit 0
             fi
-            target_sha="${TRIGGER_SHA}"
-          else
-            target_sha="${main_sha}"
           fi
-
-          if [[ ! "${target_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Deployment requires a full 40-character Git commit SHA." >&2
-            exit 1
-          fi
-          echo "sha=${target_sha}" >>"${GITHUB_OUTPUT}"
           echo "should_deploy=true" >>"${GITHUB_OUTPUT}"
 
-      - name: Checkout deployment revision
+      - name: Checkout current main
         if: steps.revision.outputs.should_deploy == 'true'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ steps.revision.outputs.sha }}
+          ref: main
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Confirm deployment revision
+        if: steps.revision.outputs.should_deploy == 'true'
+        id: confirmed
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          main_sha="$(git ls-remote "https://github.com/${REPOSITORY}.git" refs/heads/main | cut -f1)"
+          if [[ ! "${checked_out_sha}" =~ ^[0-9a-f]{40}$ || "${checked_out_sha}" != "${main_sha}" ]]; then
+            echo "The checked-out revision is no longer current main; refusing to deploy." >&2
+            exit 1
+          fi
+          echo "sha=${checked_out_sha}" >>"${GITHUB_OUTPUT}"
 
       - name: Retire pull deployer
         if: steps.revision.outputs.should_deploy == 'true'
@@ -85,6 +91,6 @@ jobs:
           BINDERLEDGER_DEPLOY_ROOT: /srv/binderledger
           BINDERLEDGER_SOURCE_DIR: ${{ github.workspace }}
           BINDERLEDGER_STORAGE_ROOT: /mnt/storage/binderledger
-          BINDERLEDGER_TARGET_SHA: ${{ steps.revision.outputs.sha }}
+          BINDERLEDGER_TARGET_SHA: ${{ steps.confirmed.outputs.sha }}
           BINDERLEDGER_DEPLOY_RUN_ID: ${{ github.run_id }}
         run: bash ops/prod/scripts/deploy-runner.sh

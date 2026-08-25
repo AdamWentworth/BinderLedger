@@ -148,14 +148,14 @@ func TestSelectDailyBudgetProtectsHistoricalBootstrap(t *testing.T) {
 		wantBudget int
 		wantPhase  string
 	}{
-		{name: "bootstrap", setCount: 9, wantBudget: 20, wantPhase: "historical-bootstrap"},
+		{name: "bootstrap", setCount: 9, wantBudget: 0, wantPhase: "historical-bootstrap"},
 		{name: "complete", setCount: 38, wantBudget: 28, wantPhase: "steady-state"},
 		{name: "expanded", setCount: 40, wantBudget: 28, wantPhase: "steady-state"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			budget, phase := selectDailyBudget(test.setCount, 38, 20, 28)
+			budget, phase := selectDailyBudget(test.setCount, 38, 0, 28)
 			if budget != test.wantBudget || phase != test.wantPhase {
 				t.Fatalf("selectDailyBudget() = (%d, %q), want (%d, %q)",
 					budget, phase, test.wantBudget, test.wantPhase)

@@ -34,18 +34,20 @@ docker compose --env-file .env --env-file images.env --profile tools run --rm ex
 
 ## Price Collection
 
-Production owns both recurring JustTCG workflows. The current-price job runs
-first and rotates the least recently refreshed cards in batches of 20. Each
-batch requests 30 days of history and upserts every returned daily point, so
-the rotating circuit catches up days between requests. It uses 20 requests/day
-while historical bootstrap is active and 28 requests/day after all 38 approved
-pre-Diamond-and-Pearl sets are imported.
-
-The historical job runs afterward and uses at most eight requests/day. Its
+Production owns both recurring JustTCG workflows. While the catalog is
+incomplete, the current-price job is a zero-request no-op and the historical
+collector receives all 28 sustainable requests/day. It collects one year of
+history while expanding toward the 38 approved pre-Diamond-and-Pearl sets. Its
 persistent output and response cache live under
 `/mnt/storage/binderledger/justtcg-collector`, allowing quota-safe resume after
-restarts. Both jobs stop with five daily and 100 monthly provider requests in
-reserve. PkmnPrices is not a catalog-wide scheduled source on its Free plan.
+restarts.
+
+After expansion completes, the historical collector becomes a no-op and the
+current-price job automatically receives all 28 requests/day. It rotates the
+least recently refreshed cards in batches of 20, requests 30 days of history,
+and upserts every returned daily point. Both jobs stop with five daily and 100
+monthly provider requests in reserve. PkmnPrices is not a catalog-wide
+scheduled source on its Free plan.
 
 Install or update every production timer, backup job, and localhost proxy with:
 

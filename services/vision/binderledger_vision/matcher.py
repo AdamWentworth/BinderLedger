@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Iterable
@@ -25,6 +25,7 @@ class Reference:
     finish: str
     language: str
     filename: str
+    fallback_editions: tuple[str, ...] = ()
 
 
 @dataclass
@@ -119,9 +120,42 @@ class ReferenceMatcher:
                 matches_by_printing[key] = match
 
         matches = list(matches_by_printing.values())
+        matches = self._expand_fallback_printings(matches)
         matches = self._rerank_printings(matches)
         matches.sort(key=lambda item: item.score, reverse=True)
         return matches[: max(1, min(limit, 3))]
+
+    @staticmethod
+    def _expand_fallback_printings(matches: list[Match]) -> list[Match]:
+        """Expose market-backed editions that share a verified identity image.
+
+        Some legacy sets have edition-specific market variants but only one verified
+        card image.  The shared image still establishes card identity and finish;
+        the printing reranker then uses the photographed stamp to choose the edition.
+        """
+
+        expanded = list(matches)
+        seen = {
+            (match.reference.card_id, match.reference.edition, match.reference.finish, match.reference.language)
+            for match in matches
+        }
+        for match in matches:
+            for edition in match.reference.fallback_editions:
+                key = (
+                    match.reference.card_id,
+                    edition,
+                    match.reference.finish,
+                    match.reference.language,
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                signals = dict(match.signals)
+                signals["referenceEdition"] = match.reference.edition
+                signals["referenceEditionFallback"] = True
+                reference = replace(match.reference, edition=edition, fallback_editions=())
+                expanded.append(Match(reference, match.score, signals))
+        return expanded
 
     @staticmethod
     def _rerank_printings(matches: list[Match]) -> list[Match]:
@@ -133,13 +167,14 @@ class ReferenceMatcher:
         here, and only when that group contains a First Edition printing.
         """
 
-        editions_by_card: dict[str, set[str]] = {}
+        editions_by_card: dict[tuple[str, str, str], set[str]] = {}
         for match in matches:
-            editions_by_card.setdefault(match.reference.card_id, set()).add(match.reference.edition.lower())
+            key = printing_group_key(match.reference)
+            editions_by_card.setdefault(key, set()).add(match.reference.edition.lower())
 
         reranked: list[Match] = []
         for match in matches:
-            editions = editions_by_card[match.reference.card_id]
+            editions = editions_by_card[printing_group_key(match.reference)]
             if len(editions) < 2 or not any("first" in edition for edition in editions):
                 reranked.append(match)
                 continue
@@ -481,12 +516,42 @@ def extract_text(image: np.ndarray) -> str:
     combined = np.vstack([title, footer])
     gray = cv2.cvtColor(combined, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    encoded, payload = cv2.imencode(".png", gray)
+    general_text = tesseract_text(gray, page_segmentation_mode=6)
+
+    number_region = crop_ratio(image, 0.66, 0.82, 1.0, 0.98)
+    number_gray = cv2.cvtColor(number_region, cv2.COLOR_BGR2GRAY)
+    number_gray = cv2.resize(number_gray, None, fx=4.0, fy=4.0, interpolation=cv2.INTER_CUBIC)
+    number_text = tesseract_text(
+        number_gray,
+        page_segmentation_mode=11,
+        character_whitelist="0123456789/",
+    )
+    return " ".join(value for value in (general_text, number_text) if value)
+
+
+def tesseract_text(
+    image: np.ndarray,
+    *,
+    page_segmentation_mode: int,
+    character_whitelist: str | None = None,
+) -> str:
+    encoded, payload = cv2.imencode(".png", image)
     if not encoded:
         return ""
+    command = [
+        "tesseract",
+        "stdin",
+        "stdout",
+        "--psm",
+        str(page_segmentation_mode),
+        "-l",
+        "eng",
+    ]
+    if character_whitelist:
+        command.extend(["-c", f"tessedit_char_whitelist={character_whitelist}"])
     try:
         result = subprocess.run(
-            ["tesseract", "stdin", "stdout", "--psm", "6", "-l", "eng"],
+            command,
             input=payload.tobytes(),
             capture_output=True,
             check=False,
@@ -501,6 +566,13 @@ def extract_text(image: np.ndarray) -> str:
 
 def normalize_text(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", value.lower()))
+
+
+def printing_group_key(reference: Reference) -> tuple[str, str, str]:
+    set_name = re.sub(r"\s+(?:first edition|shadowless)$", "", reference.set_name.lower()).strip()
+    card_name = re.sub(r"\s*\(\d+\)\s*$", "", reference.card_name.lower()).strip()
+    number = normalize_text(reference.number or "")
+    return set_name, card_name, number
 
 
 def title_similarity(ocr_text: str, card_name: str) -> float:

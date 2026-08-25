@@ -5,7 +5,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from binderledger_vision.matcher import Reference, ReferenceMatcher, detect_card_quad, normalize_scan
+from binderledger_vision.matcher import (
+    Reference,
+    ReferenceMatcher,
+    detect_card_quad,
+    normalize_scan,
+    number_similarity,
+)
 
 
 def test_matches_perspective_photo_to_reference(tmp_path: Path) -> None:
@@ -46,20 +52,20 @@ def test_missing_stamp_prefers_shadowless_over_sharper_first_edition_reference(t
 
     references = [
         Reference(
-            "squirtle",
+            "squirtle-first-edition",
             "Squirtle",
             "63/102",
-            "Base Set",
+            "Base Set First Edition",
             "First Edition",
             "Normal",
             "English",
             "first-edition.jpg",
         ),
         Reference(
-            "squirtle",
+            "squirtle-shadowless",
             "Squirtle",
             "63/102",
-            "Base Set",
+            "Base Set Shadowless",
             "Shadowless",
             "Normal",
             "English",
@@ -84,20 +90,20 @@ def test_present_stamp_prefers_first_edition(tmp_path: Path) -> None:
         tmp_path,
         [
             Reference(
-                "squirtle",
+                "squirtle-first-edition",
                 "Squirtle",
                 "63/102",
-                "Base Set",
+                "Base Set First Edition",
                 "First Edition",
                 "Normal",
                 "English",
                 "first-edition.jpg",
             ),
             Reference(
-                "squirtle",
+                "squirtle-shadowless",
                 "Squirtle",
                 "63/102",
-                "Base Set",
+                "Base Set Shadowless",
                 "Shadowless",
                 "Normal",
                 "English",
@@ -113,6 +119,35 @@ def test_present_stamp_prefers_first_edition(tmp_path: Path) -> None:
     assert matches[0].signals["firstEditionStamp"] > 0.5
 
 
+def test_present_stamp_prefers_market_edition_with_shared_identity_image(tmp_path: Path) -> None:
+    unlimited = draw_printing(first_edition=False)
+    cv2.imwrite(str(tmp_path / "unlimited.jpg"), unlimited)
+    matcher = ReferenceMatcher(
+        tmp_path,
+        [
+            Reference(
+                "flareon-19",
+                "Flareon (19)",
+                "19/64",
+                "Jungle",
+                "Unlimited",
+                "Normal",
+                "English",
+                "unlimited.jpg",
+                ("First Edition",),
+            ),
+        ],
+        tesseract_enabled=False,
+    )
+
+    matches = matcher.match(photograph_in_toploader(draw_printing(first_edition=True)))
+
+    assert matches[0].reference.edition == "First Edition"
+    assert matches[0].signals["referenceEdition"] == "Unlimited"
+    assert matches[0].signals["referenceEditionFallback"] is True
+    assert matches[0].signals["firstEditionStamp"] > 0.5
+
+
 def test_card_detector_ignores_transparent_toploader_outline() -> None:
     photo = photograph_in_toploader(draw_printing(first_edition=False))
 
@@ -122,6 +157,11 @@ def test_card_detector_ignores_transparent_toploader_outline() -> None:
     # The card is roughly half of the canvas; the surrounding top loader is larger.
     detected_area = abs(cv2.contourArea(quad)) / (photo.shape[0] * photo.shape[1])
     assert 0.30 < detected_area < 0.55
+
+
+def test_collector_number_breaks_same_artwork_printing_tie() -> None:
+    assert number_similarity("Flareon retreat cost 19/64", "19/64") == 1.0
+    assert number_similarity("Flareon retreat cost 19/64", "03/64") == 0.0
 
 
 def draw_card(color: tuple[int, int, int], name: str, number: str, marker: int) -> np.ndarray:

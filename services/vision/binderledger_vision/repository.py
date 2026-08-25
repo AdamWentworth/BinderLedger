@@ -86,7 +86,25 @@ class Repository:
                     image.edition,
                     image.finish,
                     image.language,
-                    image.filename
+                    image.filename,
+                    ARRAY(
+                        SELECT DISTINCT variant.edition
+                        FROM catalog_card_variants variant
+                        WHERE variant.card_id = image.card_id
+                          AND variant.finish = image.finish
+                          AND variant.language = image.language
+                          AND variant.edition <> image.edition
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM catalog_printing_images exact_image
+                              WHERE exact_image.card_id = variant.card_id
+                                AND exact_image.edition = variant.edition
+                                AND exact_image.finish = variant.finish
+                                AND exact_image.language = variant.language
+                                AND exact_image.verified_at IS NOT NULL
+                          )
+                        ORDER BY variant.edition
+                    ) AS fallback_editions
                 FROM catalog_printing_images image
                 JOIN catalog_cards card ON card.id = image.card_id
                 JOIN catalog_sets catalog_set ON catalog_set.id = card.set_id

@@ -267,17 +267,17 @@ func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
 			candidate.edition,
 			candidate.finish,
 			candidate.language,
-			'/api/catalog/images/' || image.filename,
+			COALESCE(catalog_printing_image_url(
+				candidate.card_id,
+				candidate.edition,
+				candidate.finish,
+				candidate.language
+			), ''),
 			candidate.score,
 			candidate.signals
 		FROM card_scan_candidates candidate
 		JOIN catalog_cards card ON card.id = candidate.card_id
 		JOIN catalog_sets catalog_set ON catalog_set.id = card.set_id
-		JOIN catalog_printing_images image
-		  ON image.card_id = candidate.card_id
-		 AND image.edition = candidate.edition
-		 AND image.finish = candidate.finish
-		 AND image.language = candidate.language
 		WHERE candidate.scan_session_id = $1
 		ORDER BY candidate.rank
 	`, id)

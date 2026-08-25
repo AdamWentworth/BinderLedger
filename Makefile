@@ -1,4 +1,4 @@
-.PHONY: api build-server client client-export client-phone client-phone-prod client-preview db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify vision-test
+.PHONY: api build-server client client-export client-phone client-phone-prod client-preview db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status pricecharting-images pricecharting-images-gallery pricecharting-images-status test verify vision-test vision-up
 
 api:
 	go run ./cmd/api
@@ -32,12 +32,15 @@ db-down:
 db-status:
 	docker compose ps
 
+vision-up:
+	docker compose up -d --build vision
+
 install-user-services:
 	mkdir -p $(HOME)/.config/systemd/user
 	cp deploy/systemd/user/*.service deploy/systemd/user/*.socket deploy/systemd/user/*.timer $(HOME)/.config/systemd/user/
 	systemctl --user daemon-reload
 
-dev-up: db-up build-server client-export install-user-services
+dev-up: db-up vision-up build-server client-export install-user-services
 	systemctl --user start binderledger-api.service binderledger-client-preview.service binderledger-expo.service
 	systemctl --user start binderledger-localhost-proxy@4001.socket binderledger-localhost-proxy@8082.socket binderledger-localhost-proxy@8083.socket
 

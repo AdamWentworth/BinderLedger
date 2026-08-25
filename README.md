@@ -24,6 +24,7 @@ cp .env.example .env
 docker compose up -d postgres
 go run ./cmd/migrate
 go run ./cmd/import-justtcg
+docker compose up -d --build vision
 go run ./cmd/api
 ```
 
@@ -38,7 +39,9 @@ npm run web
 Development uses its own Compose project, PostgreSQL volume, and ports. The
 database listens only on `127.0.0.1:55432`, the API uses `4001`, Expo Go uses
 `8082`, and the static development web preview uses `8083`. These are
-separate from every production app stack on the server.
+separate from every production app stack on the server. A resource-limited
+development vision worker consumes scans from the development database and
+reads private scan files as the local user.
 
 Start or stop the complete development runtime without affecting production:
 

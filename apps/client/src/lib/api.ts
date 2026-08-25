@@ -1,3 +1,5 @@
+import { fetch as expoFetch } from 'expo/fetch';
+import { File as ExpoFile } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 export { formatCurrency, formatPercent } from './formatters';
@@ -664,7 +666,7 @@ export async function createScanSession(
   await appendScanCapture(formData, 'front', front);
   if (back) await appendScanCapture(formData, 'back', back);
 
-  const response = await fetch(`${apiURL}/api/scans`, {
+  const response = await expoFetch(`${apiURL}/api/scans`, {
     body: formData,
     method: 'POST',
   });
@@ -711,19 +713,11 @@ async function appendScanCapture(
   side: 'front' | 'back',
   capture: ScanCapture,
 ): Promise<void> {
-  const mimeType = capture.format === 'png' ? 'image/png' : 'image/jpeg';
   const filename = `${side}.${capture.format}`;
   if (capture.uri.startsWith('data:') || capture.uri.startsWith('blob:')) {
     const response = await fetch(capture.uri);
     formData.append(side, await response.blob(), filename);
     return;
   }
-  formData.append(
-    side,
-    {
-      name: filename,
-      type: mimeType,
-      uri: capture.uri,
-    } as unknown as Blob,
-  );
+  formData.append(side, new ExpoFile(capture.uri), filename);
 }

@@ -29,8 +29,15 @@ docker compose --env-file .env --env-file images.env ps
 docker compose --env-file .env --env-file images.env logs -f vision
 docker compose --env-file .env --env-file images.env --profile tools run --rm migrate
 docker compose --env-file .env --env-file images.env --profile tools run --rm refresh-justtcg
+docker compose --env-file .env --env-file images.env --profile tools run --rm sync-card-images -set-id <catalog-set-id>
 docker compose --env-file .env --env-file images.env --profile tools run --rm expand-justtcg-history
 ```
+
+`sync-card-images` only accepts HTTPS images from its approved provider host,
+validates the file type and card-like dimensions, writes files atomically, and
+records the provider URL and SHA-256 in the private catalog. Run it with
+`-dry-run` first when adding a new set. Restart the vision worker afterward so
+it reloads the expanded reference library.
 
 ## Runner Deployment
 

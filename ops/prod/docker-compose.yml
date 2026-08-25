@@ -177,6 +177,27 @@ services:
       db:
         condition: service_healthy
 
+  sync-card-images:
+    profiles: ["tools"]
+    image: ${BINDERLEDGER_CORE_IMAGE:-binderledger-core:latest}
+    entrypoint: ["/usr/local/bin/binderledger-sync-card-images"]
+    restart: "no"
+    cpus: "0.25"
+    mem_limit: 192m
+    pids_limit: 64
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-binderledger}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-binderledger}?sslmode=disable
+      CARD_IMAGE_DIR: /data/card-images
+    volumes:
+      - ${BINDERLEDGER_CARD_IMAGE_DIR:-/mnt/storage/binderledger/card-images}:/data/card-images
+    depends_on:
+      db:
+        condition: service_healthy
+
   expand-justtcg-history:
     profiles: ["tools"]
     image: ${BINDERLEDGER_COLLECTOR_IMAGE:-binderledger-collector:latest}

@@ -55,6 +55,11 @@ systemctl --user stop binderledger-expo.service
 systemctl --user stop binderledger-client-preview.service
 ```
 
+The `binderledger-localhost-proxy@.socket` units expose those same development
+services on loopback without binding them to every network interface. `make
+dev-up` starts localhost listeners on `4001`, `8082`, and `8083`, so the web
+preview is also available at `http://localhost:8083`.
+
 From the repository root, `make dev-up`, `make dev-status`, and `make dev-down`
 manage the isolated database and development processes together. These commands
 do not operate on `/srv/binderledger` or its production Compose project.

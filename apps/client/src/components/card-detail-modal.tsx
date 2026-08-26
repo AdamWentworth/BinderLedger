@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MarketMovementValue } from '@/components/market-movement-value';
 import { MarketPeriodControl } from '@/components/market-period-control';
 import { PriceHistoryChart } from '@/components/price-history-chart';
 import { WatchButton } from '@/components/watch-button';
@@ -38,7 +39,6 @@ import {
 import {
   type CatalogListing,
   formatCurrency,
-  formatPercent,
   getVariantHistory,
   type MarketPeriod,
   resolveImageURL,
@@ -354,18 +354,12 @@ function CardDetailContent({ listing, onClose }: CardDetailContentProps) {
                   {history ? (
                     <View style={[styles.historyStats, compact && styles.historyStatsCompact]}>
                       <Text style={styles.historyPrice}>{formatCurrency(history.endPrice)}</Text>
-                      <Text
-                        style={[
-                          styles.historyChange,
-                          {
-                            color:
-                              (history.changePercent ?? 0) >= 0
-                                ? colors.positive
-                                : colors.negative,
-                          },
-                        ]}>
-                        {formatPercent(history.changePercent)}
-                      </Text>
+                      <MarketMovementValue
+                        amount={history.changeAmount}
+                        mode="amount"
+                        percent={history.changePercent}
+                        prominent
+                      />
                       <Text style={styles.observationCount}>
                         {history.points.length} observations
                       </Text>
@@ -731,10 +725,6 @@ const styles = StyleSheet.create({
   historyPrice: {
     color: colors.text,
     fontSize: 24,
-    fontWeight: '800',
-  },
-  historyChange: {
-    fontSize: 14,
     fontWeight: '800',
   },
   observationCount: {

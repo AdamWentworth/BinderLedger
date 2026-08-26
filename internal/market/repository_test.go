@@ -99,11 +99,11 @@ func TestSummarizeSetsRanksByRequestedMovementAndCarriesArtwork(t *testing.T) {
 		movers[index].ChangePercent = movement.Percent
 	}
 
-	byAmount := summarizeSets(movers, "amount")
+	byAmount := summarizeSets(movers, nil, "", "amount")
 	if byAmount[0].SetID != "jungle" || byAmount[0].SymbolURL == nil || *byAmount[0].SymbolURL != symbol {
 		t.Fatalf("summarizeSets(amount) = %+v", byAmount)
 	}
-	byPercent := summarizeSets(movers, "percent")
+	byPercent := summarizeSets(movers, nil, "", "percent")
 	if byPercent[0].SetID != "base" {
 		t.Fatalf("summarizeSets(percent) = %+v", byPercent)
 	}
@@ -123,7 +123,7 @@ func TestSummarizeSetsSeparatesEditionsWithinASet(t *testing.T) {
 			SetID: "jungle", SetName: "Jungle", Edition: "Unlimited",
 			StartPrice: 25, EndPrice: 30,
 		},
-	}, "amount")
+	}, nil, "", "amount")
 
 	if len(sets) != 2 {
 		t.Fatalf("summarizeSets() returned %d editions, want 2: %+v", len(sets), sets)
@@ -133,5 +133,32 @@ func TestSummarizeSetsSeparatesEditionsWithinASet(t *testing.T) {
 	}
 	if sets[1].Edition != "Unlimited" || sets[1].VariantCount != 2 || sets[1].EndValue != 85 {
 		t.Fatalf("summarizeSets() unlimited = %+v", sets[1])
+	}
+}
+
+func TestSummarizeSetsIncludesCatalogPrintingMemberships(t *testing.T) {
+	mover := Mover{
+		CardID: "machamp", SetID: "base-first", SetName: "Base Set First Edition",
+		Edition: "First Edition", StartPrice: 80, EndPrice: 100,
+	}
+	assignments := map[string][]setMovementAssignment{
+		setMovementAssignmentKey("machamp", "First Edition"): {
+			{SetID: "base-shadowless", SetName: "Base Set Shadowless", Edition: "Shadowless"},
+		},
+	}
+
+	sets := summarizeSets([]Mover{mover}, assignments, "", "amount")
+	if len(sets) != 2 {
+		t.Fatalf("summarizeSets() returned %d catalog memberships, want 2: %+v", len(sets), sets)
+	}
+	for _, set := range sets {
+		if set.EndValue != 100 || set.VariantCount != 1 {
+			t.Fatalf("summarizeSets() membership = %+v", set)
+		}
+	}
+
+	shadowless := summarizeSets([]Mover{mover}, assignments, "base-shadowless", "amount")
+	if len(shadowless) != 1 || shadowless[0].SetID != "base-shadowless" || shadowless[0].Edition != "Shadowless" {
+		t.Fatalf("summarizeSets(filtered) = %+v", shadowless)
 	}
 }

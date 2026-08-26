@@ -95,6 +95,14 @@ type SetMovement struct {
 	VariantCount  int     `json:"variantCount"`
 }
 
+type setMovementAssignment struct {
+	SetID     string
+	SetName   string
+	Edition   string
+	LogoURL   *string
+	SymbolURL *string
+}
+
 type Overview struct {
 	Period    string        `json:"period"`
 	Condition string        `json:"condition"`
@@ -220,7 +228,17 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 		JOIN catalog_sets s ON s.id = c.set_id
 		WHERE movement.period = $1
 		  AND movement.condition = $2
-		  AND ($3 = '' OR movement.set_id = $3)
+		  AND (
+			$3 = ''
+			OR movement.set_id = $3
+			OR EXISTS (
+				SELECT 1
+				FROM catalog_set_printing_memberships membership
+				WHERE membership.set_id = $3
+				  AND membership.card_id = v.card_id
+				  AND membership.printing_edition = v.edition
+			)
+		  )
 	`, filter.Period.Key, filter.Condition, filter.SetID)
 	if err != nil {
 		return Overview{}, fmt.Errorf("query market movement: %w", err)
@@ -264,8 +282,12 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 		return Overview{}, fmt.Errorf("read market movement: %w", err)
 	}
 
+	setAssignments, err := repository.setMovementAssignments(ctx, filter.SetID)
+	if err != nil {
+		return Overview{}, err
+	}
 	overview.Summary = summarize(asOf.Format(time.DateOnly), movers)
-	overview.Sets = summarizeSets(movers, filter.Rank)
+	overview.Sets = summarizeSets(movers, setAssignments, filter.SetID, filter.Rank)
 
 	sort.Slice(movers, func(i, j int) bool {
 		if filter.Rank == "percent" {
@@ -429,24 +451,98 @@ func summarize(asOf string, movers []Mover) Summary {
 	return summary
 }
 
-func summarizeSets(movers []Mover, rank string) []SetMovement {
+func (repository *Repository) setMovementAssignments(
+	ctx context.Context,
+	setID string,
+) (map[string][]setMovementAssignment, error) {
+	rows, err := repository.db.Query(ctx, `
+		SELECT
+			membership.card_id,
+			membership.printing_edition,
+			catalog_set.id,
+			catalog_set.name,
+			membership.catalog_edition,
+			catalog_set.logo_url,
+			catalog_set.symbol_url
+		FROM catalog_set_printing_memberships membership
+		JOIN catalog_sets catalog_set ON catalog_set.id = membership.set_id
+		WHERE $1 = '' OR membership.set_id = $1
+		ORDER BY membership.card_id, membership.printing_edition, catalog_set.display_order, catalog_set.name
+	`, setID)
+	if err != nil {
+		return nil, fmt.Errorf("query market set memberships: %w", err)
+	}
+	defer rows.Close()
+
+	assignments := make(map[string][]setMovementAssignment)
+	for rows.Next() {
+		var cardID, printingEdition string
+		var assignment setMovementAssignment
+		if err := rows.Scan(
+			&cardID,
+			&printingEdition,
+			&assignment.SetID,
+			&assignment.SetName,
+			&assignment.Edition,
+			&assignment.LogoURL,
+			&assignment.SymbolURL,
+		); err != nil {
+			return nil, fmt.Errorf("scan market set membership: %w", err)
+		}
+		key := setMovementAssignmentKey(cardID, printingEdition)
+		assignments[key] = append(assignments[key], assignment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read market set memberships: %w", err)
+	}
+	return assignments, nil
+}
+
+func summarizeSets(
+	movers []Mover,
+	assignments map[string][]setMovementAssignment,
+	filterSetID string,
+	rank string,
+) []SetMovement {
 	bySet := make(map[string]*SetMovement)
 	for _, mover := range movers {
-		key := mover.SetID + "\x00" + mover.Edition
-		set := bySet[key]
-		if set == nil {
-			set = &SetMovement{
+		moverSets := make([]setMovementAssignment, 0, 2)
+		if filterSetID == "" || mover.SetID == filterSetID {
+			moverSets = append(moverSets, setMovementAssignment{
 				SetID:     mover.SetID,
 				SetName:   mover.SetName,
 				Edition:   mover.Edition,
 				LogoURL:   mover.SetLogoURL,
 				SymbolURL: mover.SetSymbolURL,
-			}
-			bySet[key] = set
+			})
 		}
-		set.StartValue += mover.StartPrice
-		set.EndValue += mover.EndPrice
-		set.VariantCount++
+		moverSets = append(
+			moverSets,
+			assignments[setMovementAssignmentKey(mover.CardID, mover.Edition)]...,
+		)
+
+		seen := make(map[string]struct{}, len(moverSets))
+		for _, assignment := range moverSets {
+			key := assignment.SetID + "\x00" + assignment.Edition
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			set := bySet[key]
+			if set == nil {
+				set = &SetMovement{
+					SetID:     assignment.SetID,
+					SetName:   assignment.SetName,
+					Edition:   assignment.Edition,
+					LogoURL:   assignment.LogoURL,
+					SymbolURL: assignment.SymbolURL,
+				}
+				bySet[key] = set
+			}
+			set.StartValue += mover.StartPrice
+			set.EndValue += mover.EndPrice
+			set.VariantCount++
+		}
 	}
 
 	sets := make([]SetMovement, 0, len(bySet))
@@ -473,6 +569,10 @@ func summarizeSets(movers []Mover, rank string) []SetMovement {
 		return sets[i].Edition < sets[j].Edition
 	})
 	return sets
+}
+
+func setMovementAssignmentKey(cardID, printingEdition string) string {
+	return cardID + "\x00" + printingEdition
 }
 
 func historySignal(period Period, observations int, changePercent float64) string {

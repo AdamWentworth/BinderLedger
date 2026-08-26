@@ -34,6 +34,6 @@ describe('Expo branding configuration', () => {
     expect(config.expo.android.adaptiveIcon.foregroundImage).toBe(
       './assets/images/binderledger-icon-circle.png',
     );
-    expect(config.expo.web.favicon).toBe('./assets/images/binderledger-icon-circle.png');
+    expect(config.expo.web.favicon).toBe('./assets/images/binderledger-favicon.png');
   });
 });

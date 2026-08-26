@@ -98,6 +98,11 @@ test('browses the catalog and opens the shared card detail overlay', async ({ pa
   });
 
   await page.goto('/');
+  await expect(page).toHaveTitle('Catalog · BinderLedger');
+  await expect(page.locator('link[rel~="icon"]')).toHaveAttribute(
+    'href',
+    '/favicon.ico?v=20260826-brand-2',
+  );
   await expect(page.getByText('Card catalog')).toBeVisible();
   await expect(page.getByText('1-1 of 1 printings')).toBeVisible();
 

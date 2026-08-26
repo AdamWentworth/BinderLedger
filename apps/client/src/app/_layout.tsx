@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { Eye, LayoutGrid, LibraryBig, ScanLine, TrendingUp } from 'lucide-react-native';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useEffect } from 'react';
 
 import { colors, desktopNavigationBreakpoint } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
@@ -16,9 +18,36 @@ const queryClient = new QueryClient({
   },
 });
 
+const browserTitles: Record<string, string> = {
+  '/': 'Catalog',
+  '/collection': 'Collection',
+  '/market': 'Market',
+  '/watchlist': 'Watchlist',
+  '/scan': 'Scan',
+};
+
+const browserFavicon = '/favicon.ico?v=20260826-brand-2';
+
 export default function RootLayout() {
   const width = useHydratedWidth();
   const desktop = width >= desktopNavigationBreakpoint;
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    const section = browserTitles[pathname];
+    document.title = section ? `${section} · BinderLedger` : 'BinderLedger';
+
+    let favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (!favicon) {
+      favicon = document.createElement('link');
+      favicon.rel = 'icon';
+      document.head.appendChild(favicon);
+    }
+    favicon.type = 'image/png';
+    favicon.href = browserFavicon;
+  }, [pathname]);
 
   return (
     <SafeAreaProvider>

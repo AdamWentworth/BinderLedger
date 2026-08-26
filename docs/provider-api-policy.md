@@ -45,7 +45,10 @@ The collector caches every successful request, checks provider usage before the
 next call, and treats forced refresh as an explicit quota-consuming action.
 Catalog expansion and current-price rotation have separate budgets so they
 cannot silently multiply traffic. The historical collector uses a persistent
-cache and exits when its approved catalog scope is complete.
+cache and exits when its approved catalog scope is complete. During initial
+catalog expansion, production assigns the free plan's daily allowance to
+history collection while retaining one daily and monthly request as a hard
+safety margin. Current-price rotation remains paused until expansion completes.
 
 - [Rate limits](https://justtcg.com/docs/rate-limits)
 - [Pricing and plan limits](https://justtcg.com/pricing)

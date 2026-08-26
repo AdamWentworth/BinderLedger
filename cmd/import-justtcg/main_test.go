@@ -25,6 +25,17 @@ func intPointer(value int) *int {
 	return &value
 }
 
+func TestTCGPlayerImageURL(t *testing.T) {
+	productID := int64(618732)
+	want := "https://product-images.tcgplayer.com/fit-in/437x437/618732.jpg"
+	if got := tcgplayerImageURL(&productID); got != want {
+		t.Fatalf("tcgplayerImageURL() = %q, want %q", got, want)
+	}
+	if got := tcgplayerImageURL(nil); got != "" {
+		t.Fatalf("tcgplayerImageURL(nil) = %q, want empty", got)
+	}
+}
+
 func TestNormalizePrinting(t *testing.T) {
 	tests := []struct {
 		printing string

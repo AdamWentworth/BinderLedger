@@ -488,15 +488,16 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 			continue
 		}
 		productID := parseInt64(card.TCGPlayerID)
+		imageURL := tcgplayerImageURL(productID)
 
-		if err := upsertCatalogCard(ctx, tx, card, card.ID, data.Set.ID, card.UUID, productID, ""); err != nil {
+		if err := upsertCatalogCard(ctx, tx, card, card.ID, data.Set.ID, card.UUID, productID, imageURL); err != nil {
 			return importStats{}, fmt.Errorf("upsert card %s: %w", card.ID, err)
 		}
 		stats.Cards++
 
 		if data.Set.ID == baseSetShadowlessID && cardHasEdition(card, "First Edition") {
 			firstEditionID := firstEditionCardID(card.ID)
-			if err := upsertCatalogCard(ctx, tx, card, firstEditionID, baseSetFirstEditionID, "", productID, ""); err != nil {
+			if err := upsertCatalogCard(ctx, tx, card, firstEditionID, baseSetFirstEditionID, "", productID, imageURL); err != nil {
 				return importStats{}, fmt.Errorf("upsert First Edition card %s: %w", firstEditionID, err)
 			}
 			stats.Cards++
@@ -635,11 +636,21 @@ func upsertCatalogCard(
 				number = EXCLUDED.number,
 				number_sort = EXCLUDED.number_sort,
 				rarity = EXCLUDED.rarity,
-				image_url = COALESCE(EXCLUDED.image_url, catalog_cards.image_url),
+				image_url = COALESCE(catalog_cards.image_url, EXCLUDED.image_url),
 				imported_at = now()
 		`, cardID, nullIfEmpty(uuid), setID, productID, card.Name,
 		nullIfEmpty(card.Number), numberSort(card.Number), nullIfEmpty(card.Rarity), nullIfEmpty(imageURL))
 	return err
+}
+
+func tcgplayerImageURL(productID *int64) string {
+	if productID == nil || *productID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"https://product-images.tcgplayer.com/fit-in/437x437/%d.jpg",
+		*productID,
+	)
 }
 
 func providerCardExcluded(cardID string) bool {

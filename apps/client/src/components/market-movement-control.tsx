@@ -1,10 +1,11 @@
 import { DollarSign, Percent } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '@/constants/theme';
 import { type MarketMovementMode } from '@/lib/api';
 
 type MarketMovementControlProps = {
+  loading?: boolean;
   mode: MarketMovementMode;
   onChange: (mode: MarketMovementMode) => void;
 };
@@ -14,7 +15,11 @@ const modes = [
   { key: 'percent' as const, label: 'Percent', Icon: Percent },
 ];
 
-export function MarketMovementControl({ mode, onChange }: MarketMovementControlProps) {
+export function MarketMovementControl({
+  loading = false,
+  mode,
+  onChange,
+}: MarketMovementControlProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Rank by</Text>
@@ -41,6 +46,13 @@ export function MarketMovementControl({ mode, onChange }: MarketMovementControlP
           );
         })}
       </View>
+      {loading ? (
+        <ActivityIndicator
+          accessibilityLabel="Updating market ranking"
+          color={colors.brand}
+          size="small"
+        />
+      ) : null}
     </View>
   );
 }

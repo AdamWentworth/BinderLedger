@@ -56,6 +56,7 @@ export default function MarketScreen() {
     placeholderData: keepPreviousData,
   });
   const overview = overviewQuery.data;
+  const displayedMovementMode = overview?.rank ?? movementMode;
   const movers = overview ? [...overview.gainers, ...overview.losers] : [];
   const activeVariantID = movers.some((mover) => mover.variantId === selectedVariantID)
     ? selectedVariantID
@@ -90,7 +91,11 @@ export default function MarketScreen() {
           condition={condition}
           onChange={changeCondition}
         />
-        <MarketMovementControl mode={movementMode} onChange={changeMovementMode} />
+        <MarketMovementControl
+          loading={overviewQuery.isFetching && overview !== undefined}
+          mode={movementMode}
+          onChange={changeMovementMode}
+        />
       </View>
 
       {overviewQuery.isPending ? (
@@ -188,7 +193,7 @@ export default function MarketScreen() {
                   <Text style={styles.currentPrice}>{formatCurrency(history.endPrice)}</Text>
                   <MarketMovementValue
                     amount={history.changeAmount}
-                    mode={movementMode}
+                    mode={displayedMovementMode}
                     percent={history.changePercent}
                     prominent
                   />
@@ -217,7 +222,7 @@ export default function MarketScreen() {
               </View>
               <Text style={styles.sectionNote}>
                 {condition} basket / {periodLabel(period)} / ranked by{' '}
-                {movementMode === 'amount' ? 'dollars' : 'percent'}
+                {displayedMovementMode === 'amount' ? 'dollars' : 'percent'}
               </Text>
             </View>
             <View style={styles.setList}>
@@ -257,7 +262,7 @@ export default function MarketScreen() {
                     ) : null}
                     <MarketMovementValue
                       amount={set.changeAmount}
-                      mode={movementMode}
+                      mode={displayedMovementMode}
                       percent={set.changePercent}
                     />
                   </View>
@@ -271,7 +276,7 @@ export default function MarketScreen() {
               accent={colors.positive}
               icon={<ArrowUpRight color={colors.positive} size={19} />}
               movers={overview.gainers}
-              movementMode={movementMode}
+              movementMode={displayedMovementMode}
               onSelect={setSelectedVariantID}
               selectedVariantID={activeVariantID}
               title="Top gainers"
@@ -280,7 +285,7 @@ export default function MarketScreen() {
               accent={colors.negative}
               icon={<ArrowDownRight color={colors.negative} size={19} />}
               movers={overview.losers}
-              movementMode={movementMode}
+              movementMode={displayedMovementMode}
               onSelect={setSelectedVariantID}
               selectedVariantID={activeVariantID}
               title="Top decliners"

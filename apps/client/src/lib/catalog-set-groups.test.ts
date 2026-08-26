@@ -13,6 +13,7 @@ function setFixture(overrides: Partial<CatalogSet> & Pick<CatalogSet, 'id' | 'na
     logoUrl: null,
     symbolUrl: null,
     editions: [],
+    editionPrintingCounts: {},
     declaredCardCount: null,
     cardCount: 64,
     printingCount: 64,
@@ -53,6 +54,7 @@ describe('buildCatalogSetGroups', () => {
         id: 'jungle-pokemon',
         name: 'Jungle',
         editions: ['Unlimited', 'First Edition'],
+        editionPrintingCounts: { 'First Edition': 64, Unlimited: 64 },
       }),
     ]);
 
@@ -62,6 +64,25 @@ describe('buildCatalogSetGroups', () => {
       'All printings',
     ]);
     expect(group.defaultView.label).toBe('All printings');
+  });
+
+  it('uses the actual printing count for uneven promo editions', () => {
+    const [group] = buildCatalogSetGroups([
+      setFixture({
+        id: 'wotc-promo-pokemon',
+        name: 'WoTC Promo',
+        editions: ['Unlimited', 'First Edition'],
+        editionPrintingCounts: { 'First Edition': 2, Unlimited: 68 },
+        cardCount: 70,
+        printingCount: 70,
+      }),
+    ]);
+
+    expect(group.views.map(({ label, printingCount }) => ({ label, printingCount }))).toEqual([
+      { label: 'First Edition', printingCount: 2 },
+      { label: 'Unlimited', printingCount: 68 },
+      { label: 'All printings', printingCount: 70 },
+    ]);
   });
 
   it('finds the selected group and view', () => {

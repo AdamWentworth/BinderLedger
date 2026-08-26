@@ -92,7 +92,8 @@ export function buildCatalogSetGroups(sets: CatalogSet[]): CatalogSetGroup[] {
       label: edition,
       setId: set.id,
       edition,
-      printingCount: set.cardCount + set.sharedPrintingCount,
+      printingCount:
+        set.editionPrintingCounts?.[edition] ?? set.cardCount + set.sharedPrintingCount,
     }));
     const allView: CatalogSetView = {
       key: `${set.id}:all`,

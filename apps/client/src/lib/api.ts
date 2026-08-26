@@ -16,6 +16,7 @@ export type CatalogSet = {
   logoUrl: string | null;
   symbolUrl: string | null;
   editions: string[];
+  editionPrintingCounts?: Record<string, number>;
   declaredCardCount: number | null;
   cardCount: number;
   printingCount: number;

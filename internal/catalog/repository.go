@@ -24,20 +24,21 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 type Set struct {
-	ID                  string   `json:"id"`
-	Name                string   `json:"name"`
-	ReleaseDate         *string  `json:"releaseDate"`
-	LogoURL             *string  `json:"logoUrl"`
-	SymbolURL           *string  `json:"symbolUrl"`
-	Editions            []string `json:"editions"`
-	DeclaredCardCount   *int     `json:"declaredCardCount"`
-	CardCount           int      `json:"cardCount"`
-	PrintingCount       int      `json:"printingCount"`
-	SharedCardCount     int      `json:"sharedCardCount"`
-	SharedPrintingCount int      `json:"sharedPrintingCount"`
-	VariantCount        int      `json:"variantCount"`
-	MinimumPrice        *float64 `json:"minimumPrice"`
-	MaximumPrice        *float64 `json:"maximumPrice"`
+	ID                    string         `json:"id"`
+	Name                  string         `json:"name"`
+	ReleaseDate           *string        `json:"releaseDate"`
+	LogoURL               *string        `json:"logoUrl"`
+	SymbolURL             *string        `json:"symbolUrl"`
+	Editions              []string       `json:"editions"`
+	EditionPrintingCounts map[string]int `json:"editionPrintingCounts"`
+	DeclaredCardCount     *int           `json:"declaredCardCount"`
+	CardCount             int            `json:"cardCount"`
+	PrintingCount         int            `json:"printingCount"`
+	SharedCardCount       int            `json:"sharedCardCount"`
+	SharedPrintingCount   int            `json:"sharedPrintingCount"`
+	VariantCount          int            `json:"variantCount"`
+	MinimumPrice          *float64       `json:"minimumPrice"`
+	MaximumPrice          *float64       `json:"maximumPrice"`
 }
 
 type Variant struct {
@@ -259,6 +260,7 @@ func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 	defer rows.Close()
 
 	sets := make([]Set, 0)
+	setIndex := make(map[string]int)
 	for rows.Next() {
 		var set Set
 		if err := rows.Scan(
@@ -280,10 +282,60 @@ func (repository *Repository) ListSets(ctx context.Context) ([]Set, error) {
 			return nil, fmt.Errorf("scan catalog set: %w", err)
 		}
 		sortEditions(set.Editions)
+		set.EditionPrintingCounts = make(map[string]int, len(set.Editions))
+		setIndex[set.ID] = len(sets)
 		sets = append(sets, set)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read catalog sets: %w", err)
+	}
+	rows.Close()
+
+	editionRows, err := repository.db.Query(ctx, `
+		WITH set_printings AS (
+			SELECT
+				card.set_id,
+				variant.edition AS catalog_edition,
+				card.id AS card_id,
+				variant.finish,
+				variant.language
+			FROM catalog_cards card
+			JOIN catalog_card_variants variant ON variant.card_id = card.id
+
+			UNION
+
+			SELECT
+				membership.set_id,
+				membership.catalog_edition,
+				membership.card_id,
+				variant.finish,
+				variant.language
+			FROM catalog_set_printing_memberships membership
+			JOIN catalog_card_variants variant
+			  ON variant.card_id = membership.card_id
+			 AND variant.edition = membership.printing_edition
+		)
+		SELECT set_id, catalog_edition, count(*)::integer
+		FROM set_printings
+		GROUP BY set_id, catalog_edition
+		ORDER BY set_id, catalog_edition
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query catalog edition printing counts: %w", err)
+	}
+	defer editionRows.Close()
+	for editionRows.Next() {
+		var setID, edition string
+		var count int
+		if err := editionRows.Scan(&setID, &edition, &count); err != nil {
+			return nil, fmt.Errorf("scan catalog edition printing count: %w", err)
+		}
+		if index, ok := setIndex[setID]; ok {
+			sets[index].EditionPrintingCounts[edition] = count
+		}
+	}
+	if err := editionRows.Err(); err != nil {
+		return nil, fmt.Errorf("read catalog edition printing counts: %w", err)
 	}
 	return sets, nil
 }

@@ -10,11 +10,13 @@ type EmptyStateProps = {
 export function EmptyState({ title, message }: EmptyStateProps) {
   return (
     <View style={styles.container}>
-      <Image
-        resizeMode="contain"
-        source={require('@/assets/images/binderledger-mark.png')}
-        style={styles.image}
-      />
+      <View style={styles.imageFrame}>
+        <Image
+          resizeMode="contain"
+          source={require('@/assets/images/binderledger-mark.png')}
+          style={styles.image}
+        />
+      </View>
       <View style={styles.copy}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.message}>{message}</Text>
@@ -36,8 +38,18 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   image: {
-    height: 104,
-    width: 104,
+    height: 96,
+    width: 96,
+  },
+  imageFrame: {
+    alignItems: 'center',
+    backgroundColor: colors.paper,
+    borderColor: colors.brand,
+    borderRadius: 68,
+    borderWidth: 1,
+    height: 128,
+    justifyContent: 'center',
+    width: 128,
   },
   copy: {
     alignItems: 'center',

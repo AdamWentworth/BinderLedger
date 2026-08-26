@@ -29,6 +29,7 @@ export default function RootLayout() {
               headerShown: false,
               sceneStyle: { backgroundColor: colors.canvas },
               tabBarActiveTintColor: colors.brand,
+              tabBarActiveBackgroundColor: colors.surface,
               tabBarInactiveTintColor: colors.textMuted,
               tabBarLabelPosition: desktop ? 'beside-icon' : 'below-icon',
               tabBarLabelStyle: { fontSize: desktop ? 12 : 10, fontWeight: '700' },

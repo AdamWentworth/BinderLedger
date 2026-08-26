@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#101936",
+        "backgroundColor": "#06182F",
         "foregroundImage": "./assets/images/binderledger-icon-circle.png"
       },
       "package": "com.adamwentworth.binderledger",
@@ -37,7 +37,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#151C18",
+          "backgroundColor": "#06182F",
           "image": "./assets/images/binderledger-mark.png",
           "imageWidth": 160
         }

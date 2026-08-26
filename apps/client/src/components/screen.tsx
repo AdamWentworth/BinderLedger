@@ -50,12 +50,16 @@ export function Screen({
         <View style={styles.content}>
           <View style={styles.topBar}>
             <View style={styles.brand}>
-              <Image
-                resizeMode="contain"
-                source={require('@/assets/images/binderledger-mark.png')}
-                style={styles.brandMark}
-              />
-              <Text style={styles.brandName}>BinderLedger</Text>
+              <View style={styles.brandMarkFrame}>
+                <Image
+                  resizeMode="contain"
+                  source={require('@/assets/images/binderledger-mark.png')}
+                  style={styles.brandMark}
+                />
+              </View>
+              <Text style={styles.brandName}>
+                Binder<Text style={styles.brandNameAccent}>Ledger</Text>
+              </Text>
             </View>
             <ConnectionStatus />
           </View>
@@ -115,13 +119,27 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   brandMark: {
-    height: 42,
-    width: 42,
+    height: 38,
+    width: 38,
+  },
+  brandMarkFrame: {
+    alignItems: 'center',
+    backgroundColor: colors.paper,
+    borderColor: colors.brand,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 46,
+    justifyContent: 'center',
+    width: 46,
   },
   brandName: {
     color: colors.text,
     fontSize: 17,
     fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  brandNameAccent: {
+    color: colors.brass,
   },
   headingRow: {
     alignItems: 'flex-end',

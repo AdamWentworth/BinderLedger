@@ -4,17 +4,17 @@
     "slug": "binderledger",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/binderledger-icon.png",
+    "icon": "./assets/images/binderledger-icon-circle.png",
     "scheme": "binderledger",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/images/binderledger-icon.png",
+      "icon": "./assets/images/binderledger-icon-ios.png",
       "bundleIdentifier": "com.adamwentworth.binderledger"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#101936",
-        "foregroundImage": "./assets/images/binderledger-icon.png"
+        "foregroundImage": "./assets/images/binderledger-icon-circle.png"
       },
       "package": "com.adamwentworth.binderledger",
       "predictiveBackGestureEnabled": false,
@@ -24,7 +24,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/binderledger-icon.png"
+      "favicon": "./assets/images/binderledger-icon-circle.png"
     },
     "plugins": [
       "expo-router",

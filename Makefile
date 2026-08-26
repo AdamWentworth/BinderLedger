@@ -1,4 +1,4 @@
-.PHONY: api build-server client client-export client-phone client-preview db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status test verify vision-test vision-up
+.PHONY: api build-server client client-export client-phone client-preview client-test client-verify db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status repository-check test verify vision-test vision-up
 
 api:
 	go run ./cmd/api
@@ -19,6 +19,12 @@ client-export:
 
 client-preview: client-export
 	cd apps/client && npx expo serve dist --port 8083
+
+client-test:
+	cd apps/client && npm test
+
+client-verify:
+	cd apps/client && npm run verify
 
 db-up:
 	docker compose up -d postgres
@@ -65,18 +71,23 @@ pkmnprices-backfill:
 pkmnprices-status:
 	set -a; . ./.env; set +a; go run ./cmd/backfill-pkmnprices -status
 
-test:
+repository-check:
+	bash scripts/check-repository.sh
+
+test: client-test
 	go test ./cmd/... ./internal/...
 	docker build --target test -t binderledger-vision:test -f services/vision/Dockerfile .
 	docker run --rm binderledger-vision:test
 	cd tools/justtcg-audit && npm test
-	cd apps/client && npm run typecheck
-	cd apps/client && npm run lint
 
-verify: test
+verify: repository-check
+	go test ./cmd/... ./internal/...
+	docker build --target test -t binderledger-vision:test -f services/vision/Dockerfile .
+	docker run --rm binderledger-vision:test
+	cd tools/justtcg-audit && npm test
+	cd apps/client && npm run verify
 	go vet ./cmd/... ./internal/...
 	go mod tidy -diff
-	cd apps/client && npx expo-doctor
 
 vision-test:
 	docker build --target test -t binderledger-vision:test -f services/vision/Dockerfile .

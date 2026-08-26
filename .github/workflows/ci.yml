@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   go:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -29,6 +34,7 @@ jobs:
 
   client:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/client
@@ -49,6 +55,7 @@ jobs:
 
   collectors:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -59,6 +66,7 @@ jobs:
 
   vision:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -75,6 +83,7 @@ jobs:
 
   database:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:17-bookworm
@@ -102,12 +111,15 @@ jobs:
 
   operations:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Validate shell scripts
         run: |
-          shellcheck ops/prod/scripts/*.sh
-          bash -n ops/prod/scripts/*.sh
+          shellcheck scripts/*.sh ops/prod/scripts/*.sh
+          bash -n scripts/*.sh ops/prod/scripts/*.sh
+      - name: Check repository hygiene
+        run: bash scripts/check-repository.sh
       - name: Validate production Compose
         run: >-
           docker compose
@@ -121,6 +133,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: [go, client, collectors, vision, database, operations]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write

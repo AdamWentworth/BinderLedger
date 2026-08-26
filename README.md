@@ -162,6 +162,19 @@ machine boundary.
 
 ## 🧪 Verification
 
+Run the complete repository check on Linux, macOS, or WSL:
+
+```bash
+make verify
+```
+
+The client also exposes a standalone all-in-one check:
+
+```bash
+cd apps/client
+npm run verify
+```
+
 Client checks:
 
 ```bash

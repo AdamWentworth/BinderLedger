@@ -60,7 +60,8 @@
     "lint": "expo lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run lint && npm test && npm audit --omit=dev --audit-level=high && npm run doctor && npm run export:web"
   },
   "overrides": {
     "uuid": "11.1.1"

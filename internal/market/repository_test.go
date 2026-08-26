@@ -85,11 +85,11 @@ func TestSummarizeSetsRanksByRequestedMovementAndCarriesArtwork(t *testing.T) {
 	symbol := "/api/catalog/assets/jungle-symbol.png"
 	movers := []Mover{
 		{
-			SetID: "jungle", SetName: "Jungle", SetSymbolURL: &symbol,
+			SetID: "jungle", SetName: "Jungle", Edition: "Unlimited", SetSymbolURL: &symbol,
 			StartPrice: 100, EndPrice: 110,
 		},
 		{
-			SetID: "base", SetName: "Base Set",
+			SetID: "base", SetName: "Base Set", Edition: "Unlimited",
 			StartPrice: 10, EndPrice: 15,
 		},
 	}
@@ -106,5 +106,32 @@ func TestSummarizeSetsRanksByRequestedMovementAndCarriesArtwork(t *testing.T) {
 	byPercent := summarizeSets(movers, "percent")
 	if byPercent[0].SetID != "base" {
 		t.Fatalf("summarizeSets(percent) = %+v", byPercent)
+	}
+}
+
+func TestSummarizeSetsSeparatesEditionsWithinASet(t *testing.T) {
+	sets := summarizeSets([]Mover{
+		{
+			SetID: "jungle", SetName: "Jungle", Edition: "First Edition",
+			StartPrice: 125, EndPrice: 150,
+		},
+		{
+			SetID: "jungle", SetName: "Jungle", Edition: "Unlimited",
+			StartPrice: 50, EndPrice: 55,
+		},
+		{
+			SetID: "jungle", SetName: "Jungle", Edition: "Unlimited",
+			StartPrice: 25, EndPrice: 30,
+		},
+	}, "amount")
+
+	if len(sets) != 2 {
+		t.Fatalf("summarizeSets() returned %d editions, want 2: %+v", len(sets), sets)
+	}
+	if sets[0].Edition != "First Edition" || sets[0].VariantCount != 1 || sets[0].EndValue != 150 {
+		t.Fatalf("summarizeSets() first edition = %+v", sets[0])
+	}
+	if sets[1].Edition != "Unlimited" || sets[1].VariantCount != 2 || sets[1].EndValue != 85 {
+		t.Fatalf("summarizeSets() unlimited = %+v", sets[1])
 	}
 }

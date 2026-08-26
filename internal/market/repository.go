@@ -69,6 +69,7 @@ type Mover struct {
 	SetLogoURL       *string `json:"setLogoUrl"`
 	SetSymbolURL     *string `json:"setSymbolUrl"`
 	ImageURL         *string `json:"imageUrl"`
+	Edition          string  `json:"edition"`
 	Printing         string  `json:"printing"`
 	Condition        string  `json:"condition"`
 	StartPrice       float64 `json:"startPrice"`
@@ -84,6 +85,7 @@ type Mover struct {
 type SetMovement struct {
 	SetID         string  `json:"setId"`
 	SetName       string  `json:"setName"`
+	Edition       string  `json:"edition"`
 	LogoURL       *string `json:"logoUrl"`
 	SymbolURL     *string `json:"symbolUrl"`
 	StartValue    float64 `json:"startValue"`
@@ -201,6 +203,7 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 				catalog_printing_image_url(c.id, v.edition, v.finish, v.language),
 				c.image_url
 			),
+			v.edition,
 			v.printing,
 			movement.condition,
 			movement.start_date,
@@ -239,6 +242,7 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 			&mover.SetLogoURL,
 			&mover.SetSymbolURL,
 			&mover.ImageURL,
+			&mover.Edition,
 			&mover.Printing,
 			&mover.Condition,
 			&startDate,
@@ -428,15 +432,17 @@ func summarize(asOf string, movers []Mover) Summary {
 func summarizeSets(movers []Mover, rank string) []SetMovement {
 	bySet := make(map[string]*SetMovement)
 	for _, mover := range movers {
-		set := bySet[mover.SetID]
+		key := mover.SetID + "\x00" + mover.Edition
+		set := bySet[key]
 		if set == nil {
 			set = &SetMovement{
 				SetID:     mover.SetID,
 				SetName:   mover.SetName,
+				Edition:   mover.Edition,
 				LogoURL:   mover.SetLogoURL,
 				SymbolURL: mover.SetSymbolURL,
 			}
-			bySet[mover.SetID] = set
+			bySet[key] = set
 		}
 		set.StartValue += mover.StartPrice
 		set.EndValue += mover.EndPrice
@@ -455,9 +461,16 @@ func summarizeSets(movers []Mover, rank string) []SetMovement {
 	}
 	sort.Slice(sets, func(i, j int) bool {
 		if rank == "amount" {
-			return math.Abs(sets[i].ChangeAmount) > math.Abs(sets[j].ChangeAmount)
+			if math.Abs(sets[i].ChangeAmount) != math.Abs(sets[j].ChangeAmount) {
+				return math.Abs(sets[i].ChangeAmount) > math.Abs(sets[j].ChangeAmount)
+			}
+		} else if math.Abs(sets[i].ChangePercent) != math.Abs(sets[j].ChangePercent) {
+			return math.Abs(sets[i].ChangePercent) > math.Abs(sets[j].ChangePercent)
 		}
-		return math.Abs(sets[i].ChangePercent) > math.Abs(sets[j].ChangePercent)
+		if sets[i].SetName != sets[j].SetName {
+			return sets[i].SetName < sets[j].SetName
+		}
+		return sets[i].Edition < sets[j].Edition
 	})
 	return sets
 }

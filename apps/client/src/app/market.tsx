@@ -14,6 +14,10 @@ import { type ReactNode, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
+import {
+  MarketCategoryControl,
+  type MarketCategory,
+} from '@/components/market-category-control';
 import { MarketConditionControl } from '@/components/market-condition-control';
 import { MarketMovementControl } from '@/components/market-movement-control';
 import { MarketMovementValue } from '@/components/market-movement-value';
@@ -44,6 +48,7 @@ export default function MarketScreen() {
   const desktop = pageWidth >= 980;
   const abbreviateConditions = pageWidth < 620;
   const compactSets = pageWidth < 520;
+  const [category, setCategory] = useState<MarketCategory>('cards');
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const [movementMode, setMovementMode] = useState<MarketMovementMode>('amount');
   const { condition, setCondition } = useCatalogPreferences();
@@ -66,7 +71,7 @@ export default function MarketScreen() {
   const historyQuery = useQuery({
     queryKey: ['market', 'history', activeVariantID, period],
     queryFn: ({ signal }) => getVariantHistory(activeVariantID, period, signal),
-    enabled: activeVariantID !== '',
+    enabled: category === 'cards' && activeVariantID !== '',
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
@@ -87,6 +92,7 @@ export default function MarketScreen() {
       title="Market"
       subtitle="Condition-specific movement across collected legacy sets and printings."
       toolbar={<MarketPeriodControl period={period} onChange={setPeriod} />}>
+      <MarketCategoryControl category={category} onChange={setCategory} />
       <View style={[styles.marketControls, abbreviateConditions && styles.marketControlsCompact]}>
         <MarketConditionControl
           abbreviate={abbreviateConditions}
@@ -112,187 +118,201 @@ export default function MarketScreen() {
         />
       ) : (
         <>
-          <View style={styles.metrics}>
-            <Metric
-              icon={<CalendarDays color={colors.brass} size={18} />}
-              label="Market date"
-              note={`${overview.summary.evaluatedVariants} fresh variants`}
-              value={formatMarketDate(overview.summary.asOf)}
-            />
-            <Metric
-              icon={<ArrowUpRight color={colors.positive} size={18} />}
-              label="Rising"
-              note={`${overview.summary.unchangedVariants} unchanged`}
-              value={String(overview.summary.risingVariants)}
-            />
-            <Metric
-              icon={<ArrowDownRight color={colors.negative} size={18} />}
-              label="Falling"
-              note={periodLabel(period)}
-              value={String(overview.summary.fallingVariants)}
-            />
-            <Metric
-              icon={<Activity color={colors.burgundy} size={18} />}
-              label="Median move"
-              note={`${formatPercent(overview.summary.medianChangePercent)} / ${condition}`}
-              value={formatSignedCurrency(overview.summary.medianChangeAmount)}
-            />
-          </View>
+          {category === 'cards' ? (
+            <>
+              <View style={styles.metrics}>
+                <Metric
+                  icon={<CalendarDays color={colors.brass} size={18} />}
+                  label="Market date"
+                  note={`${overview.summary.evaluatedVariants} fresh variants`}
+                  value={formatMarketDate(overview.summary.asOf)}
+                />
+                <Metric
+                  icon={<ArrowUpRight color={colors.positive} size={18} />}
+                  label="Rising"
+                  note={`${overview.summary.unchangedVariants} unchanged`}
+                  value={String(overview.summary.risingVariants)}
+                />
+                <Metric
+                  icon={<ArrowDownRight color={colors.negative} size={18} />}
+                  label="Falling"
+                  note={periodLabel(period)}
+                  value={String(overview.summary.fallingVariants)}
+                />
+                <Metric
+                  icon={<Activity color={colors.burgundy} size={18} />}
+                  label="Median move"
+                  note={`${formatPercent(overview.summary.medianChangePercent)} / ${condition}`}
+                  value={formatSignedCurrency(overview.summary.medianChangeAmount)}
+                />
+              </View>
 
-          <View style={styles.chartPanel}>
-            <View
-              style={[
-                styles.chartHeader,
-                abbreviateConditions && styles.chartHeaderCompact,
-              ]}>
-              <View style={styles.chartHeading}>
-                <View style={styles.sectionTitleRow}>
-                  <LineChart color={colors.brand} size={18} />
-                  <Text style={styles.sectionTitle}>Price history</Text>
-                  {history && history.signal !== 'regular' ? (
-                    <View style={styles.historySignal}>
-                      <AlertTriangle color={colors.warning} size={13} />
-                      <Text style={styles.historySignalText}>
-                        {history.signal === 'volatile' ? 'High volatility' : 'Limited history'}
-                      </Text>
+              <View style={styles.chartPanel}>
+                <View
+                  style={[
+                    styles.chartHeader,
+                    abbreviateConditions && styles.chartHeaderCompact,
+                  ]}>
+                  <View style={styles.chartHeading}>
+                    <View style={styles.sectionTitleRow}>
+                      <LineChart color={colors.brand} size={18} />
+                      <Text style={styles.sectionTitle}>Price history</Text>
+                      {history && history.signal !== 'regular' ? (
+                        <View style={styles.historySignal}>
+                          <AlertTriangle color={colors.warning} size={13} />
+                          <Text style={styles.historySignalText}>
+                            {history.signal === 'volatile' ? 'High volatility' : 'Limited history'}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    {history ? (
+                      <View style={styles.chartIdentity}>
+                        <View
+                          accessibilityLabel={`${history.cardName} card image`}
+                          accessible
+                          style={styles.historyImageFrame}>
+                          {history.imageUrl ? (
+                            <Image
+                              accessibilityElementsHidden
+                              contentFit="contain"
+                              source={resolveImageURL(history.imageUrl)}
+                              style={styles.historyImage}
+                            />
+                          ) : (
+                            <ImageOff color={colors.textMuted} size={22} />
+                          )}
+                        </View>
+                        <View style={styles.chartIdentityCopy}>
+                          <Text style={styles.chartTitle}>{history.cardName}</Text>
+                          <Text style={styles.chartMeta}>
+                            {history.setName} / {history.printing} / {history.condition}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={styles.chartMeta}>Select a market row</Text>
+                    )}
+                  </View>
+                  {history ? (
+                    <View
+                      style={[
+                        styles.chartValue,
+                        abbreviateConditions && styles.chartValueCompact,
+                      ]}>
+                      <Text style={styles.currentPrice}>{formatCurrency(history.endPrice)}</Text>
+                      <MarketMovementValue
+                        amount={history.changeAmount}
+                        mode={displayedMovementMode}
+                        percent={history.changePercent}
+                        prominent
+                      />
+                      <Text style={styles.observationCount}>{history.points.length} observations</Text>
                     </View>
                   ) : null}
                 </View>
-                {history ? (
-                  <View style={styles.chartIdentity}>
-                    <View
-                      accessibilityLabel={`${history.cardName} card image`}
-                      accessible
-                      style={styles.historyImageFrame}>
-                      {history.imageUrl ? (
-                        <Image
-                          accessibilityElementsHidden
-                          contentFit="contain"
-                          source={resolveImageURL(history.imageUrl)}
-                          style={styles.historyImage}
-                        />
-                      ) : (
-                        <ImageOff color={colors.textMuted} size={22} />
-                      )}
-                    </View>
-                    <View style={styles.chartIdentityCopy}>
-                      <Text style={styles.chartTitle}>{history.cardName}</Text>
-                      <Text style={styles.chartMeta}>
-                        {history.setName} / {history.printing} / {history.condition}
-                      </Text>
-                    </View>
+                {activeVariantID === '' ? (
+                  <View style={styles.chartLoading}>
+                    <Text style={styles.loadingText}>No priced movement in this range</Text>
+                  </View>
+                ) : historyQuery.isFetching || !history ? (
+                  <View style={styles.chartLoading}>
+                    <ActivityIndicator color={colors.brand} />
                   </View>
                 ) : (
-                  <Text style={styles.chartMeta}>Select a market row</Text>
+                  <PriceHistoryChart points={history.points} />
                 )}
               </View>
-              {history ? (
-                <View
-                  style={[
-                    styles.chartValue,
-                    abbreviateConditions && styles.chartValueCompact,
-                  ]}>
-                  <Text style={styles.currentPrice}>{formatCurrency(history.endPrice)}</Text>
-                  <MarketMovementValue
-                    amount={history.changeAmount}
-                    mode={displayedMovementMode}
-                    percent={history.changePercent}
-                    prominent
-                  />
-                  <Text style={styles.observationCount}>{history.points.length} observations</Text>
+            </>
+          ) : (
+            <View style={styles.setSection}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleRow}>
+                  <Activity color={colors.brass} size={18} />
+                  <Text style={styles.sectionTitle}>Set performance</Text>
                 </View>
-              ) : null}
-            </View>
-            {activeVariantID === '' ? (
-              <View style={styles.chartLoading}>
-                <Text style={styles.loadingText}>No priced movement in this range</Text>
+                <Text style={styles.sectionNote}>
+                  {condition} basket / {periodLabel(period)} / ranked by{' '}
+                  {displayedMovementMode === 'amount' ? 'dollars' : 'percent'}
+                </Text>
               </View>
-            ) : historyQuery.isFetching || !history ? (
-              <View style={styles.chartLoading}>
-                <ActivityIndicator color={colors.brand} />
-              </View>
-            ) : (
-              <PriceHistoryChart points={history.points} />
-            )}
-          </View>
-
-          <View style={styles.setSection}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Activity color={colors.brass} size={18} />
-                <Text style={styles.sectionTitle}>Set performance</Text>
-              </View>
-              <Text style={styles.sectionNote}>
-                {condition} basket / {periodLabel(period)} / ranked by{' '}
-                {displayedMovementMode === 'amount' ? 'dollars' : 'percent'}
-              </Text>
-            </View>
-            <View style={styles.setList}>
-              {overview.sets.map((set) => {
-                const artworkURL = resolveImageURL(set.symbolUrl ?? set.logoUrl);
-                return (
-                  <View
-                    accessibilityLabel={`${set.setName} set. ${formatCurrency(set.endValue)} current basket value, from ${formatCurrency(set.startValue)}. Change ${formatSignedCurrency(set.changeAmount)}, ${formatPercent(set.changePercent)}`}
-                    accessible
-                    key={set.setId}
-                    style={styles.setRow}>
-                    <View style={styles.setArtwork}>
-                      {artworkURL ? (
-                        <Image
-                          accessibilityElementsHidden
-                          contentFit="contain"
-                          source={artworkURL}
-                          style={styles.setImage}
+              {overview.sets.length === 0 ? (
+                <View style={styles.emptySets}>
+                  <Layers3 color={colors.textMuted} size={26} />
+                  <Text style={styles.loadingText}>No set movement in this range</Text>
+                </View>
+              ) : (
+                <View style={styles.setList}>
+                  {overview.sets.map((set) => {
+                    const artworkURL = resolveImageURL(set.symbolUrl ?? set.logoUrl);
+                    const edition = set.edition || 'All printings';
+                    return (
+                      <View
+                        accessibilityLabel={`${set.setName}, ${edition}. ${formatCurrency(set.endValue)} current basket value, from ${formatCurrency(set.startValue)}. Change ${formatSignedCurrency(set.changeAmount)}, ${formatPercent(set.changePercent)}`}
+                        accessible
+                        key={`${set.setId}:${edition}`}
+                        style={styles.setRow}>
+                        <View style={styles.setArtwork}>
+                          {artworkURL ? (
+                            <Image
+                              accessibilityElementsHidden
+                              contentFit="contain"
+                              source={artworkURL}
+                              style={styles.setImage}
+                            />
+                          ) : (
+                            <Layers3 color={colors.textMuted} size={22} />
+                          )}
+                        </View>
+                        <View style={styles.setCopy}>
+                          <Text style={styles.setName}>{set.setName}</Text>
+                          <Text style={styles.setMeta}>
+                            {compactSets
+                              ? `${edition} / ${formatCurrency(set.endValue)} now / ${set.variantCount} printings`
+                              : `${edition} / ${set.variantCount} fresh printings`}
+                          </Text>
+                        </View>
+                        {!compactSets ? (
+                          <View style={styles.setValue}>
+                            <Text style={styles.setTotal}>{formatCurrency(set.endValue)}</Text>
+                            <Text style={styles.setPrevious}>from {formatCurrency(set.startValue)}</Text>
+                          </View>
+                        ) : null}
+                        <MarketMovementValue
+                          amount={set.changeAmount}
+                          mode={displayedMovementMode}
+                          percent={set.changePercent}
                         />
-                      ) : (
-                        <Layers3 color={colors.textMuted} size={22} />
-                      )}
-                    </View>
-                    <View style={styles.setCopy}>
-                      <Text style={styles.setName}>{set.setName}</Text>
-                      <Text style={styles.setMeta}>
-                        {compactSets
-                          ? `${formatCurrency(set.endValue)} now / ${set.variantCount} printings`
-                          : `${set.variantCount} fresh printings`}
-                      </Text>
-                    </View>
-                    {!compactSets ? (
-                      <View style={styles.setValue}>
-                        <Text style={styles.setTotal}>{formatCurrency(set.endValue)}</Text>
-                        <Text style={styles.setPrevious}>from {formatCurrency(set.startValue)}</Text>
                       </View>
-                    ) : null}
-                    <MarketMovementValue
-                      amount={set.changeAmount}
-                      mode={displayedMovementMode}
-                      percent={set.changePercent}
-                    />
-                  </View>
-                );
-              })}
+                    );
+                  })}
+                </View>
+              )}
             </View>
-          </View>
+          )}
 
-          <View style={[styles.moverColumns, !desktop && styles.moverColumnsCompact]}>
-            <MoverSection
-              accent={colors.positive}
-              icon={<ArrowUpRight color={colors.positive} size={19} />}
-              movers={overview.gainers}
-              movementMode={displayedMovementMode}
-              onSelect={setSelectedVariantID}
-              selectedVariantID={activeVariantID}
-              title="Top gainers"
-            />
-            <MoverSection
-              accent={colors.negative}
-              icon={<ArrowDownRight color={colors.negative} size={19} />}
-              movers={overview.losers}
-              movementMode={displayedMovementMode}
-              onSelect={setSelectedVariantID}
-              selectedVariantID={activeVariantID}
-              title="Top decliners"
-            />
-          </View>
+          {category === 'cards' ? (
+            <View style={[styles.moverColumns, !desktop && styles.moverColumnsCompact]}>
+              <MoverSection
+                accent={colors.positive}
+                icon={<ArrowUpRight color={colors.positive} size={19} />}
+                movers={overview.gainers}
+                movementMode={displayedMovementMode}
+                onSelect={setSelectedVariantID}
+                selectedVariantID={activeVariantID}
+                title="Top gainers"
+              />
+              <MoverSection
+                accent={colors.negative}
+                icon={<ArrowDownRight color={colors.negative} size={19} />}
+                movers={overview.losers}
+                movementMode={displayedMovementMode}
+                onSelect={setSelectedVariantID}
+                selectedVariantID={activeVariantID}
+                title="Top decliners"
+              />
+            </View>
+          ) : null}
         </>
       )}
     </Screen>
@@ -494,11 +514,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   setSection: {
-    marginTop: spacing.lg,
+    marginTop: spacing.sm,
   },
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
@@ -525,6 +547,15 @@ const styles = StyleSheet.create({
   setCopy: {
     flex: 1,
     minWidth: 0,
+  },
+  emptySets: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 180,
   },
   setArtwork: {
     alignItems: 'center',

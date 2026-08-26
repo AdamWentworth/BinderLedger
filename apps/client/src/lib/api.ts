@@ -141,6 +141,7 @@ export type MarketMover = {
   setLogoUrl: string | null;
   setSymbolUrl: string | null;
   imageUrl: string | null;
+  edition: string;
   printing: string;
   condition: MarketCondition;
   startPrice: number;
@@ -156,6 +157,7 @@ export type MarketMover = {
 export type MarketSetMovement = {
   setId: string;
   setName: string;
+  edition: string;
   logoUrl: string | null;
   symbolUrl: string | null;
   startValue: number;

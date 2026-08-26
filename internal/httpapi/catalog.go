@@ -82,6 +82,11 @@ func (api *API) catalogListings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "finish is not supported")
 		return
 	}
+	variantID := strings.TrimSpace(r.URL.Query().Get("variant_id"))
+	if len(variantID) > 200 {
+		writeError(w, http.StatusBadRequest, "variant_id must be 200 characters or fewer")
+		return
+	}
 	condition, ok := marketCondition(r.URL.Query().Get("condition"))
 	if !ok {
 		writeError(w, http.StatusBadRequest, "condition is not supported")
@@ -103,6 +108,7 @@ func (api *API) catalogListings(w http.ResponseWriter, r *http.Request) {
 		Query:      query,
 		Edition:    edition,
 		Finish:     finish,
+		VariantID:  variantID,
 		GradedOnly: gradedOnly,
 		Condition:  condition,
 		Sort:       sortValue,

@@ -144,6 +144,7 @@ type ListingFilter struct {
 	Query      string
 	Edition    string
 	Finish     string
+	VariantID  string
 	GradedOnly bool
 	Condition  string
 	Sort       ListingSort
@@ -503,6 +504,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 	filter.Query = strings.TrimSpace(filter.Query)
 	filter.Edition = strings.TrimSpace(filter.Edition)
 	filter.Finish = strings.TrimSpace(filter.Finish)
+	filter.VariantID = strings.TrimSpace(filter.VariantID)
 	filter.Condition = strings.TrimSpace(filter.Condition)
 
 	page := ListingPage{
@@ -593,6 +595,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				  AND v.finish = quality.finish
 				  AND v.language = quality.language
 				  AND v.condition = $5
+				  AND ($10 = '' OR v.id = $10)
 				ORDER BY v.id
 				LIMIT 1
 			) selected ON true
@@ -634,6 +637,19 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 				)
 			)
 			  AND ($4 = '' OR quality.finish = $4)
+			  AND (
+				$10 = ''
+				OR EXISTS (
+					SELECT 1
+					FROM catalog_card_variants requested
+					WHERE requested.id = $10
+					  AND requested.card_id = quality.card_id
+					  AND requested.edition = quality.edition
+					  AND requested.finish = quality.finish
+					  AND requested.language = quality.language
+					  AND requested.condition = $5
+				)
+			  )
 			  AND (
 				NOT $6
 				OR EXISTS (
@@ -686,7 +702,7 @@ func (repository *Repository) ListListings(ctx context.Context, filter ListingFi
 			finish,
 			language
 		LIMIT $8 OFFSET $9
-	`, filter.SetID, filter.Query, filter.Edition, filter.Finish, filter.Condition, filter.GradedOnly, filter.Sort, filter.Limit, filter.Offset)
+	`, filter.SetID, filter.Query, filter.Edition, filter.Finish, filter.Condition, filter.GradedOnly, filter.Sort, filter.Limit, filter.Offset, filter.VariantID)
 	if err != nil {
 		return ListingPage{}, fmt.Errorf("query catalog listings: %w", err)
 	}

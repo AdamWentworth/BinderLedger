@@ -6,6 +6,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
+  ChevronRight,
   ImageOff,
   Layers3,
   LineChart,
@@ -15,6 +16,7 @@ import { Fragment, type ReactNode, useDeferredValue, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
+import { CardDetailModal } from '@/components/card-detail-modal';
 import {
   MarketCategoryControl,
   type MarketCategory,
@@ -36,6 +38,7 @@ import {
   formatCurrency,
   formatPercent,
   formatSignedCurrency,
+  getCatalogListingForVariant,
   getMarketMovements,
   getMarketOverview,
   getVariantHistory,
@@ -59,6 +62,7 @@ export default function MarketScreen() {
   const [movementMode, setMovementMode] = useState<MarketMovementMode>('amount');
   const { condition, setCondition } = useCatalogPreferences();
   const [selectedVariantID, setSelectedVariantID] = useState('');
+  const [detailVariantID, setDetailVariantID] = useState('');
   const [direction, setDirection] = useState<MarketMovementDirection>('all');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
@@ -122,6 +126,22 @@ export default function MarketScreen() {
     staleTime: 5 * 60_000,
   });
   const history = historyQuery.data;
+
+  const detailListingQuery = useQuery({
+    queryKey: ['catalog', 'listing', 'variant', detailVariantID, condition],
+    queryFn: ({ signal }) =>
+      getCatalogListingForVariant(detailVariantID, condition, signal),
+    enabled: detailVariantID !== '',
+    staleTime: 5 * 60_000,
+  });
+
+  const openCardDetails = (variantID: string) => {
+    if (variantID === detailVariantID) {
+      void detailListingQuery.refetch();
+      return;
+    }
+    setDetailVariantID(variantID);
+  };
 
   const changeCondition = (next: MarketCondition) => {
     setCondition(next);
@@ -208,6 +228,10 @@ export default function MarketScreen() {
                 fetching={historyQuery.isFetching}
                 history={history}
                 movementMode={displayedMovementMode}
+                onOpenDetails={openCardDetails}
+                openingDetails={
+                  detailVariantID === history?.variantId && detailListingQuery.isFetching
+                }
               />
             </>
           ) : category === 'sets' ? (
@@ -366,6 +390,10 @@ export default function MarketScreen() {
                             fetching={historyQuery.isFetching}
                             history={history}
                             movementMode={displayedMovementMode}
+                            onOpenDetails={openCardDetails}
+                            openingDetails={
+                              detailVariantID === history?.variantId && detailListingQuery.isFetching
+                            }
                           />
                         ) : null}
                       </Fragment>
@@ -398,6 +426,10 @@ export default function MarketScreen() {
           ) : null}
         </>
       )}
+      <CardDetailModal
+        listing={detailListingQuery.data ?? null}
+        onClose={() => setDetailVariantID('')}
+      />
     </Screen>
   );
 }
@@ -451,6 +483,8 @@ type MarketHistoryPanelProps = {
   fetching: boolean;
   history: VariantHistory | undefined;
   movementMode: MarketMovementMode;
+  onOpenDetails: (variantID: string) => void;
+  openingDetails: boolean;
 };
 
 function MarketHistoryPanel({
@@ -459,6 +493,8 @@ function MarketHistoryPanel({
   fetching,
   history,
   movementMode,
+  onOpenDetails,
+  openingDetails,
 }: MarketHistoryPanelProps) {
   return (
     <View style={styles.chartPanel}>
@@ -477,10 +513,17 @@ function MarketHistoryPanel({
             ) : null}
           </View>
           {history ? (
-            <View style={styles.chartIdentity}>
+            <Pressable
+              accessibilityHint="Opens the full catalog card details"
+              accessibilityLabel={`Open ${history.cardName} card details`}
+              accessibilityRole="button"
+              onPress={() => onOpenDetails(history.variantId)}
+              style={({ pressed }) => [
+                styles.chartIdentity,
+                pressed && styles.chartIdentityPressed,
+              ]}>
               <View
-                accessibilityLabel={`${history.cardName} card image`}
-                accessible
+                accessibilityElementsHidden
                 style={styles.historyImageFrame}>
                 {history.imageUrl ? (
                   <Image
@@ -499,7 +542,12 @@ function MarketHistoryPanel({
                   {history.setName} / {history.printing} / {history.condition}
                 </Text>
               </View>
-            </View>
+              {openingDetails ? (
+                <ActivityIndicator color={colors.brand} size="small" />
+              ) : (
+                <ChevronRight color={colors.brand} size={20} />
+              )}
+            </Pressable>
           ) : (
             <Text style={styles.chartMeta}>Select a market row</Text>
           )}
@@ -642,6 +690,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.xs,
+    paddingRight: spacing.xs,
+  },
+  chartIdentityPressed: {
+    opacity: 0.76,
   },
   chartIdentityCopy: {
     flex: 1,

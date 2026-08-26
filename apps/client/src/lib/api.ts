@@ -470,6 +470,7 @@ type CatalogListingRequest = {
   query?: string;
   edition?: string;
   finish?: string;
+  variantId?: string;
   gradedOnly?: boolean;
   condition: MarketCondition;
   sort?: CatalogListingSort;
@@ -483,6 +484,7 @@ export async function getCatalogListings({
   query = '',
   edition = '',
   finish = '',
+  variantId = '',
   gradedOnly = false,
   condition,
   sort = 'set_number',
@@ -500,6 +502,7 @@ export async function getCatalogListings({
   if (query) parameters.set('q', query);
   if (edition) parameters.set('edition', edition);
   if (finish) parameters.set('finish', finish);
+  if (variantId) parameters.set('variant_id', variantId);
   if (gradedOnly) parameters.set('graded_only', 'true');
 
   const response = await fetch(`${apiURL}/api/catalog/listings?${parameters}`, { signal });
@@ -507,6 +510,24 @@ export async function getCatalogListings({
     throw new Error(`Catalog listings returned ${response.status}`);
   }
   return response.json() as Promise<CatalogListingPage>;
+}
+
+export async function getCatalogListingForVariant(
+  variantId: string,
+  condition: MarketCondition,
+  signal?: AbortSignal,
+): Promise<CatalogListing> {
+  const page = await getCatalogListings({
+    variantId,
+    condition,
+    limit: 1,
+    signal,
+  });
+  const listing = page.listings[0];
+  if (!listing) {
+    throw new Error('Catalog listing was not found for this market variant');
+  }
+  return listing;
 }
 
 type SetPricingRequest = {

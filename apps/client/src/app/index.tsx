@@ -122,6 +122,7 @@ export default function CatalogScreen() {
   const setsQuery = useQuery({
     queryKey: ['catalog', 'sets'],
     queryFn: ({ signal }) => getCatalogSets(signal),
+    staleTime: 5 * 60_000,
   });
   const listingsQuery = useQuery({
     queryKey: [
@@ -151,6 +152,7 @@ export default function CatalogScreen() {
       }),
     placeholderData: keepPreviousData,
     enabled: mode === 'cards',
+    staleTime: 5 * 60_000,
   });
 
   const sets = setsQuery.data ?? [];

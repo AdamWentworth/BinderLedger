@@ -52,6 +52,12 @@ Provider metadata, per-run budgets, and daily/monthly reserves protect the
 configured account quota. PostgreSQL remains the durable catalog and
 observation store; Redis is not required for these background jobs.
 
+After an import or current-price refresh, PostgreSQL atomically rebuilds compact
+market-movement snapshots for each supported period and condition. Market
+overview requests aggregate these snapshots instead of repeatedly scanning the
+full observation history; detailed card charts continue to read their exact
+daily observations on demand.
+
 ## Deployment Posture
 
 Production uses the dedicated PostgreSQL service in

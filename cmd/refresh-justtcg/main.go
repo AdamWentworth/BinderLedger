@@ -330,6 +330,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if _, err := db.Exec(ctx, "SELECT refresh_catalog_price_quality()"); err != nil {
 		return fmt.Errorf("refresh catalog price quality: %w", err)
 	}
+	if _, err := db.Exec(ctx, "SELECT refresh_market_variant_movements()"); err != nil {
+		return fmt.Errorf("refresh market movement snapshots: %w", err)
+	}
 	logger.Info(
 		"JustTCG daily refresh complete",
 		"requests", requestsMade,

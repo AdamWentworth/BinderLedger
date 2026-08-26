@@ -33,6 +33,10 @@ docker compose --env-file .env --env-file images.env --profile tools run --rm sy
 docker compose --env-file .env --env-file images.env --profile tools run --rm expand-justtcg-history
 ```
 
+`refresh-justtcg` updates catalog price quality and atomically rebuilds the
+precomputed market snapshots after saving its provider batch. No separate
+market cache service or schedule is required.
+
 `sync-card-images` only accepts HTTPS images from its approved provider host,
 validates the file type and card-like dimensions, writes files atomically, and
 records the provider URL and SHA-256 in the private catalog. Run it with

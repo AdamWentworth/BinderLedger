@@ -11,8 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const freshHistoryDays = 7
-
 type Repository struct {
 	db *pgxpool.Pool
 }
@@ -169,19 +167,10 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 
 	var asOf *time.Time
 	if err := repository.db.QueryRow(ctx, `
-		SELECT max(o.observed_on)
-		FROM price_observations o
-		JOIN catalog_card_variants v ON v.id = o.variant_id
-		JOIN catalog_price_quality quality
-		  ON quality.card_id = v.card_id
-		 AND quality.edition = v.edition
-		 AND quality.finish = v.finish
-		 AND quality.language = v.language
-		 AND quality.status = 'current'
-		JOIN catalog_cards c ON c.id = v.card_id
-		WHERE v.condition = $1
-		  AND ($2 = '' OR c.set_id = $2)
-	`, filter.Condition, filter.SetID).Scan(&asOf); err != nil {
+		SELECT max(as_of)
+		FROM market_snapshot_status
+		WHERE condition = $1
+	`, filter.Condition).Scan(&asOf); err != nil {
 		return Overview{}, fmt.Errorf("query market date: %w", err)
 	}
 
@@ -213,57 +202,23 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 				c.image_url
 			),
 			v.printing,
-			v.condition,
-			start_point.observed_on,
-			start_point.price::double precision,
-			end_point.observed_on,
-			end_point.price::double precision,
-			(
-				SELECT count(*)::integer
-				FROM price_observations counted
-				WHERE counted.variant_id = v.id
-				  AND counted.observed_on BETWEEN start_point.observed_on AND end_point.observed_on
-			)
-		FROM catalog_card_variants v
-		JOIN catalog_price_quality quality
-		  ON quality.card_id = v.card_id
-		 AND quality.edition = v.edition
-		 AND quality.finish = v.finish
-		 AND quality.language = v.language
-		 AND quality.status = 'current'
+			movement.condition,
+			movement.start_date,
+			movement.start_price::double precision,
+			movement.end_date,
+			movement.end_price::double precision,
+			movement.change_amount::double precision,
+			movement.change_percent::double precision,
+			movement.observation_count,
+			movement.signal
+		FROM market_variant_movements movement
+		JOIN catalog_card_variants v ON v.id = movement.variant_id
 		JOIN catalog_cards c ON c.id = v.card_id
 		JOIN catalog_sets s ON s.id = c.set_id
-		JOIN LATERAL (
-			SELECT observed_on, price
-			FROM price_observations
-			WHERE variant_id = v.id
-			  AND observed_on <= $2::date
-			ORDER BY observed_on DESC
-			LIMIT 1
-		) end_point ON true
-		JOIN LATERAL (
-			SELECT observed_on, price
-			FROM price_observations
-			WHERE variant_id = v.id
-			  AND observed_on <= $2::date
-			ORDER BY
-				CASE WHEN $3::integer = 0 THEN observed_on END ASC,
-				CASE
-					WHEN $3::integer <> 0 AND observed_on <= $2::date - $3::integer THEN 0
-					ELSE 1
-				END,
-				CASE
-					WHEN $3::integer <> 0 AND observed_on <= $2::date - $3::integer THEN observed_on
-				END DESC,
-				CASE WHEN $3::integer <> 0 THEN observed_on END ASC
-			LIMIT 1
-		) start_point ON true
-		WHERE v.condition = $1
-		  AND ($4 = '' OR c.set_id = $4)
-		  AND end_point.observed_on >= $2::date - $5::integer
-		  AND end_point.observed_on > start_point.observed_on
-		  AND start_point.price > 0
-	`, filter.Condition, asOf.Format(time.DateOnly), filter.Period.Days, filter.SetID, freshHistoryDays)
+		WHERE movement.period = $1
+		  AND movement.condition = $2
+		  AND ($3 = '' OR movement.set_id = $3)
+	`, filter.Period.Key, filter.Condition, filter.SetID)
 	if err != nil {
 		return Overview{}, fmt.Errorf("query market movement: %w", err)
 	}
@@ -290,21 +245,15 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 			&mover.StartPrice,
 			&endDate,
 			&mover.EndPrice,
+			&mover.ChangeAmount,
+			&mover.ChangePercent,
 			&mover.ObservationCount,
+			&mover.Signal,
 		); err != nil {
 			return Overview{}, fmt.Errorf("scan market movement: %w", err)
 		}
 		mover.StartDate = startDate.Format(time.DateOnly)
 		mover.EndDate = endDate.Format(time.DateOnly)
-		movement := CalculateMovement(
-			filter.Period,
-			mover.StartPrice,
-			mover.EndPrice,
-			mover.ObservationCount,
-		)
-		mover.ChangeAmount = movement.Amount
-		mover.ChangePercent = movement.Percent
-		mover.Signal = movement.Signal
 		movers = append(movers, mover)
 	}
 	if err := rows.Err(); err != nil {

@@ -25,7 +25,7 @@ resource-conscious self-hosted deployment.
 - **Universal Expo client** — one responsive codebase for web, iOS, and
   Android, including native camera capture.
 - **Condition-aware markets** — preserve NM, LP, MP, HP, and Damaged history,
-  with stale and thin-data quality indicators.
+  with precomputed movement snapshots plus stale and thin-data quality indicators.
 - **Flexible watchlists** — follow individual printings or whole set editions
   at a selected condition.
 - **Assisted recognition** — combine perspective correction, image features,

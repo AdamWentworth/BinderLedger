@@ -54,6 +54,7 @@ export default function MarketScreen() {
     queryFn: ({ signal }) =>
       getMarketOverview({ period, condition, rank: movementMode, signal }),
     placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
   });
   const overview = overviewQuery.data;
   const displayedMovementMode = overview?.rank ?? movementMode;
@@ -67,6 +68,7 @@ export default function MarketScreen() {
     queryFn: ({ signal }) => getVariantHistory(activeVariantID, period, signal),
     enabled: activeVariantID !== '',
     placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
   });
   const history = historyQuery.data;
 

@@ -267,7 +267,7 @@ func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
 			candidate.edition,
 			candidate.finish,
 			candidate.language,
-			COALESCE(catalog_printing_image_url(
+			COALESCE(catalog_recognition_image_url(
 				candidate.card_id,
 				candidate.edition,
 				candidate.finish,

@@ -1,4 +1,4 @@
-.PHONY: api build-server client client-export client-phone client-preview client-test client-verify db-down db-status db-up dev-down dev-status dev-up format install-user-services migrate pkmnprices-backfill pkmnprices-status repository-check test verify vision-test vision-up
+.PHONY: api build-server client client-export client-phone client-preview client-test client-verify db-down db-status db-up format migrate pkmnprices-backfill pkmnprices-status repository-check test verify vision-test vision-up
 
 api:
 	go run ./cmd/api
@@ -37,26 +37,6 @@ db-status:
 
 vision-up:
 	docker compose up -d --build vision
-
-install-user-services:
-	mkdir -p $(HOME)/.config/systemd/user
-	cp deploy/systemd/user/*.service deploy/systemd/user/*.socket deploy/systemd/user/*.timer $(HOME)/.config/systemd/user/
-	systemctl --user daemon-reload
-
-dev-up: db-up vision-up build-server client-export install-user-services
-	systemctl --user start binderledger-api.service binderledger-client-preview.service binderledger-expo.service
-	systemctl --user start binderledger-localhost-proxy@4001.socket binderledger-localhost-proxy@8082.socket binderledger-localhost-proxy@8083.socket
-
-dev-down:
-	-systemctl --user stop binderledger-localhost-proxy@4001.socket binderledger-localhost-proxy@8082.socket binderledger-localhost-proxy@8083.socket
-	-systemctl --user stop binderledger-localhost-proxy@4001.service binderledger-localhost-proxy@8082.service binderledger-localhost-proxy@8083.service
-	-systemctl --user stop binderledger-expo.service binderledger-client-preview.service binderledger-api.service
-	docker compose down
-
-dev-status:
-	docker compose ps
-	-systemctl --user is-active binderledger-api.service binderledger-expo.service binderledger-client-preview.service
-	-systemctl --user is-active binderledger-localhost-proxy@4001.socket binderledger-localhost-proxy@8082.socket binderledger-localhost-proxy@8083.socket
 
 format:
 	gofmt -w cmd internal

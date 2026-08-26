@@ -4,7 +4,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
 from binderledger_vision.matcher import (
     Reference,
     ReferenceMatcher,
@@ -21,8 +20,26 @@ def test_matches_perspective_photo_to_reference(tmp_path: Path) -> None:
     cv2.imwrite(str(tmp_path / "blastoise.jpg"), distractor)
 
     references = [
-        Reference("alakazam", "Alakazam", "1/102", "Base Set", "Unlimited", "Holofoil", "English", "alakazam.jpg"),
-        Reference("blastoise", "Blastoise", "2/102", "Base Set", "Unlimited", "Holofoil", "English", "blastoise.jpg"),
+        Reference(
+            "alakazam",
+            "Alakazam",
+            "1/102",
+            "Base Set",
+            "Unlimited",
+            "Holofoil",
+            "English",
+            "alakazam.jpg",
+        ),
+        Reference(
+            "blastoise",
+            "Blastoise",
+            "2/102",
+            "Base Set",
+            "Unlimited",
+            "Holofoil",
+            "English",
+            "blastoise.jpg",
+        ),
     ]
     matcher = ReferenceMatcher(tmp_path, references, tesseract_enabled=False)
 
@@ -42,7 +59,9 @@ def test_normalize_scan_falls_back_when_no_card_boundary() -> None:
     assert method == "center-crop"
 
 
-def test_missing_stamp_prefers_shadowless_over_sharper_first_edition_reference(tmp_path: Path) -> None:
+def test_missing_stamp_prefers_shadowless_over_sharper_first_edition_reference(
+    tmp_path: Path,
+) -> None:
     first_edition = draw_printing(first_edition=True)
     shadowless = draw_printing(first_edition=False)
     # Catalog images are not guaranteed to have equal source resolution or sharpness.
@@ -171,9 +190,13 @@ def draw_card(color: tuple[int, int, int], name: str, number: str, marker: int) 
     cv2.rectangle(image, (35, 105), (465, 430), color, -1)
     for index in range(10):
         center = (70 + (index % 5) * 85, 150 + (index // 5) * 185)
-        cv2.circle(image, center, 24 + ((index + marker) % 17), (20 + marker * 7, 210 - marker * 4, 75), 4)
+        cv2.circle(
+            image, center, 24 + ((index + marker) % 17), (20 + marker * 7, 210 - marker * 4, 75), 4
+        )
         cv2.line(image, (45, 120 + index * 27), (455, 150 + index * 25), (255, 255, 255), 2)
-    cv2.putText(image, f"Power marker {marker}", (42, 505), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (20, 20, 20), 2)
+    cv2.putText(
+        image, f"Power marker {marker}", (42, 505), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (20, 20, 20), 2
+    )
     cv2.putText(image, number, (350, 660), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (10, 10, 10), 2)
     return image
 

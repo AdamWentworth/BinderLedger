@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     aspectRatio: 0.714,
-    backgroundColor: colors.surfaceQuiet,
+    backgroundColor: colors.cardBackdrop,
     borderRadius: 4,
     justifyContent: 'center',
     overflow: 'hidden',

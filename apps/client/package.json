@@ -43,6 +43,7 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@types/react": "~19.2.4",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.1",
@@ -58,10 +59,11 @@
     "web": "expo start --web",
     "export:web": "expo export --platform web",
     "lint": "expo lint",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --exclude e2e/**",
+    "test:e2e": "playwright test",
+    "test:watch": "vitest --exclude e2e/**",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm run lint && npm test && npm audit --omit=dev --audit-level=high && npm run doctor && npm run export:web"
+    "verify": "npm run typecheck && npm run lint && npm test && npm audit --omit=dev --audit-level=high && npm run doctor && npm run export:web && npm run test:e2e"
   },
   "overrides": {
     "uuid": "11.1.1"

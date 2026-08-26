@@ -51,6 +51,7 @@ export function CatalogCardTile({ condition, density, listing, onPress }: Catalo
         pressed && styles.pressed,
       ]}>
       <View
+        testID="catalog-card-image-frame"
         style={[
           styles.imageFrame,
           density === 'large' && styles.imageFrameLarge,
@@ -224,7 +225,7 @@ const styles = StyleSheet.create({
   },
   imageFrame: {
     aspectRatio: 0.82,
-    backgroundColor: colors.surfaceQuiet,
+    backgroundColor: colors.cardBackdrop,
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
     padding: spacing.md,

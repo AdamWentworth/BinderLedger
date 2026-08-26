@@ -172,6 +172,7 @@ The client also exposes a standalone all-in-one check:
 
 ```bash
 cd apps/client
+npx playwright install chromium # one-time browser setup
 npm run verify
 ```
 
@@ -185,6 +186,7 @@ npm run lint
 npm audit --omit=dev --audit-level=high
 npm run doctor
 npm run export:web
+npm run test:e2e
 ```
 
 Backend and worker checks:
@@ -192,12 +194,14 @@ Backend and worker checks:
 ```bash
 go test ./cmd/... ./internal/...
 go vet ./cmd/... ./internal/...
+test -z "$(gofmt -l cmd internal)"
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 npm test --prefix tools/justtcg-audit
 ```
 
-GitHub Actions repeats these checks and builds every production image as a
-deployment smoke test.
+GitHub Actions repeats these checks, builds every production image as a
+deployment smoke test, scans it for high and critical vulnerabilities, and
+publishes CycloneDX software bills of materials for the CI-approved image set.
 
 ---
 

@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
   detailImageFrame: {
     alignSelf: 'flex-start',
     aspectRatio: 0.714,
-    backgroundColor: colors.surfaceQuiet,
+    backgroundColor: colors.cardBackdrop,
     borderRadius: 6,
     overflow: 'hidden',
     width: 280,

@@ -22,9 +22,10 @@ RUN pip install --no-cache-dir --requirement requirements.txt
 FROM base AS test
 COPY services/vision/requirements-dev.txt ./requirements-dev.txt
 RUN pip install --no-cache-dir --requirement requirements-dev.txt
+COPY services/vision/ruff.toml ./ruff.toml
 COPY services/vision/binderledger_vision ./binderledger_vision
 COPY services/vision/tests ./tests
-CMD ["pytest", "-q"]
+CMD ["sh", "-c", "ruff check . && ruff format --check . && pytest -q"]
 
 FROM base AS runtime
 COPY services/vision/binderledger_vision ./binderledger_vision

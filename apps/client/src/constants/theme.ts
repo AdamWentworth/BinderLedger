@@ -1,6 +1,7 @@
 export const colors = {
   canvas: '#06182F',
   navigation: '#030F20',
+  cardBackdrop: '#08213F',
   surface: '#0D2A50',
   surfaceRaised: '#133A68',
   surfaceQuiet: '#1B4F84',

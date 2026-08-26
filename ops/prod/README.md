@@ -95,7 +95,11 @@ must follow [the provider policy](../../docs/provider-api-policy.md).
 
 `binderledger-backup-local.timer` creates a daily PostgreSQL dump. The optional
 NAS timer mirrors database dumps, media, collector state, deployment metadata,
-and the private production environment.
+and the private production environment. Once a month,
+`binderledger-backup-restore-verify.timer` validates the latest checksum,
+restores the dump into a temporary database, checks required schema and catalog
+data, and removes the temporary database. The drill refuses to run unless the
+storage volume has enough free space for the restore plus a 512 MiB reserve.
 
 Keep NAS locations in `/srv/binderledger/backup.env`, mode `0600`:
 

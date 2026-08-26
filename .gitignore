@@ -18,6 +18,8 @@ __pycache__/
 /apps/client/.expo/
 /apps/client/dist/
 /apps/client/web-build/
+/apps/client/playwright-report/
+/apps/client/test-results/
 /apps/client/android/
 /apps/client/ios/
 npm-debug.log*

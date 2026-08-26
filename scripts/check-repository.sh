@@ -39,6 +39,7 @@ fi
 
 oversized_files=""
 while IFS= read -r -d '' file; do
+  [[ -f "${file}" ]] || continue
   size="$(wc -c <"${file}")"
   if (( size > 5242880 )); then
     oversized_files+="${file} (${size} bytes)"$'\n'

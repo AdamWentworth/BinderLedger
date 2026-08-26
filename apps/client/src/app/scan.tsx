@@ -1023,7 +1023,7 @@ const styles = StyleSheet.create({
   },
   previewImageFrame: {
     aspectRatio: 2.5 / 3.5,
-    backgroundColor: colors.navigation,
+    backgroundColor: colors.cardBackdrop,
     borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
@@ -1178,7 +1178,7 @@ const styles = StyleSheet.create({
   },
   candidateImageFrame: {
     alignItems: 'center',
-    backgroundColor: colors.navigation,
+    backgroundColor: colors.cardBackdrop,
     borderRadius: 5,
     height: 108,
     justifyContent: 'center',

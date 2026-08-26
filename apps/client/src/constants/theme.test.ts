@@ -5,6 +5,7 @@ import { colors } from './theme';
 const foundationNames = [
   'canvas',
   'navigation',
+  'cardBackdrop',
   'surface',
   'surfaceRaised',
   'surfaceQuiet',
@@ -16,6 +17,7 @@ const foundationNames = [
 const contentBackgrounds = [
   'canvas',
   'navigation',
+  'cardBackdrop',
   'surface',
   'surfaceRaised',
   'surfaceQuiet',

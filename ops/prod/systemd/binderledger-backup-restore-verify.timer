@@ -1,0 +1,11 @@
+[Unit]
+Description=Run a monthly BinderLedger backup restoration drill
+
+[Timer]
+OnCalendar=Sun *-*-01..07 05:00:00
+Persistent=true
+RandomizedDelaySec=30min
+Unit=binderledger-backup-restore-verify.service
+
+[Install]
+WantedBy=timers.target

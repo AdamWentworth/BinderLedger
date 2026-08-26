@@ -8,6 +8,7 @@ deploy_root=${BINDERLEDGER_DEPLOY_ROOT:-/srv/binderledger}
 
 mkdir -p "${unit_dir}" "${deploy_root}/bin"
 install -m 0755 "${script_dir}/backup-local.sh" "${deploy_root}/bin/backup-local.sh"
+install -m 0755 "${script_dir}/verify-backup-restore.sh" "${deploy_root}/bin/verify-backup-restore.sh"
 if BINDERLEDGER_DEPLOY_ROOT="${deploy_root}" \
   "${script_dir}/backup-nas.sh" --configure-only; then
   install -m 0755 "${script_dir}/backup-nas.sh" "${deploy_root}/bin/backup-nas.sh"
@@ -32,6 +33,7 @@ enabled_units=(
   binderledger-justtcg-refresh.timer
   binderledger-justtcg-history.timer
   binderledger-backup-local.timer
+  binderledger-backup-restore-verify.timer
   binderledger-localhost-proxy@8081.socket
 )
 if [[ -x "${deploy_root}/bin/backup-nas.sh" ]]; then

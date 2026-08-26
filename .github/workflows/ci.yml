@@ -24,7 +24,18 @@ jobs:
           go-version: "1.26.6"
           cache: true
       - name: Test
-        run: go test ./cmd/... ./internal/...
+        run: |
+          go test ./cmd/... ./internal/... -coverprofile=coverage.out
+          go tool cover -func=coverage.out | tail -1
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l cmd internal)"
+          if [[ -n "${unformatted}" ]]; then
+            echo "The following Go files need gofmt:" >&2
+            echo "${unformatted}" >&2
+            exit 1
+          fi
       - name: Vet
         run: go vet ./cmd/... ./internal/...
       - name: Verify module files
@@ -52,6 +63,8 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run doctor
       - run: npm run export:web
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
 
   collectors:
     runs-on: ubuntu-latest
@@ -78,7 +91,7 @@ jobs:
           python -m pip_audit --requirement services/vision/requirements.txt
       - name: Build deployed test environment
         run: docker build --pull --target test -t binderledger-vision:test -f services/vision/Dockerfile .
-      - name: Test matcher
+      - name: Lint, format-check, and test vision service
         run: docker run --rm binderledger-vision:test
 
   database:
@@ -108,6 +121,16 @@ jobs:
         env:
           DATABASE_URL: postgres://binderledger_ci:binderledger_ci@127.0.0.1:5432/binderledger_ci?sslmode=disable
         run: go run ./cmd/migrate
+      - name: Exercise database-backed API routes
+        env:
+          BINDERLEDGER_INTEGRATION_DATABASE_URL: postgres://binderledger_ci:binderledger_ci@127.0.0.1:5432/binderledger_ci?sslmode=disable
+        run: go test ./internal/httpapi -run TestDatabaseBackedReadRoutes -count=1
+      - name: Roll back and reapply the latest migration
+        env:
+          DATABASE_URL: postgres://binderledger_ci:binderledger_ci@127.0.0.1:5432/binderledger_ci?sslmode=disable
+        run: |
+          go run ./cmd/migrate -direction=down
+          go run ./cmd/migrate
 
   operations:
     runs-on: ubuntu-latest
@@ -202,6 +225,33 @@ jobs:
             fi
           done
           exit "$scan_failed"
+
+      - name: Generate CycloneDX image SBOMs
+        run: |
+          set -euo pipefail
+          mkdir -p sbom
+          for image in \
+            binderledger-core:ci-${GITHUB_SHA} \
+            binderledger-vision:ci-${GITHUB_SHA} \
+            binderledger-web:ci-${GITHUB_SHA} \
+            binderledger-collector:ci-${GITHUB_SHA}; do
+            component="${image%%:*}"
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$HOME/.cache/trivy:/root/.cache/" \
+              -v "$PWD/sbom:/sbom" \
+              ghcr.io/aquasecurity/trivy:0.74.0 \
+              image \
+              --format cyclonedx \
+              --output "/sbom/${component}.cdx.json" \
+              "$image"
+          done
+      - name: Upload image SBOMs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: binderledger-sboms-${{ github.sha }}
+          path: sbom/*.cdx.json
 
       - name: Log in to GHCR
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin

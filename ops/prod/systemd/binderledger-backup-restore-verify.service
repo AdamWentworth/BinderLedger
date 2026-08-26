@@ -1,0 +1,10 @@
+[Unit]
+Description=Verify the latest BinderLedger backup through a temporary restore
+After=docker.service binderledger-backup-local.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/binderledger/bin/verify-backup-restore.sh
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=2h

@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   itemPressed: { backgroundColor: colors.surfaceRaised },
   cardImageFrame: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceQuiet,
+    backgroundColor: colors.cardBackdrop,
     height: 64,
     justifyContent: 'center',
     width: 48,

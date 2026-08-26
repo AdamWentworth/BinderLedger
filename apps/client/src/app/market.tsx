@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create({
   historyImageFrame: {
     alignItems: 'center',
     aspectRatio: 0.714,
-    backgroundColor: colors.surfaceQuiet,
+    backgroundColor: colors.cardBackdrop,
     borderRadius: 4,
     justifyContent: 'center',
     overflow: 'hidden',

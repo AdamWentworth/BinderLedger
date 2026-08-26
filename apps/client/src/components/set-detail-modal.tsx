@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     minHeight: 70,
     paddingVertical: spacing.xs,
   },
-  cardImageFrame: { alignItems: 'center', backgroundColor: colors.surfaceQuiet, height: 58, justifyContent: 'center', width: 44 },
+  cardImageFrame: { alignItems: 'center', backgroundColor: colors.cardBackdrop, height: 58, justifyContent: 'center', width: 44 },
   cardImage: { height: '100%', width: '100%' },
   cardNumber: { color: colors.brass, fontSize: 10, textAlign: 'center', width: 54 },
   cardCopy: { flex: 1, minWidth: 0 },

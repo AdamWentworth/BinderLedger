@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import cv2
 import numpy as np
@@ -136,7 +137,12 @@ class ReferenceMatcher:
 
         expanded = list(matches)
         seen = {
-            (match.reference.card_id, match.reference.edition, match.reference.finish, match.reference.language)
+            (
+                match.reference.card_id,
+                match.reference.edition,
+                match.reference.finish,
+                match.reference.language,
+            )
             for match in matches
         }
         for match in matches:
@@ -181,10 +187,13 @@ class ReferenceMatcher:
 
             signals = dict(match.signals)
             observed_stamp = float(signals["firstEditionStamp"])
-            stamp_score = observed_stamp if "first" in match.reference.edition.lower() else 1.0 - observed_stamp
-            region_score = (
-                0.65 * float(signals["shadowRegion"])
-                + 0.35 * float(signals["copyrightRegion"])
+            stamp_score = (
+                observed_stamp
+                if "first" in match.reference.edition.lower()
+                else 1.0 - observed_stamp
+            )
+            region_score = 0.65 * float(signals["shadowRegion"]) + 0.35 * float(
+                signals["copyrightRegion"]
             )
             printing_score = clamp(0.55 * stamp_score + 0.45 * region_score)
             adjusted_score = clamp(0.68 * match.score + 0.32 * printing_score)
@@ -252,19 +261,10 @@ class ReferenceMatcher:
         shadow_region = region_similarity(query.shadow_region, reference.shadow_region)
         copyright_region = region_similarity(query.copyright_region, reference.copyright_region)
 
-        visual = (
-            0.46 * orb
-            + 0.20 * phash
-            + 0.14 * histogram
-            + 0.12 * stamp
-            + 0.08 * number_region
-        )
+        visual = 0.46 * orb + 0.20 * phash + 0.14 * histogram + 0.12 * stamp + 0.08 * number_region
         title = title_similarity(ocr_text, metadata.card_name) if ocr_text else 0.0
         number = number_similarity(ocr_text, metadata.number) if ocr_text else 0.0
-        if ocr_text:
-            score = 0.82 * visual + 0.12 * title + 0.06 * number
-        else:
-            score = visual
+        score = 0.82 * visual + 0.12 * title + 0.06 * number if ocr_text else visual
 
         signals: dict[str, Any] = {
             "visual": round(visual, 5),
@@ -406,8 +406,12 @@ def order_points(points: np.ndarray) -> np.ndarray:
 
 def warp_card(image: np.ndarray, points: np.ndarray) -> np.ndarray:
     top_left, top_right, bottom_right, bottom_left = points
-    width = int(max(np.linalg.norm(top_right - top_left), np.linalg.norm(bottom_right - bottom_left)))
-    height = int(max(np.linalg.norm(bottom_left - top_left), np.linalg.norm(bottom_right - top_right)))
+    width = int(
+        max(np.linalg.norm(top_right - top_left), np.linalg.norm(bottom_right - bottom_left))
+    )
+    height = int(
+        max(np.linalg.norm(bottom_left - top_left), np.linalg.norm(bottom_right - top_right))
+    )
     destination = np.array(
         [[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]],
         dtype=np.float32,
@@ -424,7 +428,9 @@ def resize_max(image: np.ndarray, maximum: int) -> np.ndarray:
     scale = min(1.0, maximum / max(height, width))
     if scale == 1.0:
         return image
-    return cv2.resize(image, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA)
+    return cv2.resize(
+        image, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA
+    )
 
 
 def resize_crop(image: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -442,7 +448,9 @@ def resize_crop(image: np.ndarray, width: int, height: int) -> np.ndarray:
     return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
 
 
-def crop_ratio(image: np.ndarray, left: float, top: float, right: float, bottom: float) -> np.ndarray:
+def crop_ratio(
+    image: np.ndarray, left: float, top: float, right: float, bottom: float
+) -> np.ndarray:
     height, width = image.shape[:2]
     return image[
         max(0, round(top * height)) : min(height, round(bottom * height)),
@@ -588,7 +596,9 @@ def title_similarity(ocr_text: str, card_name: str) -> float:
     window_size = max(1, len(expected_tokens))
     sequence = max(
         (
-            SequenceMatcher(None, expected, " ".join(observed_tokens[index : index + window_size])).ratio()
+            SequenceMatcher(
+                None, expected, " ".join(observed_tokens[index : index + window_size])
+            ).ratio()
             for index in range(max(1, len(observed_tokens) - window_size + 1))
         ),
         default=0.0,

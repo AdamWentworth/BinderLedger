@@ -2,7 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { File as ExpoFile } from 'expo-file-system';
 import { Platform } from 'react-native';
 
-export { formatCurrency, formatPercent } from './formatters';
+export { formatCurrency, formatPercent, formatSignedCurrency } from './formatters';
 
 export type Health = {
   status: 'ok' | 'degraded';
@@ -119,6 +119,8 @@ export type CatalogListingSort =
 
 export type MarketPeriod = '1d' | '1w' | '1m' | '1y' | 'all';
 
+export type MarketMovementMode = 'amount' | 'percent';
+
 export type MarketCondition =
   | 'Near Mint'
   | 'Lightly Played'
@@ -135,6 +137,8 @@ export type MarketMover = {
   cardNumber: string | null;
   setId: string;
   setName: string;
+  setLogoUrl: string | null;
+  setSymbolUrl: string | null;
   imageUrl: string | null;
   printing: string;
   condition: MarketCondition;
@@ -151,6 +155,8 @@ export type MarketMover = {
 export type MarketSetMovement = {
   setId: string;
   setName: string;
+  logoUrl: string | null;
+  symbolUrl: string | null;
   startValue: number;
   endValue: number;
   changeAmount: number;
@@ -161,12 +167,14 @@ export type MarketSetMovement = {
 export type MarketOverview = {
   period: MarketPeriod;
   condition: MarketCondition;
+  rank: MarketMovementMode;
   summary: {
     asOf: string;
     evaluatedVariants: number;
     risingVariants: number;
     fallingVariants: number;
     unchangedVariants: number;
+    medianChangeAmount: number;
     medianChangePercent: number;
   };
   sets: MarketSetMovement[];
@@ -514,6 +522,7 @@ export async function getSetPricing({
 type MarketOverviewRequest = {
   period: MarketPeriod;
   condition: MarketCondition;
+  rank?: MarketMovementMode;
   limit?: number;
   setId?: string;
   signal?: AbortSignal;
@@ -522,6 +531,7 @@ type MarketOverviewRequest = {
 export async function getMarketOverview({
   period,
   condition,
+  rank = 'amount',
   limit = 8,
   setId = '',
   signal,
@@ -529,6 +539,7 @@ export async function getMarketOverview({
   const parameters = new URLSearchParams({
     period,
     condition,
+    rank,
     limit: String(limit),
   });
   if (setId) parameters.set('set_id', setId);

@@ -48,6 +48,7 @@ type OverviewFilter struct {
 	Condition string
 	SetID     string
 	Limit     int
+	Rank      string
 }
 
 type Summary struct {
@@ -56,6 +57,7 @@ type Summary struct {
 	RisingVariants      int     `json:"risingVariants"`
 	FallingVariants     int     `json:"fallingVariants"`
 	UnchangedVariants   int     `json:"unchangedVariants"`
+	MedianChangeAmount  float64 `json:"medianChangeAmount"`
 	MedianChangePercent float64 `json:"medianChangePercent"`
 }
 
@@ -66,6 +68,8 @@ type Mover struct {
 	CardNumber       *string `json:"cardNumber"`
 	SetID            string  `json:"setId"`
 	SetName          string  `json:"setName"`
+	SetLogoURL       *string `json:"setLogoUrl"`
+	SetSymbolURL     *string `json:"setSymbolUrl"`
 	ImageURL         *string `json:"imageUrl"`
 	Printing         string  `json:"printing"`
 	Condition        string  `json:"condition"`
@@ -82,6 +86,8 @@ type Mover struct {
 type SetMovement struct {
 	SetID         string  `json:"setId"`
 	SetName       string  `json:"setName"`
+	LogoURL       *string `json:"logoUrl"`
+	SymbolURL     *string `json:"symbolUrl"`
 	StartValue    float64 `json:"startValue"`
 	EndValue      float64 `json:"endValue"`
 	ChangeAmount  float64 `json:"changeAmount"`
@@ -92,10 +98,22 @@ type SetMovement struct {
 type Overview struct {
 	Period    string        `json:"period"`
 	Condition string        `json:"condition"`
+	Rank      string        `json:"rank"`
 	Summary   Summary       `json:"summary"`
 	Sets      []SetMovement `json:"sets"`
 	Gainers   []Mover       `json:"gainers"`
 	Losers    []Mover       `json:"losers"`
+}
+
+func ParseRank(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "amount":
+		return "amount", true
+	case "percent":
+		return "percent", true
+	default:
+		return "", false
+	}
 }
 
 type PricePoint struct {
@@ -143,6 +161,11 @@ type VariantHistory struct {
 
 func (repository *Repository) Overview(ctx context.Context, filter OverviewFilter) (Overview, error) {
 	filter.SetID = strings.TrimSpace(filter.SetID)
+	if rank, ok := ParseRank(filter.Rank); ok {
+		filter.Rank = rank
+	} else {
+		filter.Rank = "amount"
+	}
 
 	var asOf *time.Time
 	if err := repository.db.QueryRow(ctx, `
@@ -165,6 +188,7 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 	overview := Overview{
 		Period:    filter.Period.Key,
 		Condition: filter.Condition,
+		Rank:      filter.Rank,
 		Sets:      make([]SetMovement, 0),
 		Gainers:   make([]Mover, 0),
 		Losers:    make([]Mover, 0),
@@ -182,6 +206,8 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 			c.number,
 			s.id,
 			s.name,
+			s.logo_url,
+			s.symbol_url,
 			coalesce(
 				catalog_printing_image_url(c.id, v.edition, v.finish, v.language),
 				c.image_url
@@ -255,6 +281,8 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 			&mover.CardNumber,
 			&mover.SetID,
 			&mover.SetName,
+			&mover.SetLogoURL,
+			&mover.SetSymbolURL,
 			&mover.ImageURL,
 			&mover.Printing,
 			&mover.Condition,
@@ -284,10 +312,13 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 	}
 
 	overview.Summary = summarize(asOf.Format(time.DateOnly), movers)
-	overview.Sets = summarizeSets(movers)
+	overview.Sets = summarizeSets(movers, filter.Rank)
 
 	sort.Slice(movers, func(i, j int) bool {
-		return movers[i].ChangePercent > movers[j].ChangePercent
+		if filter.Rank == "percent" {
+			return movers[i].ChangePercent > movers[j].ChangePercent
+		}
+		return movers[i].ChangeAmount > movers[j].ChangeAmount
 	})
 	for _, mover := range movers {
 		if mover.ChangePercent > 0 && len(overview.Gainers) < filter.Limit {
@@ -295,7 +326,10 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 		}
 	}
 	sort.Slice(movers, func(i, j int) bool {
-		return movers[i].ChangePercent < movers[j].ChangePercent
+		if filter.Rank == "percent" {
+			return movers[i].ChangePercent < movers[j].ChangePercent
+		}
+		return movers[i].ChangeAmount < movers[j].ChangeAmount
 	})
 	for _, mover := range movers {
 		if mover.ChangePercent < 0 && len(overview.Losers) < filter.Limit {
@@ -412,9 +446,11 @@ func (repository *Repository) VariantHistory(ctx context.Context, variantID stri
 
 func summarize(asOf string, movers []Mover) Summary {
 	summary := Summary{AsOf: asOf, EvaluatedVariants: len(movers)}
-	changes := make([]float64, 0, len(movers))
+	amounts := make([]float64, 0, len(movers))
+	percents := make([]float64, 0, len(movers))
 	for _, mover := range movers {
-		changes = append(changes, mover.ChangePercent)
+		amounts = append(amounts, mover.ChangeAmount)
+		percents = append(percents, mover.ChangePercent)
 		switch {
 		case mover.ChangePercent > 0:
 			summary.RisingVariants++
@@ -424,25 +460,33 @@ func summarize(asOf string, movers []Mover) Summary {
 			summary.UnchangedVariants++
 		}
 	}
-	if len(changes) == 0 {
+	if len(percents) == 0 {
 		return summary
 	}
-	sort.Float64s(changes)
-	middle := len(changes) / 2
-	if len(changes)%2 == 0 {
-		summary.MedianChangePercent = roundPercent((changes[middle-1] + changes[middle]) / 2)
+	sort.Float64s(amounts)
+	sort.Float64s(percents)
+	middle := len(percents) / 2
+	if len(percents)%2 == 0 {
+		summary.MedianChangeAmount = roundMoney((amounts[middle-1] + amounts[middle]) / 2)
+		summary.MedianChangePercent = roundPercent((percents[middle-1] + percents[middle]) / 2)
 	} else {
-		summary.MedianChangePercent = changes[middle]
+		summary.MedianChangeAmount = amounts[middle]
+		summary.MedianChangePercent = percents[middle]
 	}
 	return summary
 }
 
-func summarizeSets(movers []Mover) []SetMovement {
+func summarizeSets(movers []Mover, rank string) []SetMovement {
 	bySet := make(map[string]*SetMovement)
 	for _, mover := range movers {
 		set := bySet[mover.SetID]
 		if set == nil {
-			set = &SetMovement{SetID: mover.SetID, SetName: mover.SetName}
+			set = &SetMovement{
+				SetID:     mover.SetID,
+				SetName:   mover.SetName,
+				LogoURL:   mover.SetLogoURL,
+				SymbolURL: mover.SetSymbolURL,
+			}
 			bySet[mover.SetID] = set
 		}
 		set.StartValue += mover.StartPrice
@@ -461,6 +505,9 @@ func summarizeSets(movers []Mover) []SetMovement {
 		sets = append(sets, *set)
 	}
 	sort.Slice(sets, func(i, j int) bool {
+		if rank == "amount" {
+			return math.Abs(sets[i].ChangeAmount) > math.Abs(sets[j].ChangeAmount)
+		}
 		return math.Abs(sets[i].ChangePercent) > math.Abs(sets[j].ChangePercent)
 	})
 	return sets

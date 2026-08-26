@@ -1,25 +1,37 @@
 import { Image } from 'expo-image';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight } from 'lucide-react-native';
+import { AlertTriangle, ImageOff } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '@/constants/theme';
-import { formatCurrency, formatPercent, MarketMover, resolveImageURL } from '@/lib/api';
+import { MarketMovementValue } from '@/components/market-movement-value';
+import {
+  formatCurrency,
+  formatPercent,
+  formatSignedCurrency,
+  type MarketMovementMode,
+  type MarketMover,
+  resolveImageURL,
+} from '@/lib/api';
 
 type MarketMoverRowProps = {
   mover: MarketMover;
+  movementMode: MarketMovementMode;
   onPress: () => void;
   selected: boolean;
 };
 
-export function MarketMoverRow({ mover, onPress, selected }: MarketMoverRowProps) {
-  const rising = mover.changePercent >= 0;
-  const accent = rising ? colors.positive : colors.negative;
-  const Arrow = rising ? ArrowUpRight : ArrowDownRight;
-
+export function MarketMoverRow({
+  mover,
+  movementMode,
+  onPress,
+  selected,
+}: MarketMoverRowProps) {
   return (
     <Pressable
-      accessibilityLabel={`View ${mover.cardName} ${mover.printing} price history`}
+      accessibilityHint="Shows this card in the price history chart"
+      accessibilityLabel={`${mover.cardName}, ${mover.setName}, ${mover.printing}. ${formatCurrency(mover.endPrice)} current price. Change ${formatSignedCurrency(mover.changeAmount)}, ${formatPercent(mover.changePercent)}`}
       accessibilityRole="button"
+      accessibilityState={{ selected }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
@@ -28,8 +40,15 @@ export function MarketMoverRow({ mover, onPress, selected }: MarketMoverRowProps
       ]}>
       <View style={styles.imageFrame}>
         {mover.imageUrl ? (
-          <Image contentFit="contain" source={resolveImageURL(mover.imageUrl)} style={styles.image} />
-        ) : null}
+          <Image
+            accessibilityElementsHidden
+            contentFit="contain"
+            source={resolveImageURL(mover.imageUrl)}
+            style={styles.image}
+          />
+        ) : (
+          <ImageOff color={colors.textMuted} size={22} />
+        )}
       </View>
       <View style={styles.copy}>
         <View style={styles.nameRow}>
@@ -52,13 +71,11 @@ export function MarketMoverRow({ mover, onPress, selected }: MarketMoverRowProps
           {formatCurrency(mover.startPrice)} to {formatCurrency(mover.endPrice)}
         </Text>
       </View>
-      <View style={styles.change}>
-        <Arrow color={accent} size={18} />
-        <Text style={[styles.changePercent, { color: accent }]}>
-          {formatPercent(mover.changePercent)}
-        </Text>
-        <Text style={styles.changeAmount}>{formatCurrency(Math.abs(mover.changeAmount))}</Text>
-      </View>
+      <MarketMovementValue
+        amount={mover.changeAmount}
+        mode={movementMode}
+        percent={mover.changePercent}
+      />
     </Pressable>
   );
 }
@@ -131,17 +148,5 @@ const styles = StyleSheet.create({
   pricePath: {
     color: colors.textMuted,
     fontSize: 11,
-  },
-  change: {
-    alignItems: 'flex-end',
-    minWidth: 72,
-  },
-  changePercent: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  changeAmount: {
-    color: colors.textMuted,
-    fontSize: 10,
   },
 });

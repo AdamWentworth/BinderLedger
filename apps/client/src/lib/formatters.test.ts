@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCurrency, formatPercent } from './formatters';
+import { formatCurrency, formatPercent, formatSignedCurrency } from './formatters';
 
 describe('formatCurrency', () => {
   it('formats US dollar values', () => {
@@ -21,5 +21,12 @@ describe('formatPercent', () => {
 
   it('labels missing changes', () => {
     expect(formatPercent(null)).toBe('No change');
+  });
+
+  it('formats signed currency changes without losing direction', () => {
+    expect(formatSignedCurrency(12.5)).toBe('+$12.50');
+    expect(formatSignedCurrency(-12.5)).toBe('-$12.50');
+    expect(formatSignedCurrency(0)).toBe('$0.00');
+    expect(formatSignedCurrency(null)).toBe('No change');
   });
 });

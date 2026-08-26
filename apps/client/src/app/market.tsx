@@ -1,10 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import {
   Activity,
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
+  ImageOff,
+  Layers3,
   LineChart,
 } from 'lucide-react-native';
 import { type ReactNode, useState } from 'react';
@@ -12,6 +15,8 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
 import { MarketConditionControl } from '@/components/market-condition-control';
+import { MarketMovementControl } from '@/components/market-movement-control';
+import { MarketMovementValue } from '@/components/market-movement-value';
 import { MarketPeriodControl } from '@/components/market-period-control';
 import { MarketMoverRow } from '@/components/market-mover-row';
 import { Metric } from '@/components/metric';
@@ -23,11 +28,14 @@ import { useCatalogPreferences } from '@/providers/catalog-preferences';
 import {
   formatCurrency,
   formatPercent,
+  formatSignedCurrency,
   getMarketOverview,
   getVariantHistory,
   type MarketCondition,
+  type MarketMovementMode,
   type MarketMover,
   type MarketPeriod,
+  resolveImageURL,
 } from '@/lib/api';
 
 export default function MarketScreen() {
@@ -35,13 +43,16 @@ export default function MarketScreen() {
   const pageWidth = getUsablePageWidth(width);
   const desktop = pageWidth >= 980;
   const abbreviateConditions = pageWidth < 620;
+  const compactSets = pageWidth < 520;
   const [period, setPeriod] = useState<MarketPeriod>('1m');
+  const [movementMode, setMovementMode] = useState<MarketMovementMode>('amount');
   const { condition, setCondition } = useCatalogPreferences();
   const [selectedVariantID, setSelectedVariantID] = useState('');
 
   const overviewQuery = useQuery({
-    queryKey: ['market', 'overview', period, condition],
-    queryFn: ({ signal }) => getMarketOverview({ period, condition, signal }),
+    queryKey: ['market', 'overview', period, condition, movementMode],
+    queryFn: ({ signal }) =>
+      getMarketOverview({ period, condition, rank: movementMode, signal }),
     placeholderData: keepPreviousData,
   });
   const overview = overviewQuery.data;
@@ -63,17 +74,23 @@ export default function MarketScreen() {
     setSelectedVariantID('');
   };
 
+  const changeMovementMode = (next: MarketMovementMode) => {
+    setMovementMode(next);
+    setSelectedVariantID('');
+  };
+
   return (
     <Screen
       title="Market"
       subtitle="Condition-specific movement across collected legacy sets and printings."
       toolbar={<MarketPeriodControl period={period} onChange={setPeriod} />}>
-      <View style={styles.conditionControl}>
+      <View style={[styles.marketControls, abbreviateConditions && styles.marketControlsCompact]}>
         <MarketConditionControl
           abbreviate={abbreviateConditions}
           condition={condition}
           onChange={changeCondition}
         />
+        <MarketMovementControl mode={movementMode} onChange={changeMovementMode} />
       </View>
 
       {overviewQuery.isPending ? (
@@ -110,8 +127,8 @@ export default function MarketScreen() {
             <Metric
               icon={<Activity color={colors.burgundy} size={18} />}
               label="Median move"
-              note={condition}
-              value={formatPercent(overview.summary.medianChangePercent)}
+              note={`${formatPercent(overview.summary.medianChangePercent)} / ${condition}`}
+              value={formatSignedCurrency(overview.summary.medianChangeAmount)}
             />
           </View>
 
@@ -135,12 +152,29 @@ export default function MarketScreen() {
                   ) : null}
                 </View>
                 {history ? (
-                  <>
-                    <Text style={styles.chartTitle}>{history.cardName}</Text>
-                    <Text style={styles.chartMeta}>
-                      {history.setName} / {history.printing} / {history.condition}
-                    </Text>
-                  </>
+                  <View style={styles.chartIdentity}>
+                    <View
+                      accessibilityLabel={`${history.cardName} card image`}
+                      accessible
+                      style={styles.historyImageFrame}>
+                      {history.imageUrl ? (
+                        <Image
+                          accessibilityElementsHidden
+                          contentFit="contain"
+                          source={resolveImageURL(history.imageUrl)}
+                          style={styles.historyImage}
+                        />
+                      ) : (
+                        <ImageOff color={colors.textMuted} size={22} />
+                      )}
+                    </View>
+                    <View style={styles.chartIdentityCopy}>
+                      <Text style={styles.chartTitle}>{history.cardName}</Text>
+                      <Text style={styles.chartMeta}>
+                        {history.setName} / {history.printing} / {history.condition}
+                      </Text>
+                    </View>
+                  </View>
                 ) : (
                   <Text style={styles.chartMeta}>Select a market row</Text>
                 )}
@@ -152,23 +186,21 @@ export default function MarketScreen() {
                     abbreviateConditions && styles.chartValueCompact,
                   ]}>
                   <Text style={styles.currentPrice}>{formatCurrency(history.endPrice)}</Text>
-                  <Text
-                    style={[
-                      styles.historyChange,
-                      {
-                        color:
-                          (history.changePercent ?? 0) >= 0
-                            ? colors.positive
-                            : colors.negative,
-                      },
-                    ]}>
-                    {formatPercent(history.changePercent)}
-                  </Text>
+                  <MarketMovementValue
+                    amount={history.changeAmount}
+                    mode={movementMode}
+                    percent={history.changePercent}
+                    prominent
+                  />
                   <Text style={styles.observationCount}>{history.points.length} observations</Text>
                 </View>
               ) : null}
             </View>
-            {historyQuery.isFetching || !history ? (
+            {activeVariantID === '' ? (
+              <View style={styles.chartLoading}>
+                <Text style={styles.loadingText}>No priced movement in this range</Text>
+              </View>
+            ) : historyQuery.isFetching || !history ? (
               <View style={styles.chartLoading}>
                 <ActivityIndicator color={colors.brand} />
               </View>
@@ -184,29 +216,50 @@ export default function MarketScreen() {
                 <Text style={styles.sectionTitle}>Set performance</Text>
               </View>
               <Text style={styles.sectionNote}>
-                {condition} basket / {periodLabel(period)}
+                {condition} basket / {periodLabel(period)} / ranked by{' '}
+                {movementMode === 'amount' ? 'dollars' : 'percent'}
               </Text>
             </View>
             <View style={styles.setList}>
               {overview.sets.map((set) => {
-                const rising = set.changePercent >= 0;
+                const artworkURL = resolveImageURL(set.symbolUrl ?? set.logoUrl);
                 return (
-                  <View key={set.setId} style={styles.setRow}>
+                  <View
+                    accessibilityLabel={`${set.setName} set. ${formatCurrency(set.endValue)} current basket value, from ${formatCurrency(set.startValue)}. Change ${formatSignedCurrency(set.changeAmount)}, ${formatPercent(set.changePercent)}`}
+                    accessible
+                    key={set.setId}
+                    style={styles.setRow}>
+                    <View style={styles.setArtwork}>
+                      {artworkURL ? (
+                        <Image
+                          accessibilityElementsHidden
+                          contentFit="contain"
+                          source={artworkURL}
+                          style={styles.setImage}
+                        />
+                      ) : (
+                        <Layers3 color={colors.textMuted} size={22} />
+                      )}
+                    </View>
                     <View style={styles.setCopy}>
                       <Text style={styles.setName}>{set.setName}</Text>
-                      <Text style={styles.setMeta}>{set.variantCount} fresh printings</Text>
+                      <Text style={styles.setMeta}>
+                        {compactSets
+                          ? `${formatCurrency(set.endValue)} now / ${set.variantCount} printings`
+                          : `${set.variantCount} fresh printings`}
+                      </Text>
                     </View>
-                    <View style={styles.setValue}>
-                      <Text style={styles.setTotal}>{formatCurrency(set.endValue)}</Text>
-                      <Text style={styles.setPrevious}>from {formatCurrency(set.startValue)}</Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.setChange,
-                        { color: rising ? colors.positive : colors.negative },
-                      ]}>
-                      {formatPercent(set.changePercent)}
-                    </Text>
+                    {!compactSets ? (
+                      <View style={styles.setValue}>
+                        <Text style={styles.setTotal}>{formatCurrency(set.endValue)}</Text>
+                        <Text style={styles.setPrevious}>from {formatCurrency(set.startValue)}</Text>
+                      </View>
+                    ) : null}
+                    <MarketMovementValue
+                      amount={set.changeAmount}
+                      mode={movementMode}
+                      percent={set.changePercent}
+                    />
                   </View>
                 );
               })}
@@ -218,17 +271,19 @@ export default function MarketScreen() {
               accent={colors.positive}
               icon={<ArrowUpRight color={colors.positive} size={19} />}
               movers={overview.gainers}
+              movementMode={movementMode}
               onSelect={setSelectedVariantID}
               selectedVariantID={activeVariantID}
-              title="Rising"
+              title="Top gainers"
             />
             <MoverSection
               accent={colors.negative}
               icon={<ArrowDownRight color={colors.negative} size={19} />}
               movers={overview.losers}
+              movementMode={movementMode}
               onSelect={setSelectedVariantID}
               selectedVariantID={activeVariantID}
-              title="Falling"
+              title="Top decliners"
             />
           </View>
         </>
@@ -241,6 +296,7 @@ type MoverSectionProps = {
   accent: string;
   icon: ReactNode;
   movers: MarketMover[];
+  movementMode: MarketMovementMode;
   onSelect: (variantID: string) => void;
   selectedVariantID: string;
   title: string;
@@ -250,6 +306,7 @@ function MoverSection({
   accent,
   icon,
   movers,
+  movementMode,
   onSelect,
   selectedVariantID,
   title,
@@ -268,6 +325,7 @@ function MoverSection({
           <MarketMoverRow
             key={mover.variantId}
             mover={mover}
+            movementMode={movementMode}
             onPress={() => onSelect(mover.variantId)}
             selected={selectedVariantID === mover.variantId}
           />
@@ -295,9 +353,17 @@ function formatMarketDate(value: string): string {
 }
 
 const styles = StyleSheet.create({
-  conditionControl: {
+  marketControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
     marginBottom: spacing.md,
     width: '100%',
+  },
+  marketControlsCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
   },
   loading: {
     alignItems: 'center',
@@ -374,6 +440,29 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
   },
+  chartIdentity: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  chartIdentityCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  historyImageFrame: {
+    alignItems: 'center',
+    aspectRatio: 0.714,
+    backgroundColor: colors.surfaceQuiet,
+    borderRadius: 4,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 52,
+  },
+  historyImage: {
+    height: '100%',
+    width: '100%',
+  },
   chartValue: {
     alignItems: 'flex-end',
     flexShrink: 0,
@@ -386,10 +475,6 @@ const styles = StyleSheet.create({
   currentPrice: {
     color: colors.text,
     fontSize: 24,
-    fontWeight: '800',
-  },
-  historyChange: {
-    fontSize: 14,
     fontWeight: '800',
   },
   observationCount: {
@@ -434,6 +519,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  setArtwork: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceQuiet,
+    borderRadius: 6,
+    height: 44,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 52,
+  },
+  setImage: {
+    height: 32,
+    width: 42,
+  },
   setName: {
     color: colors.text,
     fontSize: 14,
@@ -454,12 +552,6 @@ const styles = StyleSheet.create({
   setPrevious: {
     color: colors.textMuted,
     fontSize: 10,
-  },
-  setChange: {
-    fontSize: 14,
-    fontWeight: '800',
-    minWidth: 72,
-    textAlign: 'right',
   },
   moverColumns: {
     flexDirection: 'row',

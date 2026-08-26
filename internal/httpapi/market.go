@@ -35,12 +35,18 @@ func (api *API) marketOverview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "limit must be between 1 and 20")
 		return
 	}
+	rank, ok := market.ParseRank(r.URL.Query().Get("rank"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "rank must be amount or percent")
+		return
+	}
 
 	overview, err := api.market.Overview(r.Context(), market.OverviewFilter{
 		Period:    period,
 		Condition: condition,
 		SetID:     r.URL.Query().Get("set_id"),
 		Limit:     limit,
+		Rank:      rank,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "market overview is unavailable")

@@ -120,11 +120,11 @@ func TestSummarizeSetsRanksByRequestedMovementAndCarriesArtwork(t *testing.T) {
 		movers[index].ChangePercent = movement.Percent
 	}
 
-	byAmount := summarizeSets(movers, nil, "", "amount")
+	byAmount := summarizeSets(movers, nil, "", "", "amount")
 	if byAmount[0].SetID != "jungle" || byAmount[0].SymbolURL == nil || *byAmount[0].SymbolURL != symbol {
 		t.Fatalf("summarizeSets(amount) = %+v", byAmount)
 	}
-	byPercent := summarizeSets(movers, nil, "", "percent")
+	byPercent := summarizeSets(movers, nil, "", "", "percent")
 	if byPercent[0].SetID != "base" {
 		t.Fatalf("summarizeSets(percent) = %+v", byPercent)
 	}
@@ -144,7 +144,7 @@ func TestSummarizeSetsSeparatesEditionsWithinASet(t *testing.T) {
 			SetID: "jungle", SetName: "Jungle", Edition: "Unlimited",
 			StartPrice: 25, EndPrice: 30,
 		},
-	}, nil, "", "amount")
+	}, nil, "", "", "amount")
 
 	if len(sets) != 2 {
 		t.Fatalf("summarizeSets() returned %d editions, want 2: %+v", len(sets), sets)
@@ -168,7 +168,7 @@ func TestSummarizeSetsIncludesCatalogPrintingMemberships(t *testing.T) {
 		},
 	}
 
-	sets := summarizeSets([]Mover{mover}, assignments, "", "amount")
+	sets := summarizeSets([]Mover{mover}, assignments, "", "", "amount")
 	if len(sets) != 2 {
 		t.Fatalf("summarizeSets() returned %d catalog memberships, want 2: %+v", len(sets), sets)
 	}
@@ -178,8 +178,37 @@ func TestSummarizeSetsIncludesCatalogPrintingMemberships(t *testing.T) {
 		}
 	}
 
-	shadowless := summarizeSets([]Mover{mover}, assignments, "base-shadowless", "amount")
+	shadowless := summarizeSets(
+		[]Mover{mover},
+		assignments,
+		"base-shadowless",
+		"",
+		"amount",
+	)
 	if len(shadowless) != 1 || shadowless[0].SetID != "base-shadowless" || shadowless[0].Edition != "Shadowless" {
 		t.Fatalf("summarizeSets(filtered) = %+v", shadowless)
+	}
+}
+
+func TestSummarizeSetsFiltersCatalogEdition(t *testing.T) {
+	mover := Mover{
+		CardID: "machamp", SetID: "base-first", SetName: "Base Set First Edition",
+		Edition: "First Edition", StartPrice: 80, EndPrice: 100,
+	}
+	assignments := map[string][]setMovementAssignment{
+		setMovementAssignmentKey("machamp", "First Edition"): {
+			{SetID: "base-shadowless", SetName: "Base Set Shadowless", Edition: "Shadowless"},
+		},
+	}
+
+	sets := summarizeSets(
+		[]Mover{mover},
+		assignments,
+		"",
+		"First Edition",
+		"amount",
+	)
+	if len(sets) != 1 || sets[0].SetID != "base-first" || sets[0].Edition != "First Edition" {
+		t.Fatalf("summarizeSets(first edition) = %+v", sets)
 	}
 }

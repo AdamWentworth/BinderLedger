@@ -36,7 +36,9 @@ func TestDatabaseBackedReadRoutes(t *testing.T) {
 		"/api/catalog/cards",
 		"/api/catalog/listings",
 		"/api/market/overview",
+		"/api/market/overview?edition=First%20Edition",
 		"/api/market/movements",
+		"/api/market/movements?edition=Unlimited",
 		"/api/watchlists/default",
 		"/api/watchlists/default/items",
 	} {

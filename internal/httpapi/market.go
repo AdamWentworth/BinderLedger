@@ -44,11 +44,17 @@ func (api *API) marketOverview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "rank must be amount or percent")
 		return
 	}
+	edition, ok := marketEdition(r.URL.Query().Get("edition"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "edition is not supported")
+		return
+	}
 
 	overview, err := api.market.Overview(r.Context(), market.OverviewFilter{
 		Period:    period,
 		Condition: condition,
 		SetID:     r.URL.Query().Get("set_id"),
+		Edition:   edition,
 		Limit:     limit,
 		Rank:      rank,
 	})
@@ -90,12 +96,17 @@ func (api *API) marketMovements(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "offset must be between 0 and 1000000")
 		return
 	}
+	edition, ok := marketEdition(r.URL.Query().Get("edition"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "edition is not supported")
+		return
+	}
 
 	page, err := api.market.Movements(r.Context(), market.MovementFilter{
 		Period:    period,
 		Condition: condition,
 		SetID:     r.URL.Query().Get("set_id"),
-		Edition:   r.URL.Query().Get("edition"),
+		Edition:   edition,
 		Query:     r.URL.Query().Get("q"),
 		Direction: direction,
 		Rank:      rank,
@@ -140,4 +151,9 @@ func marketCondition(value string) (string, bool) {
 	}
 	_, ok := marketConditions[condition]
 	return condition, ok
+}
+
+func marketEdition(value string) (string, bool) {
+	edition := strings.TrimSpace(value)
+	return edition, optionalCatalogValue(edition, "Unlimited", "Shadowless", "First Edition")
 }

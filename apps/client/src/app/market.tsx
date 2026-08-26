@@ -24,6 +24,10 @@ import {
 } from '@/components/market-category-control';
 import { MarketConditionControl } from '@/components/market-condition-control';
 import { MarketDirectionControl } from '@/components/market-direction-control';
+import {
+  MarketEditionControl,
+  marketEditionLabel,
+} from '@/components/market-edition-control';
 import { MarketMovementControl } from '@/components/market-movement-control';
 import { MarketMovementValue } from '@/components/market-movement-value';
 import { MarketPeriodControl } from '@/components/market-period-control';
@@ -46,6 +50,7 @@ import {
   getMarketOverview,
   getVariantHistory,
   type MarketCondition,
+  type MarketEdition,
   type MarketMovementDirection,
   type MarketMovementMode,
   type MarketMover,
@@ -65,6 +70,7 @@ export default function MarketScreen() {
   const [category, setCategory] = useState<MarketCategory>('highlights');
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const [movementMode, setMovementMode] = useState<MarketMovementMode>('amount');
+  const [edition, setEdition] = useState<MarketEdition>('');
   const { condition, setCondition } = useCatalogPreferences();
   const [selectedVariantID, setSelectedVariantID] = useState('');
   const [detailVariantID, setDetailVariantID] = useState('');
@@ -96,9 +102,9 @@ export default function MarketScreen() {
     : '';
 
   const overviewQuery = useQuery({
-    queryKey: ['market', 'overview', period, condition, movementMode],
+    queryKey: ['market', 'overview', period, condition, edition, movementMode],
     queryFn: ({ signal }) =>
-      getMarketOverview({ period, condition, rank: movementMode, signal }),
+      getMarketOverview({ period, condition, edition, rank: movementMode, signal }),
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
@@ -107,6 +113,7 @@ export default function MarketScreen() {
   const movers = overview ? [...overview.gainers, ...overview.losers] : [];
   const rankedSets =
     overview?.sets.filter((set) => {
+      if (edition && set.edition !== edition) return false;
       if (setRankingDirection === 'gainers') return set.changeAmount > 0;
       if (setRankingDirection === 'decliners') return set.changeAmount < 0;
       return true;
@@ -120,6 +127,7 @@ export default function MarketScreen() {
       condition,
       movementMode,
       direction,
+      edition,
       setID,
       deferredSearch,
     ],
@@ -129,6 +137,7 @@ export default function MarketScreen() {
         condition,
         rank: movementMode,
         direction,
+        edition,
         setId: setID,
         query: deferredSearch,
         limit: 24,
@@ -231,6 +240,14 @@ export default function MarketScreen() {
     setSelectedVariantID('');
   };
 
+  const changeEdition = (next: MarketEdition) => {
+    setEdition(next);
+    setSelectedSetMovement(null);
+    setSetID('');
+    setSelectedVariantID('');
+    setDetailVariantID('');
+  };
+
   const changeDirection = (next: MarketMovementDirection) => {
     setDirection(next);
     setSelectedVariantID('');
@@ -274,6 +291,28 @@ export default function MarketScreen() {
         compact={abbreviateConditions}
         onChange={changeCategory}
       />
+      <View
+        style={[
+          styles.editionScope,
+          abbreviateConditions && styles.editionScopeCompact,
+        ]}>
+        <View style={styles.editionScopeCopy}>
+          <Text style={styles.editionScopeLabel}>Edition scope</Text>
+          <Text style={styles.editionScopeNote}>
+            Applies to overview totals, set baskets, and card movement.
+          </Text>
+        </View>
+        <View style={styles.editionScopeControl}>
+          <MarketEditionControl edition={edition} onChange={changeEdition} />
+          {overviewQuery.isFetching && overview !== undefined ? (
+            <ActivityIndicator
+              accessibilityLabel="Updating edition scope"
+              color={colors.brand}
+              size="small"
+            />
+          ) : null}
+        </View>
+      </View>
       <View style={[styles.marketControls, abbreviateConditions && styles.marketControlsCompact]}>
         <MarketConditionControl
           abbreviate={abbreviateConditions}
@@ -305,7 +344,7 @@ export default function MarketScreen() {
                 <Metric
                   icon={<CalendarDays color={colors.brass} size={18} />}
                   label="Market date"
-                  note={`${overview.summary.evaluatedVariants} fresh variants`}
+                  note={`${formatVariantCount(overview.summary.evaluatedVariants)} / ${marketEditionLabel(edition)}`}
                   value={formatMarketDate(overview.summary.asOf)}
                 />
                 <Metric
@@ -489,7 +528,7 @@ export default function MarketScreen() {
                     </View>
                   </View>
                   <Text style={styles.setContext}>
-                    {condition} / {periodLabel(period)} / ranked by{' '}
+                    {marketEditionLabel(edition)} / {condition} / {periodLabel(period)} / ranked by{' '}
                     {displayedMovementMode === 'amount' ? 'dollar movement' : 'percentage movement'}
                   </Text>
                   {overview.sets.length === 0 ? (
@@ -629,7 +668,7 @@ export default function MarketScreen() {
                     ? 'Loading ranked cards'
                     : browseTotal === 0
                       ? '0 matching printings'
-                      : `${browseMovers.length} of ${browseTotal} printings / ${selectedSetLabel}`}
+                      : `${browseMovers.length} of ${browseTotal} printings / ${marketEditionLabel(edition)} / ${selectedSetLabel}`}
                 </Text>
               </View>
 
@@ -922,7 +961,49 @@ function formatMarketDate(value: string): string {
   );
 }
 
+function formatVariantCount(count: number): string {
+  return `${count} fresh ${count === 1 ? 'variant' : 'variants'}`;
+}
+
 const styles = StyleSheet.create({
+  editionScope: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.lg,
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  editionScopeCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    gap: spacing.sm,
+  },
+  editionScopeCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  editionScopeLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  editionScopeNote: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  editionScopeControl: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   marketControls: {
     alignItems: 'center',
     flexDirection: 'row',

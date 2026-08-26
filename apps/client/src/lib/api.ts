@@ -124,6 +124,8 @@ export type MarketMovementMode = 'amount' | 'percent';
 
 export type MarketMovementDirection = 'all' | 'gainers' | 'decliners';
 
+export type MarketEdition = '' | 'First Edition' | 'Unlimited';
+
 export type MarketCondition =
   | 'Near Mint'
   | 'Lightly Played'
@@ -559,6 +561,7 @@ export async function getSetPricing({
 type MarketOverviewRequest = {
   period: MarketPeriod;
   condition: MarketCondition;
+  edition?: MarketEdition;
   rank?: MarketMovementMode;
   limit?: number;
   setId?: string;
@@ -568,6 +571,7 @@ type MarketOverviewRequest = {
 export async function getMarketOverview({
   period,
   condition,
+  edition = '',
   rank = 'amount',
   limit = 8,
   setId = '',
@@ -579,6 +583,7 @@ export async function getMarketOverview({
     rank,
     limit: String(limit),
   });
+  if (edition) parameters.set('edition', edition);
   if (setId) parameters.set('set_id', setId);
 
   const response = await fetch(`${apiURL}/api/market/overview?${parameters}`, { signal });

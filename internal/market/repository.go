@@ -45,6 +45,7 @@ type OverviewFilter struct {
 	Period    Period
 	Condition string
 	SetID     string
+	Edition   string
 	Limit     int
 	Rank      string
 }
@@ -205,6 +206,7 @@ type VariantHistory struct {
 
 func (repository *Repository) Overview(ctx context.Context, filter OverviewFilter) (Overview, error) {
 	filter.SetID = strings.TrimSpace(filter.SetID)
+	filter.Edition = strings.TrimSpace(filter.Edition)
 	if rank, ok := ParseRank(filter.Rank); ok {
 		filter.Rank = rank
 	} else {
@@ -275,7 +277,8 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 				  AND membership.printing_edition = v.edition
 			)
 		  )
-	`, filter.Period.Key, filter.Condition, filter.SetID)
+		  AND ($4 = '' OR v.edition = $4)
+	`, filter.Period.Key, filter.Condition, filter.SetID, filter.Edition)
 	if err != nil {
 		return Overview{}, fmt.Errorf("query market movement: %w", err)
 	}
@@ -323,7 +326,13 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 		return Overview{}, err
 	}
 	overview.Summary = summarize(asOf.Format(time.DateOnly), movers)
-	overview.Sets = summarizeSets(movers, setAssignments, filter.SetID, filter.Rank)
+	overview.Sets = summarizeSets(
+		movers,
+		setAssignments,
+		filter.SetID,
+		filter.Edition,
+		filter.Rank,
+	)
 
 	sort.Slice(movers, func(i, j int) bool {
 		if filter.Rank == "percent" {
@@ -679,6 +688,7 @@ func summarizeSets(
 	movers []Mover,
 	assignments map[string][]setMovementAssignment,
 	filterSetID string,
+	filterEdition string,
 	rank string,
 ) []SetMovement {
 	bySet := make(map[string]*SetMovement)
@@ -700,6 +710,9 @@ func summarizeSets(
 
 		seen := make(map[string]struct{}, len(moverSets))
 		for _, assignment := range moverSets {
+			if filterEdition != "" && assignment.Edition != filterEdition {
+				continue
+			}
 			key := assignment.SetID + "\x00" + assignment.Edition
 			if _, exists := seen[key]; exists {
 				continue

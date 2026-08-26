@@ -30,6 +30,13 @@ export function CatalogCardTile({ condition, density, listing, onPress }: Catalo
     (reference) => reference.kind === 'graded' && reference.amount !== null,
   );
   const compact = density === 'compact';
+  const displayedPrice = estimated
+    ? formatCurrency(listing.currentPrice)
+    : unavailable
+      ? compact
+        ? 'N/A'
+        : 'Price unavailable'
+      : formatCurrency(listing.currentPrice);
 
   return (
     <Pressable
@@ -65,100 +72,136 @@ export function CatalogCardTile({ condition, density, listing, onPress }: Catalo
         )}
       </View>
 
-      <View
-        style={[
-          styles.body,
-          density === 'large' && styles.bodyLarge,
-          compact && styles.bodyCompact,
-        ]}>
-        <View style={[styles.titleRow, compact && styles.titleRowCompact]}>
-          <Text
-            numberOfLines={2}
-            style={[
-              styles.name,
-              density === 'large' && styles.nameLarge,
-              compact && styles.nameCompact,
-            ]}>
-            {listing.name}
-          </Text>
-          <Text style={[styles.number, compact && styles.numberCompact]}>{listing.number}</Text>
-        </View>
-        <View style={styles.setMetaRow}>
-          <Text numberOfLines={1} style={[styles.setName, compact && styles.setNameCompact]}>
-            {listing.setName}
-          </Text>
-          {hasGradedPricing ? (
-            <View style={styles.gradedMarker}>
-              <BadgeCheck color={colors.brand} size={compact ? 12 : 13} />
-              <Text style={styles.gradedMarkerText}>Graded</Text>
-            </View>
-          ) : null}
-        </View>
+      {compact ? (
+        <View style={styles.bodyCompact}>
+          <View style={styles.titleRowCompact}>
+            <Text numberOfLines={2} style={styles.nameCompact}>
+              {listing.name}
+            </Text>
+            <Text style={styles.numberCompact}>{listing.number}</Text>
+          </View>
 
-        <View style={[styles.tags, compact && styles.tagsCompact]}>
+          <View style={styles.compactSetRow}>
+            <Text numberOfLines={1} style={styles.setNameCompact}>
+              {listing.setName}
+            </Text>
+            {hasGradedPricing ? (
+              <View accessibilityLabel="Graded pricing available" accessible>
+                <BadgeCheck color={colors.brand} size={12} />
+              </View>
+            ) : null}
+          </View>
+
+          <Text numberOfLines={1} style={styles.compactPrinting}>
+            <Text
+              style={listing.edition === 'First Edition' ? styles.compactFirstEdition : undefined}>
+              {shortEdition(listing.edition)}
+            </Text>
+            {' · '}
+            {shortFinish(listing.finish)}
+          </Text>
+
           <View
-            style={[
-              styles.tag,
-              compact && styles.tagCompact,
-              listing.edition === 'First Edition' && styles.editionTag,
-            ]}>
+            accessibilityLabel={`${shortCondition(condition)} price ${displayedPrice}`}
+            accessible
+            style={styles.compactPriceRow}>
+            <View style={styles.compactPriceSignal}>
+              {estimated ? <BadgeDollarSign color={colors.brass} size={13} /> : null}
+              {!estimated && historical ? <History color={colors.warning} size={12} /> : null}
+              {!estimated && !historical && (unavailable || warning) ? (
+                <CircleAlert color={colors.warning} size={12} />
+              ) : null}
+            </View>
             <Text
               numberOfLines={1}
               style={[
-                styles.tagText,
-                compact && styles.tagTextCompact,
-                listing.edition === 'First Edition' && styles.editionTagText,
+                styles.priceCompact,
+                unavailable && !estimated && styles.priceUnavailable,
+                estimated && styles.priceReference,
               ]}>
-              {listing.edition}
-            </Text>
-          </View>
-          <View style={[styles.tag, compact && styles.tagCompact]}>
-            <Text numberOfLines={1} style={[styles.tagText, compact && styles.tagTextCompact]}>
-              {listing.finish}
+              {displayedPrice}
             </Text>
           </View>
         </View>
-
-        <View style={[styles.priceRow, compact && styles.priceRowCompact]}>
-          <View style={styles.priceLabelWrap}>
-            {historical ? <History color={colors.warning} size={13} /> : null}
-            {(unavailable || warning) && !estimated ? (
-              <CircleAlert color={colors.warning} size={13} />
+      ) : (
+        <View style={[styles.body, density === 'large' && styles.bodyLarge]}>
+          <View style={styles.titleRow}>
+            <Text
+              numberOfLines={2}
+              style={[styles.name, density === 'large' && styles.nameLarge]}>
+              {listing.name}
+            </Text>
+            <Text style={styles.number}>{listing.number}</Text>
+          </View>
+          <View style={styles.setMetaRow}>
+            <Text numberOfLines={1} style={styles.setName}>
+              {listing.setName}
+            </Text>
+            {hasGradedPricing ? (
+              <View style={styles.gradedMarker}>
+                <BadgeCheck color={colors.brand} size={13} />
+                <Text style={styles.gradedMarkerText}>Graded</Text>
+              </View>
             ) : null}
-            {estimated ? <BadgeDollarSign color={colors.brass} size={14} /> : null}
+          </View>
+
+          <View style={styles.tags}>
+            <View
+              style={[
+                styles.tag,
+                listing.edition === 'First Edition' && styles.editionTag,
+              ]}>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.tagText,
+                  listing.edition === 'First Edition' && styles.editionTagText,
+                ]}>
+                {listing.edition}
+              </Text>
+            </View>
+            <View style={styles.tag}>
+              <Text numberOfLines={1} style={styles.tagText}>
+                {listing.finish}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.priceRow}>
+            <View style={styles.priceLabelWrap}>
+              {historical ? <History color={colors.warning} size={13} /> : null}
+              {(unavailable || warning) && !estimated ? (
+                <CircleAlert color={colors.warning} size={13} />
+              ) : null}
+              {estimated ? <BadgeDollarSign color={colors.brass} size={14} /> : null}
+              <Text
+                style={[
+                  styles.priceLabel,
+                  (historical || warning || (unavailable && !estimated)) &&
+                    styles.priceLabelFlagged,
+                  estimated && styles.priceLabelReference,
+                ]}>
+                {estimated
+                  ? 'Ungraded value'
+                  : historical && listing.priceQuality.asOf
+                    ? `${shortCondition(condition)} / ${formatShortDate(listing.priceQuality.asOf)}`
+                    : warning
+                      ? `${shortCondition(condition)} / review`
+                      : shortCondition(condition)}
+              </Text>
+            </View>
             <Text
               style={[
-                styles.priceLabel,
-                (historical || warning || (unavailable && !estimated)) && styles.priceLabelFlagged,
-                estimated && styles.priceLabelReference,
+                styles.price,
+                density === 'large' && styles.priceLarge,
+                unavailable && !estimated && styles.priceUnavailable,
+                estimated && styles.priceReference,
               ]}>
-              {estimated
-                ? 'Ungraded value'
-                : historical && listing.priceQuality.asOf
-                ? `${shortCondition(condition)} / ${formatShortDate(listing.priceQuality.asOf)}`
-                : warning
-                  ? `${shortCondition(condition)} / review`
-                  : shortCondition(condition)}
+              {displayedPrice}
             </Text>
           </View>
-          <Text
-            style={[
-              styles.price,
-              density === 'large' && styles.priceLarge,
-              compact && styles.priceCompact,
-              unavailable && !estimated && styles.priceUnavailable,
-              estimated && styles.priceReference,
-            ]}>
-            {estimated
-              ? formatCurrency(listing.currentPrice)
-              : unavailable
-                ? compact
-                  ? 'Unavailable'
-                  : 'Price unavailable'
-                : formatCurrency(listing.currentPrice)}
-          </Text>
         </View>
-      </View>
+      )}
     </Pressable>
   );
 }
@@ -191,8 +234,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   imageFrameCompact: {
-    aspectRatio: 0.78,
-    padding: spacing.sm,
+    aspectRatio: 0.74,
+    padding: 6,
   },
   image: {
     height: '100%',
@@ -217,9 +260,9 @@ const styles = StyleSheet.create({
     minHeight: 164,
   },
   bodyCompact: {
-    gap: 6,
-    minHeight: 138,
-    padding: 10,
+    gap: spacing.xs,
+    minHeight: 104,
+    padding: spacing.sm,
   },
   titleRow: {
     alignItems: 'flex-start',
@@ -228,8 +271,10 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   titleRowCompact: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
     gap: spacing.xs,
-    minHeight: 36,
+    minHeight: 32,
   },
   name: {
     color: colors.text,
@@ -243,8 +288,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   nameCompact: {
-    fontSize: 14,
-    lineHeight: 18,
+    color: colors.text,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 15,
   },
   number: {
     color: colors.brass,
@@ -253,7 +301,11 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   numberCompact: {
-    fontSize: 9,
+    color: colors.brass,
+    flexShrink: 0,
+    fontSize: 8,
+    fontWeight: '800',
+    paddingTop: 1,
   },
   setMetaRow: {
     alignItems: 'center',
@@ -268,7 +320,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   setNameCompact: {
-    fontSize: 10,
+    color: colors.textMuted,
+    flex: 1,
+    fontSize: 9,
+    lineHeight: 12,
+  },
+  compactSetRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minWidth: 0,
+  },
+  compactPrinting: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 12,
+  },
+  compactFirstEdition: {
+    color: colors.brass,
   },
   gradedMarker: {
     alignItems: 'center',
@@ -287,19 +357,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minHeight: 24,
   },
-  tagsCompact: {
-    minHeight: 20,
-  },
   tag: {
     backgroundColor: colors.surfaceRaised,
     borderRadius: 4,
     maxWidth: '52%',
     paddingHorizontal: 7,
     paddingVertical: 4,
-  },
-  tagCompact: {
-    paddingHorizontal: 5,
-    paddingVertical: 3,
   },
   editionTag: {
     backgroundColor: colors.warningSurface,
@@ -310,9 +373,6 @@ const styles = StyleSheet.create({
     color: colors.burgundy,
     fontSize: 10,
     fontWeight: '700',
-  },
-  tagTextCompact: {
-    fontSize: 9,
   },
   editionTagText: {
     color: colors.brass,
@@ -325,11 +385,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: spacing.xs,
     paddingTop: spacing.sm,
-  },
-  priceRowCompact: {
-    alignItems: 'stretch',
-    flexDirection: 'column',
-    gap: spacing.xs,
   },
   priceLabel: {
     color: colors.textMuted,
@@ -357,8 +412,26 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   priceCompact: {
-    alignSelf: 'flex-end',
-    fontSize: 13,
+    color: colors.brand,
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  compactPriceRow: {
+    alignItems: 'center',
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+    minHeight: 24,
+    paddingTop: 5,
+  },
+  compactPriceSignal: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    minWidth: 13,
   },
   priceUnavailable: {
     color: colors.warning,
@@ -368,6 +441,14 @@ const styles = StyleSheet.create({
     color: colors.brass,
   },
 });
+
+function shortEdition(value: string): string {
+  return value === 'First Edition' ? '1st Ed.' : value;
+}
+
+function shortFinish(value: string): string {
+  return value === 'Holofoil' ? 'Holo' : value;
+}
 
 function formatShortDate(value: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: '2-digit' }).format(

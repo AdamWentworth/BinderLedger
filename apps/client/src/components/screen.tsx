@@ -17,9 +17,10 @@ type ScreenProps = PropsWithChildren<{
   title: string;
   subtitle: string;
   toolbar?: ReactNode;
+  condensed?: boolean;
 }>;
 
-export function Screen({ title, subtitle, toolbar, children }: ScreenProps) {
+export function Screen({ title, subtitle, toolbar, condensed = false, children }: ScreenProps) {
   const width = useHydratedWidth();
   const compact = width < 720;
 
@@ -44,7 +45,12 @@ export function Screen({ title, subtitle, toolbar, children }: ScreenProps) {
             <ConnectionStatus />
           </View>
 
-          <View style={[styles.headingRow, compact && styles.headingRowCompact]}>
+          <View
+            style={[
+              styles.headingRow,
+              compact && styles.headingRowCompact,
+              condensed && styles.headingRowCondensed,
+            ]}>
             <View style={[styles.headingCopy, compact && styles.headingCopyCompact]}>
               <Text style={styles.title}>{title}</Text>
               <Text style={styles.subtitle}>{subtitle}</Text>
@@ -114,6 +120,10 @@ const styles = StyleSheet.create({
   headingRowCompact: {
     alignItems: 'stretch',
     flexDirection: 'column',
+  },
+  headingRowCondensed: {
+    paddingBottom: spacing.md,
+    paddingTop: spacing.lg,
   },
   headingCopy: {
     flexGrow: 1,

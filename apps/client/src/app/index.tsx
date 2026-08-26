@@ -18,6 +18,7 @@ import {
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -56,7 +57,11 @@ import {
   selectedCatalogSetGroup,
   selectedCatalogSetView,
 } from '@/lib/catalog-set-groups';
-import { formatCatalogDate, getCatalogColumnCount } from '@/lib/catalog-layout';
+import {
+  formatCatalogDate,
+  getCatalogColumnCount,
+  getCatalogItemWidth,
+} from '@/lib/catalog-layout';
 import {
   type CatalogListing,
   type CatalogListingSort,
@@ -82,16 +87,24 @@ export default function CatalogScreen() {
   const { condition, density, setCondition, setDensity } = useCatalogPreferences();
   const width = useHydratedWidth();
   const pageWidth = getUsablePageWidth(width);
-  const compact = pageWidth < 760;
+  const mobile = pageWidth < 760;
+  const narrowPhone = pageWidth < 360;
+  const condensedFilters = pageWidth < 1040;
   const desktop = pageWidth >= 1040;
+  const showSetRail = desktop;
   const horizontalPadding = width < 720 ? spacing.md * 2 : spacing.xl * 2;
   const contentWidth = Math.max(0, Math.min(pageWidth, contentMaxWidth) - horizontalPadding);
+  const layoutContentWidth = Math.max(
+    0,
+    contentWidth - (Platform.OS === 'web' ? spacing.md : 0),
+  );
   const resultsWidth = Math.max(
     0,
-    contentWidth - (compact ? 0 : 232 + spacing.lg),
+    layoutContentWidth - (showSetRail ? 232 + spacing.lg : 0),
   );
-  const gridGap = desktop ? spacing.lg : spacing.md;
+  const gridGap = density === 'compact' ? spacing.sm : desktop ? spacing.lg : spacing.md;
   const columns = getCatalogColumnCount(resultsWidth, density, gridGap);
+  const cardItemWidth = getCatalogItemWidth(resultsWidth, columns, gridGap);
   const setColumns = pageWidth >= 1040 ? 3 : pageWidth >= 620 ? 2 : 1;
   const [mode, setMode] = useState<CatalogMode>('cards');
   const [selectedSet, setSelectedSet] = useState('');
@@ -255,18 +268,33 @@ export default function CatalogScreen() {
 
   return (
     <Screen
+      condensed={mobile}
       title="Card catalog"
       subtitle={summary}
       toolbar={
-        <View style={[styles.toolbar, compact && styles.toolbarCompact]}>
-          <View style={[styles.searchWrap, compact && styles.searchWrapCompact]}>
+        <View
+          style={[
+            styles.toolbar,
+            mobile && styles.toolbarCompact,
+            mobile && !narrowPhone && styles.toolbarCompactRow,
+          ]}>
+          <View
+            style={[
+              styles.searchWrap,
+              mobile && styles.searchWrapCompact,
+              mobile && !narrowPhone && styles.searchWrapCompactRow,
+            ]}>
             <SearchField
               onChangeText={changeSearch}
               placeholder={mode === 'cards' ? 'Search name or number' : 'Search sets'}
               value={mode === 'cards' ? cardSearch : setSearch}
             />
           </View>
-          <CatalogModeControl mode={mode} onChange={setMode} />
+          <CatalogModeControl
+            condensed={mobile && !narrowPhone}
+            mode={mode}
+            onChange={setMode}
+          />
         </View>
       }>
       {mode === 'sets' ? (
@@ -306,7 +334,7 @@ export default function CatalogScreen() {
         </View>
       ) : (
         <>
-          {compact ? (
+          {!showSetRail ? (
             <>
               <SetStrip
                 groups={setGroups}
@@ -325,7 +353,7 @@ export default function CatalogScreen() {
             </>
           ) : null}
 
-          {compact ? (
+          {condensedFilters ? (
             <MobileFilterButton
               activeCount={activeFilters.length}
               condition={condition}
@@ -415,7 +443,7 @@ export default function CatalogScreen() {
           ) : null}
 
           <View style={styles.catalogLayout}>
-            {!compact ? (
+            {showSetRail ? (
               <SetRail
                 groups={setGroups}
                 onSelectAll={selectAllPrintings}
@@ -427,7 +455,7 @@ export default function CatalogScreen() {
             ) : null}
 
             <View style={styles.results}>
-              <View style={styles.resultsHeader}>
+              <View style={[styles.resultsHeader, mobile && styles.resultsHeaderCompact]}>
                 <View style={styles.resultSummary}>
                   <View style={styles.resultCountWrap}>
                     <Layers3 color={colors.brass} size={17} />
@@ -446,6 +474,7 @@ export default function CatalogScreen() {
 
                 <View style={styles.resultsActions}>
                   <CatalogDensityControl
+                    condensed={mobile}
                     density={density}
                     onChange={setDensity}
                   />
@@ -489,17 +518,16 @@ export default function CatalogScreen() {
                   title="No matching cards"
                 />
               ) : (
-                <View style={[styles.grid, desktop && styles.gridDesktop]}>
+                <View
+                  style={[
+                    styles.grid,
+                    desktop && styles.gridDesktop,
+                    density === 'compact' && styles.gridCompact,
+                  ]}>
                   {listings.map((listing) => (
                     <View
                       key={listing.id}
-                      style={[
-                        styles.gridItem,
-                        columns === 1 && styles.gridItemOne,
-                        columns === 2 && styles.gridItemTwo,
-                        columns === 3 && styles.gridItemThree,
-                        columns === 4 && styles.gridItemFour,
-                      ]}>
+                      style={[styles.gridItem, { width: cardItemWidth }]}>
                       <CatalogCardTile
                         condition={condition}
                         density={density}
@@ -515,7 +543,7 @@ export default function CatalogScreen() {
         </>
       )}
 
-      {compact && filterSheetOpen ? (
+      {condensedFilters && filterSheetOpen ? (
         <CatalogFilterSheet
           onApply={applyFilters}
           onClose={() => setFilterSheetOpen(false)}
@@ -609,9 +637,11 @@ function ActiveFilterStrip({
 }
 
 function CatalogDensityControl({
+  condensed,
   density,
   onChange,
 }: {
+  condensed: boolean;
   density: CatalogDensity;
   onChange: (density: CatalogDensity) => void;
 }) {
@@ -622,18 +652,21 @@ function CatalogDensityControl({
         label="Large"
         onPress={() => onChange('large')}
         selected={density === 'large'}
+        showLabel={!condensed}
       />
       <DensityButton
         icon={<Grid2X2 color={density === 'standard' ? colors.text : colors.textMuted} size={15} />}
         label="Standard"
         onPress={() => onChange('standard')}
         selected={density === 'standard'}
+        showLabel={!condensed}
       />
       <DensityButton
         icon={<Grid3X3 color={density === 'compact' ? colors.text : colors.textMuted} size={15} />}
         label="Compact"
         onPress={() => onChange('compact')}
         selected={density === 'compact'}
+        showLabel={!condensed}
       />
     </View>
   );
@@ -644,11 +677,13 @@ function DensityButton({
   label,
   onPress,
   selected,
+  showLabel,
 }: {
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
   selected: boolean;
+  showLabel: boolean;
 }) {
   return (
     <Pressable
@@ -656,19 +691,27 @@ function DensityButton({
       accessibilityRole="tab"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={[styles.densityButton, selected && styles.densityButtonSelected]}>
+      style={[
+        styles.densityButton,
+        !showLabel && styles.densityButtonCompact,
+        selected && styles.densityButtonSelected,
+      ]}>
       {icon}
-      <Text style={[styles.densityButtonText, selected && styles.densityButtonTextSelected]}>
-        {label}
-      </Text>
+      {showLabel ? (
+        <Text style={[styles.densityButtonText, selected && styles.densityButtonTextSelected]}>
+          {label}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
 
 function CatalogModeControl({
+  condensed,
   mode,
   onChange,
 }: {
+  condensed: boolean;
   mode: CatalogMode;
   onChange: (mode: CatalogMode) => void;
 }) {
@@ -679,12 +722,14 @@ function CatalogModeControl({
         label="Cards"
         onPress={() => onChange('cards')}
         selected={mode === 'cards'}
+        condensed={condensed}
       />
       <ModeButton
         icon={<Library color={mode === 'sets' ? colors.text : colors.textMuted} size={16} />}
         label="Sets"
         onPress={() => onChange('sets')}
         selected={mode === 'sets'}
+        condensed={condensed}
       />
     </View>
   );
@@ -695,18 +740,24 @@ function ModeButton({
   label,
   selected,
   onPress,
+  condensed,
 }: {
   icon: React.ReactNode;
   label: string;
   selected: boolean;
   onPress: () => void;
+  condensed: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={[styles.modeButton, selected && styles.modeButtonSelected]}>
+      style={[
+        styles.modeButton,
+        condensed && styles.modeButtonCompact,
+        selected && styles.modeButtonSelected,
+      ]}>
       {icon}
       <Text style={[styles.modeButtonText, selected && styles.modeButtonTextSelected]}>{label}</Text>
     </Pressable>
@@ -983,6 +1034,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     width: '100%',
   },
+  toolbarCompactRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
   searchWrap: {
     flex: 1,
     maxWidth: 360,
@@ -995,6 +1050,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     maxWidth: '100%',
     minWidth: 0,
+  },
+  searchWrapCompactRow: {
+    flexGrow: 1,
+    flexShrink: 1,
   },
   modeControl: {
     backgroundColor: colors.surfaceQuiet,
@@ -1011,6 +1070,10 @@ const styles = StyleSheet.create({
     minHeight: 36,
     minWidth: 84,
     paddingHorizontal: spacing.sm,
+  },
+  modeButtonCompact: {
+    minWidth: 70,
+    paddingHorizontal: 6,
   },
   modeButtonSelected: {
     backgroundColor: colors.surface,
@@ -1033,8 +1096,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.md,
-    minHeight: 46,
+    marginBottom: 12,
+    minHeight: 42,
     paddingHorizontal: 12,
   },
   mobileFilterPressed: {
@@ -1275,7 +1338,7 @@ const styles = StyleSheet.create({
   },
   setStrip: {
     gap: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: 12,
   },
   setViewStripWrap: {
     gap: spacing.xs,
@@ -1343,6 +1406,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     minHeight: 38,
   },
+  resultsHeaderCompact: {
+    marginBottom: spacing.sm,
+  },
   resultSummary: {
     gap: 3,
   },
@@ -1382,6 +1448,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 30,
     paddingHorizontal: 8,
+  },
+  densityButtonCompact: {
+    minWidth: 30,
+    paddingHorizontal: 6,
   },
   densityButtonSelected: {
     backgroundColor: colors.surface,
@@ -1425,6 +1495,9 @@ const styles = StyleSheet.create({
   },
   gridDesktop: {
     gap: spacing.lg,
+  },
+  gridCompact: {
+    gap: spacing.sm,
   },
   gridItem: {
     minWidth: 0,

@@ -1,21 +1,28 @@
-import { Layers3, LineChart } from 'lucide-react-native';
+import { Layers3, LibraryBig, LineChart } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing } from '@/constants/theme';
 
-export type MarketCategory = 'cards' | 'sets';
+export type MarketCategory = 'highlights' | 'browse' | 'sets';
 
 type MarketCategoryControlProps = {
   category: MarketCategory;
+  compact?: boolean;
   onChange: (category: MarketCategory) => void;
 };
 
 const categories = [
   {
-    description: 'Individual price movers',
+    description: 'Market pulse and top movers',
     Icon: LineChart,
-    key: 'cards' as const,
-    label: 'Card movement',
+    key: 'highlights' as const,
+    label: 'Highlights',
+  },
+  {
+    description: 'Search the full movement list',
+    Icon: LibraryBig,
+    key: 'browse' as const,
+    label: 'Browse cards',
   },
   {
     description: 'Edition-specific set baskets',
@@ -27,6 +34,7 @@ const categories = [
 
 export function MarketCategoryControl({
   category,
+  compact = false,
   onChange,
 }: MarketCategoryControlProps) {
   return (
@@ -42,15 +50,22 @@ export function MarketCategoryControl({
             onPress={() => onChange(key)}
             style={({ pressed }) => [
               styles.tab,
+              compact && styles.tabCompact,
               selected && styles.tabSelected,
               pressed && styles.tabPressed,
             ]}>
-            <Icon color={selected ? colors.brand : colors.textMuted} size={19} />
+            <Icon color={selected ? colors.brand : colors.textMuted} size={compact ? 17 : 19} />
             <View style={styles.copy}>
-              <Text style={[styles.label, selected && styles.labelSelected]}>{label}</Text>
-              <Text numberOfLines={1} style={styles.description}>
-                {description}
+              <Text
+                numberOfLines={compact ? 2 : 1}
+                style={[styles.label, compact && styles.labelCompact, selected && styles.labelSelected]}>
+                {label}
               </Text>
+              {!compact ? (
+                <Text numberOfLines={1} style={styles.description}>
+                  {description}
+                </Text>
+              ) : null}
             </View>
           </Pressable>
         );
@@ -85,6 +100,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
   },
+  tabCompact: {
+    gap: spacing.xs,
+    minHeight: 48,
+    paddingHorizontal: 7,
+  },
   tabPressed: {
     opacity: 0.78,
   },
@@ -99,6 +119,10 @@ const styles = StyleSheet.create({
   },
   labelSelected: {
     color: colors.text,
+  },
+  labelCompact: {
+    fontSize: 11,
+    lineHeight: 13,
   },
   description: {
     color: colors.textMuted,

@@ -122,6 +122,8 @@ export type MarketPeriod = '1d' | '1w' | '1m' | '1y' | 'all';
 
 export type MarketMovementMode = 'amount' | 'percent';
 
+export type MarketMovementDirection = 'all' | 'gainers' | 'decliners';
+
 export type MarketCondition =
   | 'Near Mint'
   | 'Lightly Played'
@@ -183,6 +185,17 @@ export type MarketOverview = {
   sets: MarketSetMovement[];
   gainers: MarketMover[];
   losers: MarketMover[];
+};
+
+export type MarketMovementPage = {
+  period: MarketPeriod;
+  condition: MarketCondition;
+  rank: MarketMovementMode;
+  direction: MarketMovementDirection;
+  movements: MarketMover[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 export type PricePoint = {
@@ -552,6 +565,47 @@ export async function getMarketOverview({
     throw new Error(`Market overview returned ${response.status}`);
   }
   return response.json() as Promise<MarketOverview>;
+}
+
+type MarketMovementsRequest = {
+  period: MarketPeriod;
+  condition: MarketCondition;
+  rank?: MarketMovementMode;
+  direction?: MarketMovementDirection;
+  query?: string;
+  limit?: number;
+  offset?: number;
+  setId?: string;
+  signal?: AbortSignal;
+};
+
+export async function getMarketMovements({
+  period,
+  condition,
+  rank = 'amount',
+  direction = 'all',
+  query = '',
+  limit = 24,
+  offset = 0,
+  setId = '',
+  signal,
+}: MarketMovementsRequest): Promise<MarketMovementPage> {
+  const parameters = new URLSearchParams({
+    period,
+    condition,
+    rank,
+    direction,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (query) parameters.set('q', query);
+  if (setId) parameters.set('set_id', setId);
+
+  const response = await fetch(`${apiURL}/api/market/movements?${parameters}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Market movements returned ${response.status}`);
+  }
+  return response.json() as Promise<MarketMovementPage>;
 }
 
 export async function getVariantHistory(

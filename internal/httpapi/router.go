@@ -40,6 +40,7 @@ func New(db *pgxpool.Pool, allowedOrigins []string, cardImageDir, scanImageDir s
 	mux.HandleFunc("GET /api/catalog/listings", api.catalogListings)
 	mux.HandleFunc("GET /api/catalog/images/{filename}", cardImage(cardImageDir))
 	mux.HandleFunc("GET /api/market/overview", api.marketOverview)
+	mux.HandleFunc("GET /api/market/movements", api.marketMovements)
 	mux.HandleFunc("GET /api/market/variants/{variantID}/history", api.marketVariantHistory)
 	mux.HandleFunc("GET /api/watchlists/{watchlistID}", api.watchlistOverview)
 	mux.HandleFunc("GET /api/watchlists/{watchlistID}/items", api.watchlistMemberships)

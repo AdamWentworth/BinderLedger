@@ -17,6 +17,7 @@ type MarketMoverRowProps = {
   mover: MarketMover;
   movementMode: MarketMovementMode;
   onPress: () => void;
+  rank?: number;
   selected: boolean;
 };
 
@@ -24,6 +25,7 @@ export function MarketMoverRow({
   mover,
   movementMode,
   onPress,
+  rank,
   selected,
 }: MarketMoverRowProps) {
   return (
@@ -38,6 +40,7 @@ export function MarketMoverRow({
         selected && styles.selected,
         pressed && styles.pressed,
       ]}>
+      {rank ? <Text style={styles.rank}>{rank}</Text> : null}
       <View style={styles.imageFrame}>
         {mover.imageUrl ? (
           <Image
@@ -96,6 +99,13 @@ const styles = StyleSheet.create({
     borderColor: colors.brand,
     borderWidth: 2,
     padding: 7,
+  },
+  rank: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    minWidth: 22,
+    textAlign: 'center',
   },
   pressed: {
     backgroundColor: colors.surfaceRaised,

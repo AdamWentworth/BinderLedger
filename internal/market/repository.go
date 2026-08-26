@@ -49,6 +49,17 @@ type OverviewFilter struct {
 	Rank      string
 }
 
+type MovementFilter struct {
+	Period    Period
+	Condition string
+	SetID     string
+	Query     string
+	Direction string
+	Rank      string
+	Limit     int
+	Offset    int
+}
+
 type Summary struct {
 	AsOf                string  `json:"asOf"`
 	EvaluatedVariants   int     `json:"evaluatedVariants"`
@@ -113,12 +124,36 @@ type Overview struct {
 	Losers    []Mover       `json:"losers"`
 }
 
+type MovementPage struct {
+	Period    string  `json:"period"`
+	Condition string  `json:"condition"`
+	Rank      string  `json:"rank"`
+	Direction string  `json:"direction"`
+	Movements []Mover `json:"movements"`
+	Total     int     `json:"total"`
+	Limit     int     `json:"limit"`
+	Offset    int     `json:"offset"`
+}
+
 func ParseRank(value string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "amount":
 		return "amount", true
 	case "percent":
 		return "percent", true
+	default:
+		return "", false
+	}
+}
+
+func ParseDirection(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "all":
+		return "all", true
+	case "gainers":
+		return "gainers", true
+	case "decliners":
+		return "decliners", true
 	default:
 		return "", false
 	}
@@ -313,6 +348,142 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 	}
 
 	return overview, nil
+}
+
+func (repository *Repository) Movements(ctx context.Context, filter MovementFilter) (MovementPage, error) {
+	filter.SetID = strings.TrimSpace(filter.SetID)
+	filter.Query = strings.TrimSpace(filter.Query)
+	if direction, ok := ParseDirection(filter.Direction); ok {
+		filter.Direction = direction
+	} else {
+		filter.Direction = "all"
+	}
+	if rank, ok := ParseRank(filter.Rank); ok {
+		filter.Rank = rank
+	} else {
+		filter.Rank = "amount"
+	}
+
+	page := MovementPage{
+		Period:    filter.Period.Key,
+		Condition: filter.Condition,
+		Rank:      filter.Rank,
+		Direction: filter.Direction,
+		Movements: make([]Mover, 0),
+		Limit:     filter.Limit,
+		Offset:    filter.Offset,
+	}
+
+	rows, err := repository.db.Query(ctx, `
+		SELECT
+			v.id,
+			c.id,
+			c.name,
+			c.number,
+			s.id,
+			s.name,
+			s.logo_url,
+			s.symbol_url,
+			coalesce(
+				catalog_printing_image_url(c.id, v.edition, v.finish, v.language),
+				c.image_url
+			),
+			v.edition,
+			v.printing,
+			movement.condition,
+			movement.start_date,
+			movement.start_price::double precision,
+			movement.end_date,
+			movement.end_price::double precision,
+			movement.change_amount::double precision,
+			movement.change_percent::double precision,
+			movement.observation_count,
+			movement.signal,
+			count(*) OVER()
+		FROM market_variant_movements movement
+		JOIN catalog_card_variants v ON v.id = movement.variant_id
+		JOIN catalog_cards c ON c.id = v.card_id
+		JOIN catalog_sets s ON s.id = c.set_id
+		WHERE movement.period = $1
+		  AND movement.condition = $2
+		  AND (
+			$3 = ''
+			OR movement.set_id = $3
+			OR EXISTS (
+				SELECT 1
+				FROM catalog_set_printing_memberships membership
+				WHERE membership.set_id = $3
+				  AND membership.card_id = v.card_id
+				  AND membership.printing_edition = v.edition
+			)
+		  )
+		  AND (
+			$4 = ''
+			OR c.name ILIKE '%' || $4 || '%'
+			OR coalesce(c.number, '') ILIKE '%' || $4 || '%'
+			OR s.name ILIKE '%' || $4 || '%'
+		  )
+		  AND (
+			$5 = 'all'
+			OR ($5 = 'gainers' AND movement.change_percent > 0)
+			OR ($5 = 'decliners' AND movement.change_percent < 0)
+		  )
+		ORDER BY
+			CASE WHEN $5 = 'all' AND $6 = 'amount' THEN abs(movement.change_amount) END DESC,
+			CASE WHEN $5 = 'all' AND $6 = 'percent' THEN abs(movement.change_percent) END DESC,
+			CASE WHEN $5 = 'gainers' AND $6 = 'amount' THEN movement.change_amount END DESC,
+			CASE WHEN $5 = 'gainers' AND $6 = 'percent' THEN movement.change_percent END DESC,
+			CASE WHEN $5 = 'decliners' AND $6 = 'amount' THEN movement.change_amount END ASC,
+			CASE WHEN $5 = 'decliners' AND $6 = 'percent' THEN movement.change_percent END ASC,
+			s.display_order,
+			s.name,
+			c.number,
+			c.name,
+			v.id
+		LIMIT $7 OFFSET $8
+	`, filter.Period.Key, filter.Condition, filter.SetID, filter.Query, filter.Direction, filter.Rank, filter.Limit, filter.Offset)
+	if err != nil {
+		return MovementPage{}, fmt.Errorf("query market movements: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var mover Mover
+		var startDate time.Time
+		var endDate time.Time
+		if err := rows.Scan(
+			&mover.VariantID,
+			&mover.CardID,
+			&mover.CardName,
+			&mover.CardNumber,
+			&mover.SetID,
+			&mover.SetName,
+			&mover.SetLogoURL,
+			&mover.SetSymbolURL,
+			&mover.ImageURL,
+			&mover.Edition,
+			&mover.Printing,
+			&mover.Condition,
+			&startDate,
+			&mover.StartPrice,
+			&endDate,
+			&mover.EndPrice,
+			&mover.ChangeAmount,
+			&mover.ChangePercent,
+			&mover.ObservationCount,
+			&mover.Signal,
+			&page.Total,
+		); err != nil {
+			return MovementPage{}, fmt.Errorf("scan market movements: %w", err)
+		}
+		mover.StartDate = startDate.Format(time.DateOnly)
+		mover.EndDate = endDate.Format(time.DateOnly)
+		page.Movements = append(page.Movements, mover)
+	}
+	if err := rows.Err(); err != nil {
+		return MovementPage{}, fmt.Errorf("read market movements: %w", err)
+	}
+	return page, nil
 }
 
 func (repository *Repository) VariantHistory(ctx context.Context, variantID string, period Period) (VariantHistory, error) {

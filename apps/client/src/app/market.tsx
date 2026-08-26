@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import {
   Activity,
@@ -9,9 +9,10 @@ import {
   ImageOff,
   Layers3,
   LineChart,
+  ListFilter,
 } from 'lucide-react-native';
-import { type ReactNode, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Fragment, type ReactNode, useDeferredValue, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/components/empty-state';
 import {
@@ -19,6 +20,7 @@ import {
   type MarketCategory,
 } from '@/components/market-category-control';
 import { MarketConditionControl } from '@/components/market-condition-control';
+import { MarketDirectionControl } from '@/components/market-direction-control';
 import { MarketMovementControl } from '@/components/market-movement-control';
 import { MarketMovementValue } from '@/components/market-movement-value';
 import { MarketPeriodControl } from '@/components/market-period-control';
@@ -26,6 +28,7 @@ import { MarketMoverRow } from '@/components/market-mover-row';
 import { Metric } from '@/components/metric';
 import { PriceHistoryChart } from '@/components/price-history-chart';
 import { Screen } from '@/components/screen';
+import { SearchField } from '@/components/search-field';
 import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import { useCatalogPreferences } from '@/providers/catalog-preferences';
@@ -33,12 +36,15 @@ import {
   formatCurrency,
   formatPercent,
   formatSignedCurrency,
+  getMarketMovements,
   getMarketOverview,
   getVariantHistory,
   type MarketCondition,
+  type MarketMovementDirection,
   type MarketMovementMode,
   type MarketMover,
   type MarketPeriod,
+  type VariantHistory,
   resolveImageURL,
 } from '@/lib/api';
 
@@ -48,11 +54,14 @@ export default function MarketScreen() {
   const desktop = pageWidth >= 980;
   const abbreviateConditions = pageWidth < 620;
   const compactSets = pageWidth < 520;
-  const [category, setCategory] = useState<MarketCategory>('cards');
+  const [category, setCategory] = useState<MarketCategory>('highlights');
   const [period, setPeriod] = useState<MarketPeriod>('1m');
   const [movementMode, setMovementMode] = useState<MarketMovementMode>('amount');
   const { condition, setCondition } = useCatalogPreferences();
   const [selectedVariantID, setSelectedVariantID] = useState('');
+  const [direction, setDirection] = useState<MarketMovementDirection>('all');
+  const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search.trim());
 
   const overviewQuery = useQuery({
     queryKey: ['market', 'overview', period, condition, movementMode],
@@ -64,14 +73,51 @@ export default function MarketScreen() {
   const overview = overviewQuery.data;
   const displayedMovementMode = overview?.rank ?? movementMode;
   const movers = overview ? [...overview.gainers, ...overview.losers] : [];
-  const activeVariantID = movers.some((mover) => mover.variantId === selectedVariantID)
-    ? selectedVariantID
-    : (movers[0]?.variantId ?? '');
+
+  const browseQuery = useInfiniteQuery({
+    queryKey: [
+      'market',
+      'movements',
+      period,
+      condition,
+      movementMode,
+      direction,
+      deferredSearch,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      getMarketMovements({
+        period,
+        condition,
+        rank: movementMode,
+        direction,
+        query: deferredSearch,
+        limit: 24,
+        offset: pageParam,
+        signal,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextOffset = lastPage.offset + lastPage.movements.length;
+      return nextOffset < lastPage.total ? nextOffset : undefined;
+    },
+    enabled: category === 'browse',
+    staleTime: 5 * 60_000,
+  });
+  const browseMovers = browseQuery.data?.pages.flatMap((page) => page.movements) ?? [];
+  const browseTotal = browseQuery.data?.pages[0]?.total ?? 0;
+  const activeVariantID =
+    category === 'browse'
+      ? browseMovers.some((mover) => mover.variantId === selectedVariantID)
+        ? selectedVariantID
+        : ''
+      : movers.some((mover) => mover.variantId === selectedVariantID)
+        ? selectedVariantID
+        : (movers[0]?.variantId ?? '');
 
   const historyQuery = useQuery({
     queryKey: ['market', 'history', activeVariantID, period],
     queryFn: ({ signal }) => getVariantHistory(activeVariantID, period, signal),
-    enabled: category === 'cards' && activeVariantID !== '',
+    enabled: category !== 'sets' && activeVariantID !== '',
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
@@ -87,12 +133,21 @@ export default function MarketScreen() {
     setSelectedVariantID('');
   };
 
+  const changeDirection = (next: MarketMovementDirection) => {
+    setDirection(next);
+    setSelectedVariantID('');
+  };
+
   return (
     <Screen
       title="Market"
       subtitle="Condition-specific movement across collected legacy sets and printings."
       toolbar={<MarketPeriodControl period={period} onChange={setPeriod} />}>
-      <MarketCategoryControl category={category} onChange={setCategory} />
+      <MarketCategoryControl
+        category={category}
+        compact={abbreviateConditions}
+        onChange={setCategory}
+      />
       <View style={[styles.marketControls, abbreviateConditions && styles.marketControlsCompact]}>
         <MarketConditionControl
           abbreviate={abbreviateConditions}
@@ -118,7 +173,7 @@ export default function MarketScreen() {
         />
       ) : (
         <>
-          {category === 'cards' ? (
+          {category === 'highlights' ? (
             <>
               <View style={styles.metrics}>
                 <Metric
@@ -147,84 +202,15 @@ export default function MarketScreen() {
                 />
               </View>
 
-              <View style={styles.chartPanel}>
-                <View
-                  style={[
-                    styles.chartHeader,
-                    abbreviateConditions && styles.chartHeaderCompact,
-                  ]}>
-                  <View style={styles.chartHeading}>
-                    <View style={styles.sectionTitleRow}>
-                      <LineChart color={colors.brand} size={18} />
-                      <Text style={styles.sectionTitle}>Price history</Text>
-                      {history && history.signal !== 'regular' ? (
-                        <View style={styles.historySignal}>
-                          <AlertTriangle color={colors.warning} size={13} />
-                          <Text style={styles.historySignalText}>
-                            {history.signal === 'volatile' ? 'High volatility' : 'Limited history'}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    {history ? (
-                      <View style={styles.chartIdentity}>
-                        <View
-                          accessibilityLabel={`${history.cardName} card image`}
-                          accessible
-                          style={styles.historyImageFrame}>
-                          {history.imageUrl ? (
-                            <Image
-                              accessibilityElementsHidden
-                              contentFit="contain"
-                              source={resolveImageURL(history.imageUrl)}
-                              style={styles.historyImage}
-                            />
-                          ) : (
-                            <ImageOff color={colors.textMuted} size={22} />
-                          )}
-                        </View>
-                        <View style={styles.chartIdentityCopy}>
-                          <Text style={styles.chartTitle}>{history.cardName}</Text>
-                          <Text style={styles.chartMeta}>
-                            {history.setName} / {history.printing} / {history.condition}
-                          </Text>
-                        </View>
-                      </View>
-                    ) : (
-                      <Text style={styles.chartMeta}>Select a market row</Text>
-                    )}
-                  </View>
-                  {history ? (
-                    <View
-                      style={[
-                        styles.chartValue,
-                        abbreviateConditions && styles.chartValueCompact,
-                      ]}>
-                      <Text style={styles.currentPrice}>{formatCurrency(history.endPrice)}</Text>
-                      <MarketMovementValue
-                        amount={history.changeAmount}
-                        mode={displayedMovementMode}
-                        percent={history.changePercent}
-                        prominent
-                      />
-                      <Text style={styles.observationCount}>{history.points.length} observations</Text>
-                    </View>
-                  ) : null}
-                </View>
-                {activeVariantID === '' ? (
-                  <View style={styles.chartLoading}>
-                    <Text style={styles.loadingText}>No priced movement in this range</Text>
-                  </View>
-                ) : historyQuery.isFetching || !history ? (
-                  <View style={styles.chartLoading}>
-                    <ActivityIndicator color={colors.brand} />
-                  </View>
-                ) : (
-                  <PriceHistoryChart points={history.points} />
-                )}
-              </View>
+              <MarketHistoryPanel
+                activeVariantID={activeVariantID}
+                compact={abbreviateConditions}
+                fetching={historyQuery.isFetching}
+                history={history}
+                movementMode={displayedMovementMode}
+              />
             </>
-          ) : (
+          ) : category === 'sets' ? (
             <View style={styles.setSection}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionTitleRow}>
@@ -289,9 +275,9 @@ export default function MarketScreen() {
                 </View>
               )}
             </View>
-          )}
+          ) : null}
 
-          {category === 'cards' ? (
+          {category === 'highlights' ? (
             <View style={[styles.moverColumns, !desktop && styles.moverColumnsCompact]}>
               <MoverSection
                 accent={colors.positive}
@@ -311,6 +297,103 @@ export default function MarketScreen() {
                 selectedVariantID={activeVariantID}
                 title="Top decliners"
               />
+            </View>
+          ) : category === 'browse' ? (
+            <View style={styles.browseSection}>
+              <View style={[styles.browseToolbar, abbreviateConditions && styles.browseToolbarCompact]}>
+                <View style={styles.browseSearch}>
+                  <SearchField
+                    onChangeText={(value) => {
+                      setSearch(value);
+                      setSelectedVariantID('');
+                    }}
+                    placeholder="Search card, number, or set"
+                    value={search}
+                  />
+                </View>
+                <MarketDirectionControl direction={direction} onChange={changeDirection} />
+              </View>
+
+              <View style={styles.browseHeader}>
+                <View style={styles.sectionTitleRow}>
+                  <ListFilter color={colors.brass} size={18} />
+                  <Text style={styles.sectionTitle}>Card movement</Text>
+                </View>
+                <Text style={styles.sectionNote}>
+                  {browseQuery.isPending
+                    ? 'Loading ranked cards'
+                    : browseTotal === 0
+                      ? '0 matching printings'
+                      : `${browseMovers.length} of ${browseTotal} printings`}
+                </Text>
+              </View>
+
+              {browseQuery.isPending ? (
+                <View style={styles.browseLoading}>
+                  <ActivityIndicator color={colors.brand} size="large" />
+                  <Text style={styles.loadingText}>Loading card movement</Text>
+                </View>
+              ) : browseQuery.isError ? (
+                <EmptyState
+                  message="The complete movement list could not be reached."
+                  title="Card movement unavailable"
+                />
+              ) : browseMovers.length === 0 ? (
+                <EmptyState
+                  message="Try a different search, direction, condition, or time range."
+                  title="No matching movement"
+                />
+              ) : (
+                <>
+                  <View style={styles.browseList}>
+                    {browseMovers.map((mover, index) => (
+                      <Fragment key={mover.variantId}>
+                        <MarketMoverRow
+                          mover={mover}
+                          movementMode={displayedMovementMode}
+                          onPress={() =>
+                            setSelectedVariantID((current) =>
+                              current === mover.variantId ? '' : mover.variantId,
+                            )
+                          }
+                          rank={index + 1}
+                          selected={selectedVariantID === mover.variantId}
+                        />
+                        {selectedVariantID === mover.variantId ? (
+                          <MarketHistoryPanel
+                            activeVariantID={activeVariantID}
+                            compact={abbreviateConditions}
+                            fetching={historyQuery.isFetching}
+                            history={history}
+                            movementMode={displayedMovementMode}
+                          />
+                        ) : null}
+                      </Fragment>
+                    ))}
+                  </View>
+                  {browseQuery.hasNextPage ? (
+                    <Pressable
+                      accessibilityLabel="Load more card movement"
+                      accessibilityRole="button"
+                      disabled={browseQuery.isFetchingNextPage}
+                      onPress={() => browseQuery.fetchNextPage()}
+                      style={({ pressed }) => [
+                        styles.loadMore,
+                        pressed && styles.loadMorePressed,
+                        browseQuery.isFetchingNextPage && styles.loadMoreDisabled,
+                      ]}>
+                      {browseQuery.isFetchingNextPage ? (
+                        <ActivityIndicator color={colors.brand} size="small" />
+                      ) : null}
+                      <Text style={styles.loadMoreText}>
+                        {browseQuery.isFetchingNextPage ? 'Loading more' : 'Load 24 more'}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.endOfResults}>All {browseTotal} matching printings shown</Text>
+                  )}
+                </>
+              )}
             </View>
           ) : null}
         </>
@@ -358,6 +441,93 @@ function MoverSection({
           />
         ))}
       </View>
+    </View>
+  );
+}
+
+type MarketHistoryPanelProps = {
+  activeVariantID: string;
+  compact: boolean;
+  fetching: boolean;
+  history: VariantHistory | undefined;
+  movementMode: MarketMovementMode;
+};
+
+function MarketHistoryPanel({
+  activeVariantID,
+  compact,
+  fetching,
+  history,
+  movementMode,
+}: MarketHistoryPanelProps) {
+  return (
+    <View style={styles.chartPanel}>
+      <View style={[styles.chartHeader, compact && styles.chartHeaderCompact]}>
+        <View style={styles.chartHeading}>
+          <View style={styles.sectionTitleRow}>
+            <LineChart color={colors.brand} size={18} />
+            <Text style={styles.sectionTitle}>Price history</Text>
+            {history && history.signal !== 'regular' ? (
+              <View style={styles.historySignal}>
+                <AlertTriangle color={colors.warning} size={13} />
+                <Text style={styles.historySignalText}>
+                  {history.signal === 'volatile' ? 'High volatility' : 'Limited history'}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          {history ? (
+            <View style={styles.chartIdentity}>
+              <View
+                accessibilityLabel={`${history.cardName} card image`}
+                accessible
+                style={styles.historyImageFrame}>
+                {history.imageUrl ? (
+                  <Image
+                    accessibilityElementsHidden
+                    contentFit="contain"
+                    source={resolveImageURL(history.imageUrl)}
+                    style={styles.historyImage}
+                  />
+                ) : (
+                  <ImageOff color={colors.textMuted} size={22} />
+                )}
+              </View>
+              <View style={styles.chartIdentityCopy}>
+                <Text style={styles.chartTitle}>{history.cardName}</Text>
+                <Text style={styles.chartMeta}>
+                  {history.setName} / {history.printing} / {history.condition}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.chartMeta}>Select a market row</Text>
+          )}
+        </View>
+        {history ? (
+          <View style={[styles.chartValue, compact && styles.chartValueCompact]}>
+            <Text style={styles.currentPrice}>{formatCurrency(history.endPrice)}</Text>
+            <MarketMovementValue
+              amount={history.changeAmount}
+              mode={movementMode}
+              percent={history.changePercent}
+              prominent
+            />
+            <Text style={styles.observationCount}>{history.points.length} observations</Text>
+          </View>
+        ) : null}
+      </View>
+      {activeVariantID === '' ? (
+        <View style={styles.chartLoading}>
+          <Text style={styles.loadingText}>No priced movement in this range</Text>
+        </View>
+      ) : fetching || !history ? (
+        <View style={styles.chartLoading}>
+          <ActivityIndicator color={colors.brand} />
+        </View>
+      ) : (
+        <PriceHistoryChart points={history.points} />
+      )}
     </View>
   );
 }
@@ -615,5 +785,76 @@ const styles = StyleSheet.create({
   },
   moverList: {
     gap: spacing.sm,
+  },
+  browseSection: {
+    marginTop: spacing.sm,
+  },
+  browseToolbar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  browseToolbarCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+  },
+  browseSearch: {
+    flex: 1,
+    maxWidth: 520,
+    minWidth: 220,
+  },
+  browseHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  browseLoading: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 220,
+  },
+  browseList: {
+    gap: spacing.sm,
+  },
+  loadMore: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    minHeight: 44,
+    minWidth: 180,
+    paddingHorizontal: spacing.lg,
+  },
+  loadMorePressed: {
+    backgroundColor: colors.surfaceQuiet,
+  },
+  loadMoreDisabled: {
+    opacity: 0.72,
+  },
+  loadMoreText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  endOfResults: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: spacing.lg,
+    textAlign: 'center',
   },
 });

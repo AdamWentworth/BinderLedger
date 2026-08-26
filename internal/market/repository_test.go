@@ -47,6 +47,27 @@ func TestParseRank(t *testing.T) {
 	}
 }
 
+func TestParseDirection(t *testing.T) {
+	tests := []struct {
+		value string
+		want  string
+		ok    bool
+	}{
+		{value: "", want: "all", ok: true},
+		{value: "ALL", want: "all", ok: true},
+		{value: "gainers", want: "gainers", ok: true},
+		{value: "decliners", want: "decliners", ok: true},
+		{value: "flat", want: "", ok: false},
+	}
+
+	for _, test := range tests {
+		got, ok := ParseDirection(test.value)
+		if got != test.want || ok != test.ok {
+			t.Fatalf("ParseDirection(%q) = (%q, %v)", test.value, got, ok)
+		}
+	}
+}
+
 func TestHistorySignal(t *testing.T) {
 	period, _ := ParsePeriod("1m")
 	if got := historySignal(period, 5, 3); got != "limited" {

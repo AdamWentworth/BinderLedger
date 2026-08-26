@@ -9,7 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const defaultMoverLimit = 8
+const (
+	defaultMoverLimit    = 8
+	defaultMovementLimit = 24
+	maximumMovementLimit = 60
+)
 
 var marketConditions = map[string]struct{}{
 	"Near Mint":         {},
@@ -53,6 +57,55 @@ func (api *API) marketOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, overview)
+}
+
+func (api *API) marketMovements(w http.ResponseWriter, r *http.Request) {
+	period, ok := market.ParsePeriod(r.URL.Query().Get("period"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "period must be 1d, 1w, 1m, 1y, or all")
+		return
+	}
+	condition, ok := marketCondition(r.URL.Query().Get("condition"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "condition is not supported")
+		return
+	}
+	rank, ok := market.ParseRank(r.URL.Query().Get("rank"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "rank must be amount or percent")
+		return
+	}
+	direction, ok := market.ParseDirection(r.URL.Query().Get("direction"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "direction must be all, gainers, or decliners")
+		return
+	}
+	limit, ok := queryInteger(r, "limit", defaultMovementLimit, 1, maximumMovementLimit)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "limit must be between 1 and 60")
+		return
+	}
+	offset, ok := queryInteger(r, "offset", 0, 0, 1_000_000)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "offset must be between 0 and 1000000")
+		return
+	}
+
+	page, err := api.market.Movements(r.Context(), market.MovementFilter{
+		Period:    period,
+		Condition: condition,
+		SetID:     r.URL.Query().Get("set_id"),
+		Query:     r.URL.Query().Get("q"),
+		Direction: direction,
+		Rank:      rank,
+		Limit:     limit,
+		Offset:    offset,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "market movements are unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (api *API) marketVariantHistory(w http.ResponseWriter, r *http.Request) {

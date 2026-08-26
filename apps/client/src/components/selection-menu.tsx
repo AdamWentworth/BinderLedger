@@ -1,6 +1,6 @@
 import { Check, ChevronDown, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/constants/theme';
@@ -67,26 +67,28 @@ export function SelectionMenu<T extends string>({
                 <X color={colors.text} size={19} />
               </Pressable>
             </View>
-            {options.map((option) => {
-              const selected = option.value === value;
-              return (
-                <Pressable
-                  accessibilityRole="menuitem"
-                  accessibilityState={{ selected }}
-                  key={option.value}
-                  onPress={() => select(option.value)}
-                  style={({ pressed }) => [
-                    styles.option,
-                    selected && styles.optionSelected,
-                    pressed && styles.optionPressed,
-                  ]}>
-                  <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                    {option.label}
-                  </Text>
-                  {selected ? <Check color={colors.brand} size={18} /> : null}
-                </Pressable>
-              );
-            })}
+            <ScrollView bounces={false} style={styles.optionList}>
+              {options.map((option) => {
+                const selected = option.value === value;
+                return (
+                  <Pressable
+                    accessibilityRole="menuitem"
+                    accessibilityState={{ selected }}
+                    key={option.value}
+                    onPress={() => select(option.value)}
+                    style={({ pressed }) => [
+                      styles.option,
+                      selected && styles.optionSelected,
+                      pressed && styles.optionPressed,
+                    ]}>
+                    <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
+                      {option.label}
+                    </Text>
+                    {selected ? <Check color={colors.brand} size={18} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         </SafeAreaView>
       </Modal>
@@ -140,9 +142,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
+    maxHeight: '86%',
     maxWidth: 420,
     overflow: 'hidden',
     width: '100%',
+  },
+  optionList: {
+    flexShrink: 1,
   },
   menuHeader: {
     alignItems: 'center',

@@ -31,6 +31,7 @@ import { Metric } from '@/components/metric';
 import { PriceHistoryChart } from '@/components/price-history-chart';
 import { Screen } from '@/components/screen';
 import { SearchField } from '@/components/search-field';
+import { SelectionMenu } from '@/components/selection-menu';
 import { colors, getUsablePageWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
 import { useCatalogPreferences } from '@/providers/catalog-preferences';
@@ -38,6 +39,7 @@ import {
   formatCurrency,
   formatPercent,
   formatSignedCurrency,
+  getCatalogSets,
   getCatalogListingForVariant,
   getMarketMovements,
   getMarketOverview,
@@ -50,6 +52,7 @@ import {
   type VariantHistory,
   resolveImageURL,
 } from '@/lib/api';
+import { buildMarketSetOptions } from '@/lib/market-set-options';
 
 export default function MarketScreen() {
   const width = useHydratedWidth();
@@ -64,8 +67,18 @@ export default function MarketScreen() {
   const [selectedVariantID, setSelectedVariantID] = useState('');
   const [detailVariantID, setDetailVariantID] = useState('');
   const [direction, setDirection] = useState<MarketMovementDirection>('all');
+  const [setID, setSetID] = useState('');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
+
+  const setsQuery = useQuery({
+    queryKey: ['catalog', 'sets'],
+    queryFn: ({ signal }) => getCatalogSets(signal),
+    staleTime: 15 * 60_000,
+  });
+  const setOptions = buildMarketSetOptions(setsQuery.data ?? []);
+  const selectedSetLabel =
+    setOptions.find((option) => option.value === setID)?.label ?? 'All sets';
 
   const overviewQuery = useQuery({
     queryKey: ['market', 'overview', period, condition, movementMode],
@@ -86,6 +99,7 @@ export default function MarketScreen() {
       condition,
       movementMode,
       direction,
+      setID,
       deferredSearch,
     ],
     queryFn: ({ pageParam, signal }) =>
@@ -94,6 +108,7 @@ export default function MarketScreen() {
         condition,
         rank: movementMode,
         direction,
+        setId: setID,
         query: deferredSearch,
         limit: 24,
         offset: pageParam,
@@ -155,6 +170,11 @@ export default function MarketScreen() {
 
   const changeDirection = (next: MarketMovementDirection) => {
     setDirection(next);
+    setSelectedVariantID('');
+  };
+
+  const changeSet = (next: string) => {
+    setSetID(next);
     setSelectedVariantID('');
   };
 
@@ -335,7 +355,22 @@ export default function MarketScreen() {
                     value={search}
                   />
                 </View>
-                <MarketDirectionControl direction={direction} onChange={changeDirection} />
+                <View
+                  style={[
+                    styles.browseFilters,
+                    abbreviateConditions && styles.browseFiltersCompact,
+                  ]}>
+                  <View style={styles.browseSetFilter}>
+                    <SelectionMenu
+                      accessibilityLabel="Filter market movement by set"
+                      label="Set"
+                      onChange={changeSet}
+                      options={setOptions}
+                      value={setID}
+                    />
+                  </View>
+                  <MarketDirectionControl direction={direction} onChange={changeDirection} />
+                </View>
               </View>
 
               <View style={styles.browseHeader}>
@@ -348,7 +383,7 @@ export default function MarketScreen() {
                     ? 'Loading ranked cards'
                     : browseTotal === 0
                       ? '0 matching printings'
-                      : `${browseMovers.length} of ${browseTotal} printings`}
+                      : `${browseMovers.length} of ${browseTotal} printings / ${selectedSetLabel}`}
                 </Text>
               </View>
 
@@ -855,6 +890,18 @@ const styles = StyleSheet.create({
   browseSearch: {
     flex: 1,
     maxWidth: 520,
+    minWidth: 220,
+  },
+  browseFilters: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  browseFiltersCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+  },
+  browseSetFilter: {
     minWidth: 220,
   },
   browseHeader: {

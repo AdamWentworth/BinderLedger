@@ -9,7 +9,10 @@ type AppConfig = {
   expo: {
     icon: string;
     ios: { icon: string };
-    android: { adaptiveIcon: { backgroundColor: string; foregroundImage: string } };
+    android: {
+      versionCode: number;
+      adaptiveIcon: { backgroundColor: string; foregroundImage: string };
+    };
     web: { favicon: string };
     plugins: ExpoPlugin[];
   };
@@ -35,5 +38,9 @@ describe('Expo branding configuration', () => {
       './assets/images/binderledger-icon-circle.png',
     );
     expect(config.expo.web.favicon).toBe('./assets/images/binderledger-favicon.png');
+  });
+
+  it('increments the Android package when native branding changes', () => {
+    expect(config.expo.android.versionCode).toBeGreaterThanOrEqual(2);
   });
 });

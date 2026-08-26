@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.adamwentworth.binderledger"
     },
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#06182F",
         "foregroundImage": "./assets/images/binderledger-icon-circle.png"

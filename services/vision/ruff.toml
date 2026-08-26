@@ -3,3 +3,6 @@ target-version = "py312"
 
 [lint]
 select = ["B", "E", "F", "I", "SIM", "UP"]
+
+[lint.isort]
+known-first-party = ["binderledger_vision"]

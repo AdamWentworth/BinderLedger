@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
 from binderledger_vision.matcher import (
     Reference,
     ReferenceMatcher,

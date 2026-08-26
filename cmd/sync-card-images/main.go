@@ -352,7 +352,7 @@ func findPriceChartingTargets(
 			  AND image.finish = variant.finish
 			  AND image.language = variant.language
 		  )
-		ORDER BY card.number_sort NULLS LAST, card.name, variant.finish, variant.language
+		ORDER BY 3, 2, 5, 6
 	`, setID, edition, cardID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query missing PriceCharting images: %w", err)

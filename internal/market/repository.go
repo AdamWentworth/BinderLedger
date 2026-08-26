@@ -53,6 +53,7 @@ type MovementFilter struct {
 	Period    Period
 	Condition string
 	SetID     string
+	Edition   string
 	Query     string
 	Direction string
 	Rank      string
@@ -352,6 +353,7 @@ func (repository *Repository) Overview(ctx context.Context, filter OverviewFilte
 
 func (repository *Repository) Movements(ctx context.Context, filter MovementFilter) (MovementPage, error) {
 	filter.SetID = strings.TrimSpace(filter.SetID)
+	filter.Edition = strings.TrimSpace(filter.Edition)
 	filter.Query = strings.TrimSpace(filter.Query)
 	if direction, ok := ParseDirection(filter.Direction); ok {
 		filter.Direction = direction
@@ -419,29 +421,33 @@ func (repository *Repository) Movements(ctx context.Context, filter MovementFilt
 		  )
 		  AND (
 			$4 = ''
-			OR c.name ILIKE '%' || $4 || '%'
-			OR coalesce(c.number, '') ILIKE '%' || $4 || '%'
-			OR s.name ILIKE '%' || $4 || '%'
+			OR v.edition = $4
 		  )
 		  AND (
-			$5 = 'all'
-			OR ($5 = 'gainers' AND movement.change_percent > 0)
-			OR ($5 = 'decliners' AND movement.change_percent < 0)
+			$5 = ''
+			OR c.name ILIKE '%' || $5 || '%'
+			OR coalesce(c.number, '') ILIKE '%' || $5 || '%'
+			OR s.name ILIKE '%' || $5 || '%'
+		  )
+		  AND (
+			$6 = 'all'
+			OR ($6 = 'gainers' AND movement.change_percent > 0)
+			OR ($6 = 'decliners' AND movement.change_percent < 0)
 		  )
 		ORDER BY
-			CASE WHEN $5 = 'all' AND $6 = 'amount' THEN abs(movement.change_amount) END DESC,
-			CASE WHEN $5 = 'all' AND $6 = 'percent' THEN abs(movement.change_percent) END DESC,
-			CASE WHEN $5 = 'gainers' AND $6 = 'amount' THEN movement.change_amount END DESC,
-			CASE WHEN $5 = 'gainers' AND $6 = 'percent' THEN movement.change_percent END DESC,
-			CASE WHEN $5 = 'decliners' AND $6 = 'amount' THEN movement.change_amount END ASC,
-			CASE WHEN $5 = 'decliners' AND $6 = 'percent' THEN movement.change_percent END ASC,
+			CASE WHEN $6 = 'all' AND $7 = 'amount' THEN abs(movement.change_amount) END DESC,
+			CASE WHEN $6 = 'all' AND $7 = 'percent' THEN abs(movement.change_percent) END DESC,
+			CASE WHEN $6 = 'gainers' AND $7 = 'amount' THEN movement.change_amount END DESC,
+			CASE WHEN $6 = 'gainers' AND $7 = 'percent' THEN movement.change_percent END DESC,
+			CASE WHEN $6 = 'decliners' AND $7 = 'amount' THEN movement.change_amount END ASC,
+			CASE WHEN $6 = 'decliners' AND $7 = 'percent' THEN movement.change_percent END ASC,
 			s.display_order,
 			s.name,
 			c.number,
 			c.name,
 			v.id
-		LIMIT $7 OFFSET $8
-	`, filter.Period.Key, filter.Condition, filter.SetID, filter.Query, filter.Direction, filter.Rank, filter.Limit, filter.Offset)
+		LIMIT $8 OFFSET $9
+	`, filter.Period.Key, filter.Condition, filter.SetID, filter.Edition, filter.Query, filter.Direction, filter.Rank, filter.Limit, filter.Offset)
 	if err != nil {
 		return MovementPage{}, fmt.Errorf("query market movements: %w", err)
 	}

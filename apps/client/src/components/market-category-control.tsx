@@ -13,22 +13,22 @@ type MarketCategoryControlProps = {
 
 const categories = [
   {
-    description: 'Market pulse and top movers',
+    description: 'Pulse and standout movement',
     Icon: LineChart,
     key: 'highlights' as const,
-    label: 'Highlights',
+    label: 'Overview',
   },
   {
-    description: 'Search the full movement list',
-    Icon: LibraryBig,
-    key: 'browse' as const,
-    label: 'Browse cards',
-  },
-  {
-    description: 'Edition-specific set baskets',
+    description: 'Compare baskets, then drill into cards',
     Icon: Layers3,
     key: 'sets' as const,
-    label: 'Set performance',
+    label: 'Sets',
+  },
+  {
+    description: 'Search every card movement',
+    Icon: LibraryBig,
+    key: 'browse' as const,
+    label: 'Cards',
   },
 ];
 

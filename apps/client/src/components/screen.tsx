@@ -1,4 +1,4 @@
-import { PropsWithChildren, ReactNode } from 'react';
+import { PropsWithChildren, ReactNode, useEffect, useRef } from 'react';
 import {
   Image,
   Platform,
@@ -18,15 +18,30 @@ type ScreenProps = PropsWithChildren<{
   subtitle: string;
   toolbar?: ReactNode;
   condensed?: boolean;
+  scrollResetKey?: string | number;
 }>;
 
-export function Screen({ title, subtitle, toolbar, condensed = false, children }: ScreenProps) {
+export function Screen({
+  title,
+  subtitle,
+  toolbar,
+  condensed = false,
+  scrollResetKey,
+  children,
+}: ScreenProps) {
   const width = useHydratedWidth();
   const compact = width < 720;
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (scrollResetKey === undefined) return;
+    scrollRef.current?.scrollTo({ animated: false, y: 0 });
+  }, [scrollResetKey]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.scrollContent,
           compact ? styles.scrollContentCompact : styles.scrollContentWide,

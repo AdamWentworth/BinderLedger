@@ -593,6 +593,7 @@ type MarketMovementsRequest = {
   condition: MarketCondition;
   rank?: MarketMovementMode;
   direction?: MarketMovementDirection;
+  edition?: string;
   query?: string;
   limit?: number;
   offset?: number;
@@ -605,6 +606,7 @@ export async function getMarketMovements({
   condition,
   rank = 'amount',
   direction = 'all',
+  edition = '',
   query = '',
   limit = 24,
   offset = 0,
@@ -619,6 +621,7 @@ export async function getMarketMovements({
     limit: String(limit),
     offset: String(offset),
   });
+  if (edition) parameters.set('edition', edition);
   if (query) parameters.set('q', query);
   if (setId) parameters.set('set_id', setId);
 

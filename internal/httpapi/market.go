@@ -95,6 +95,7 @@ func (api *API) marketMovements(w http.ResponseWriter, r *http.Request) {
 		Period:    period,
 		Condition: condition,
 		SetID:     r.URL.Query().Get("set_id"),
+		Edition:   r.URL.Query().Get("edition"),
 		Query:     r.URL.Query().Get("q"),
 		Direction: direction,
 		Rank:      rank,

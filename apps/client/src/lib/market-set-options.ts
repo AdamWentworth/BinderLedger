@@ -23,3 +23,12 @@ export function buildMarketSetOptions(sets: CatalogSet[]): MarketSetOption[] {
     }),
   ];
 }
+
+export function getMarketSetDisplayName(
+  setId: string,
+  fallback: string,
+  options: MarketSetOption[],
+): string {
+  const label = options.find((option) => option.value === setId)?.label;
+  return label?.split(/\s+\u2014\s+/)[0] ?? fallback;
+}

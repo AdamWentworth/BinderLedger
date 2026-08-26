@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { type CatalogSet } from './api';
-import { buildMarketSetOptions } from './market-set-options';
+import { buildMarketSetOptions, getMarketSetDisplayName } from './market-set-options';
 
 function setFixture(overrides: Partial<CatalogSet> & Pick<CatalogSet, 'id' | 'name'>): CatalogSet {
   return {
@@ -60,5 +60,24 @@ describe('buildMarketSetOptions', () => {
       { label: 'Base Set — Shadowless', value: 'base-set-shadowless-pokemon' },
       { label: 'Base Set — Unlimited', value: 'base-set-pokemon' },
     ]);
+  });
+});
+
+describe('getMarketSetDisplayName', () => {
+  it('uses the catalog group name for split Base Set views', () => {
+    expect(
+      getMarketSetDisplayName('base-set-shadowless-pokemon', 'Base Set Shadowless', [
+        { label: 'Base Set — Shadowless', value: 'base-set-shadowless-pokemon' },
+      ]),
+    ).toBe('Base Set');
+  });
+
+  it('keeps ordinary set names and falls back safely', () => {
+    expect(
+      getMarketSetDisplayName('jungle-pokemon', 'Jungle', [
+        { label: 'Jungle', value: 'jungle-pokemon' },
+      ]),
+    ).toBe('Jungle');
+    expect(getMarketSetDisplayName('missing', 'Unknown Set', [])).toBe('Unknown Set');
   });
 });

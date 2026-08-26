@@ -55,11 +55,14 @@ import {
   type MarketMovementMode,
   type MarketMover,
   type MarketPeriod,
-  type MarketSetMovement,
   type VariantHistory,
   resolveImageURL,
 } from '@/lib/api';
-import { buildMarketSetOptions, getMarketSetDisplayName } from '@/lib/market-set-options';
+import {
+  buildMarketSetMovementGroups,
+  type MarketSetBasket,
+} from '@/lib/market-set-groups';
+import { buildMarketSetOptions } from '@/lib/market-set-options';
 
 export default function MarketScreen() {
   const width = useHydratedWidth();
@@ -77,7 +80,7 @@ export default function MarketScreen() {
   const [direction, setDirection] = useState<MarketMovementDirection>('all');
   const [setRankingDirection, setSetRankingDirection] =
     useState<MarketMovementDirection>('all');
-  const [selectedSetMovement, setSelectedSetMovement] = useState<MarketSetMovement | null>(null);
+  const [selectedSetMovement, setSelectedSetMovement] = useState<MarketSetBasket | null>(null);
   const [setCardDirection, setSetCardDirection] = useState<MarketMovementDirection>('all');
   const [setID, setSetID] = useState('');
   const [search, setSearch] = useState('');
@@ -93,13 +96,7 @@ export default function MarketScreen() {
   const setOptions = buildMarketSetOptions(setsQuery.data ?? []);
   const selectedSetLabel =
     setOptions.find((option) => option.value === setID)?.label ?? 'All sets';
-  const selectedSetDisplayName = selectedSetMovement
-    ? getMarketSetDisplayName(
-        selectedSetMovement.setId,
-        selectedSetMovement.setName,
-        setOptions,
-      )
-    : '';
+  const selectedSetDisplayName = selectedSetMovement?.setName ?? '';
 
   const overviewQuery = useQuery({
     queryKey: ['market', 'overview', period, condition, edition, movementMode],
@@ -111,13 +108,17 @@ export default function MarketScreen() {
   const overview = overviewQuery.data;
   const displayedMovementMode = overview?.rank ?? movementMode;
   const movers = overview ? [...overview.gainers, ...overview.losers] : [];
-  const rankedSets =
-    overview?.sets.filter((set) => {
-      if (edition && set.edition !== edition) return false;
-      if (setRankingDirection === 'gainers') return set.changeAmount > 0;
-      if (setRankingDirection === 'decliners') return set.changeAmount < 0;
-      return true;
-    }) ?? [];
+  const setGroups = buildMarketSetMovementGroups(
+    overview?.sets ?? [],
+    setsQuery.data ?? [],
+    edition,
+    displayedMovementMode,
+  );
+  const rankedSetGroups = setGroups.filter((group) => {
+    if (setRankingDirection === 'gainers') return group.changeAmount > 0;
+    if (setRankingDirection === 'decliners') return group.changeAmount < 0;
+    return true;
+  });
 
   const browseQuery = useInfiniteQuery({
     queryKey: [
@@ -165,6 +166,7 @@ export default function MarketScreen() {
       setCardDirection,
       selectedSetMovement?.setId,
       selectedSetMovement?.edition,
+      selectedSetMovement?.queryEdition,
       deferredSetCardSearch,
     ],
     queryFn: ({ pageParam, signal }) =>
@@ -173,7 +175,7 @@ export default function MarketScreen() {
         condition,
         rank: movementMode,
         direction: setCardDirection,
-        edition: selectedSetMovement?.edition,
+        edition: selectedSetMovement?.queryEdition,
         setId: selectedSetMovement?.setId,
         query: deferredSetCardSearch,
         limit: 24,
@@ -232,11 +234,19 @@ export default function MarketScreen() {
 
   const changeCondition = (next: MarketCondition) => {
     setCondition(next);
+    setSelectedSetMovement(null);
     setSelectedVariantID('');
   };
 
   const changeMovementMode = (next: MarketMovementMode) => {
     setMovementMode(next);
+    setSelectedSetMovement(null);
+    setSelectedVariantID('');
+  };
+
+  const changePeriod = (next: MarketPeriod) => {
+    setPeriod(next);
+    setSelectedSetMovement(null);
     setSelectedVariantID('');
   };
 
@@ -263,7 +273,7 @@ export default function MarketScreen() {
     setSelectedVariantID('');
   };
 
-  const selectSetMovement = (set: MarketSetMovement) => {
+  const selectSetMovement = (set: MarketSetBasket) => {
     setSelectedSetMovement(set);
     setSetCardDirection('all');
     setSetCardSearch('');
@@ -285,7 +295,7 @@ export default function MarketScreen() {
       scrollResetKey={`${category}:${selectedSetMovement?.setId ?? ''}:${selectedSetMovement?.edition ?? ''}`}
       title="Market"
       subtitle="Track the market, compare set editions, and inspect the cards driving each move."
-      toolbar={<MarketPeriodControl period={period} onChange={setPeriod} />}>
+      toolbar={<MarketPeriodControl period={period} onChange={changePeriod} />}>
       <MarketCategoryControl
         category={category}
         compact={abbreviateConditions}
@@ -416,7 +426,9 @@ export default function MarketScreen() {
                         <Text style={styles.setDrillTitle}>{selectedSetDisplayName}</Text>
                         <Text style={styles.setDrillMeta}>
                           {selectedSetMovement.edition || 'All printings'} /{' '}
-                          {selectedSetMovement.variantCount} priced printings / {condition}
+                          {selectedSetMovement.variantCount} of{' '}
+                          {selectedSetMovement.expectedPrintingCount} tracked printings /{' '}
+                          {condition}
                         </Text>
                       </View>
                     </View>
@@ -516,7 +528,7 @@ export default function MarketScreen() {
                         <Text style={styles.sectionTitle}>Set rankings</Text>
                       </View>
                       <Text style={styles.sectionIntro}>
-                        Compare complete set-edition baskets, then select one to inspect its cards.
+                        Compare complete set families, then choose an edition basket to inspect its cards.
                       </Text>
                     </View>
                     <View style={styles.setRankingControls}>
@@ -531,72 +543,111 @@ export default function MarketScreen() {
                     {marketEditionLabel(edition)} / {condition} / {periodLabel(period)} / ranked by{' '}
                     {displayedMovementMode === 'amount' ? 'dollar movement' : 'percentage movement'}
                   </Text>
-                  {overview.sets.length === 0 ? (
+                  {setGroups.length === 0 ? (
                     <View style={styles.emptySets}>
                       <Layers3 color={colors.textMuted} size={26} />
-                      <Text style={styles.loadingText}>No set movement in this range</Text>
+                      <Text style={styles.loadingText}>No catalog sets are available</Text>
                     </View>
-                  ) : rankedSets.length === 0 ? (
+                  ) : rankedSetGroups.length === 0 ? (
                     <EmptyState
                       message="Choose another direction or time range."
                       title="No matching set movement"
                     />
                   ) : (
                     <View style={styles.setList}>
-                      {rankedSets.map((set) => {
-                        const artworkURL = resolveImageURL(set.symbolUrl ?? set.logoUrl);
-                        const edition = set.edition || 'All printings';
-                        const displayName = getMarketSetDisplayName(
-                          set.setId,
-                          set.setName,
-                          setOptions,
-                        );
+                      {rankedSetGroups.map((group) => {
+                        const artworkURL = resolveImageURL(group.symbolUrl ?? group.logoUrl);
                         return (
-                          <Pressable
-                            accessibilityHint="Shows the cards driving this set movement"
-                            accessibilityLabel={`${displayName}, ${edition}. ${formatCurrency(set.endValue)} current basket value, from ${formatCurrency(set.startValue)}. Change ${formatSignedCurrency(set.changeAmount)}, ${formatPercent(set.changePercent)}`}
-                            accessibilityRole="button"
-                            key={`${set.setId}:${edition}`}
-                            onPress={() => selectSetMovement(set)}
-                            style={({ pressed }) => [
-                              styles.setRow,
-                              pressed && styles.setRowPressed,
-                            ]}>
-                            <View style={styles.setArtwork}>
-                              {artworkURL ? (
-                                <Image
-                                  accessibilityElementsHidden
-                                  contentFit="contain"
-                                  source={artworkURL}
-                                  style={styles.setImage}
-                                />
-                              ) : (
-                                <Layers3 color={colors.textMuted} size={22} />
-                              )}
-                            </View>
-                            <View style={styles.setCopy}>
-                              <Text style={styles.setName}>{displayName}</Text>
-                              <Text style={styles.setMeta}>
-                                {compactSets
-                                  ? `${edition} / ${formatCurrency(set.endValue)} now / ${set.variantCount} printings`
-                                  : `${edition} / ${set.variantCount} fresh printings`}
-                              </Text>
-                            </View>
-                            {!compactSets ? (
-                              <View style={styles.setValue}>
-                                <Text style={styles.setTotal}>{formatCurrency(set.endValue)}</Text>
-                                <Text style={styles.setPrevious}>
-                                  from {formatCurrency(set.startValue)}
+                          <View key={group.key} style={styles.setGroup}>
+                            <View style={[styles.setGroupHeader, compactSets && styles.setGroupHeaderCompact]}>
+                              <View style={styles.setArtwork}>
+                                {artworkURL ? (
+                                  <Image
+                                    accessibilityElementsHidden
+                                    contentFit="contain"
+                                    source={artworkURL}
+                                    style={styles.setImage}
+                                  />
+                                ) : (
+                                  <Layers3 color={colors.textMuted} size={22} />
+                                )}
+                              </View>
+                              <View style={styles.setCopy}>
+                                <Text style={styles.setName}>{group.name}</Text>
+                                <Text style={styles.setMeta}>
+                                  {group.expectedPrintingCount} catalog printings /{' '}
+                                  {group.variantCount} tracked
                                 </Text>
                               </View>
-                            ) : null}
-                            <MarketMovementValue
-                              amount={set.changeAmount}
-                              mode={displayedMovementMode}
-                              percent={set.changePercent}
-                            />
-                            <ChevronRight color={colors.brand} size={19} />
-                          </Pressable>
+                              {group.hasMovement ? (
+                                <>
+                                  {!compactSets ? (
+                                    <View style={styles.setValue}>
+                                      <Text style={styles.setTotal}>
+                                        {formatCurrency(group.endValue)}
+                                      </Text>
+                                      <Text style={styles.setPrevious}>
+                                        from {formatCurrency(group.startValue)}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                  <MarketMovementValue
+                                    amount={group.changeAmount}
+                                    mode={displayedMovementMode}
+                                    percent={group.changePercent}
+                                  />
+                                </>
+                              ) : (
+                                <Text style={styles.setUnavailable}>Awaiting price history</Text>
+                              )}
+                            </View>
+                            <View style={styles.setBasketList}>
+                              {group.baskets.map((basket) => (
+                                <Pressable
+                                  accessibilityHint="Shows the cards driving this edition basket"
+                                  accessibilityLabel={`${group.name}, ${basket.edition}. ${basket.variantCount} of ${basket.expectedPrintingCount} tracked printings.${basket.hasMovement ? ` ${formatCurrency(basket.endValue)} current basket value, from ${formatCurrency(basket.startValue)}. Change ${formatSignedCurrency(basket.changeAmount)}, ${formatPercent(basket.changePercent)}` : ' Price history unavailable.'}`}
+                                  accessibilityRole="button"
+                                  disabled={!basket.hasMovement}
+                                  key={basket.key}
+                                  onPress={() => selectSetMovement(basket)}
+                                  style={({ pressed }) => [
+                                    styles.setBasketRow,
+                                    compactSets && styles.setBasketRowCompact,
+                                    !basket.hasMovement && styles.setBasketRowDisabled,
+                                    pressed && styles.setRowPressed,
+                                  ]}>
+                                  <View style={styles.setBasketCopy}>
+                                    <Text style={styles.setBasketEdition}>{basket.edition}</Text>
+                                    <Text style={styles.setMeta}>
+                                      {basket.variantCount} of {basket.expectedPrintingCount} tracked
+                                    </Text>
+                                  </View>
+                                  {basket.hasMovement ? (
+                                    <>
+                                      <View style={styles.setValue}>
+                                        <Text style={styles.setTotal}>
+                                          {formatCurrency(basket.endValue)}
+                                        </Text>
+                                        {!compactSets ? (
+                                          <Text style={styles.setPrevious}>
+                                            from {formatCurrency(basket.startValue)}
+                                          </Text>
+                                        ) : null}
+                                      </View>
+                                      <MarketMovementValue
+                                        amount={basket.changeAmount}
+                                        mode={displayedMovementMode}
+                                        percent={basket.changePercent}
+                                      />
+                                      <ChevronRight color={colors.brand} size={19} />
+                                    </>
+                                  ) : (
+                                    <Text style={styles.setUnavailable}>No comparison</Text>
+                                  )}
+                                </Pressable>
+                              ))}
+                            </View>
+                          </View>
                         );
                       })}
                     </View>
@@ -1169,20 +1220,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   setList: {
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
+    gap: spacing.md,
   },
-  setRow: {
+  setGroup: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  setGroupHeader: {
     alignItems: 'center',
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
     flexDirection: 'row',
     gap: spacing.md,
-    minHeight: 68,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    minHeight: 76,
+    padding: spacing.md,
+  },
+  setGroupHeaderCompact: {
+    flexWrap: 'wrap',
   },
   setRowPressed: {
     backgroundColor: colors.surfaceRaised,
@@ -1222,6 +1277,36 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 11,
   },
+  setBasketList: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+  },
+  setBasketRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    minHeight: 62,
+    paddingHorizontal: spacing.md,
+    paddingLeft: 80,
+    paddingVertical: spacing.sm,
+  },
+  setBasketRowDisabled: {
+    opacity: 0.62,
+  },
+  setBasketRowCompact: {
+    paddingLeft: spacing.md,
+  },
+  setBasketCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  setBasketEdition: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   setValue: {
     alignItems: 'flex-end',
   },
@@ -1233,6 +1318,11 @@ const styles = StyleSheet.create({
   setPrevious: {
     color: colors.textMuted,
     fontSize: 10,
+  },
+  setUnavailable: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
   },
   setRankingControls: {
     alignItems: 'center',

@@ -131,6 +131,20 @@ test('edition scope refreshes the complete market overview', async ({ page }) =>
 
   await page.getByRole('tab', { name: /^Sets\./ }).click();
   await expect(page.getByText(/First Edition \/ Near Mint \/ Past month/)).toBeVisible();
+  await expect(page.getByText('64 catalog printings / 1 tracked')).toBeVisible();
+
+  const setDrillRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === '/api/market/movements' &&
+      url.searchParams.get('set_id') === 'jungle-pokemon' &&
+      url.searchParams.get('edition') === 'First Edition'
+    );
+  });
+  await page.getByRole('button', { name: /^Jungle, First Edition\./ }).click();
+  await setDrillRequest;
+  await expect(page.getByText(/1 of 64 tracked printings/)).toBeVisible();
+  await page.getByRole('button', { name: 'Return to all set rankings' }).click();
 
   const cardMovementRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());

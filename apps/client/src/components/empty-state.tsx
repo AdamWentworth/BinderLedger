@@ -39,13 +39,13 @@ const styles = StyleSheet.create({
   },
   image: {
     height: 96,
-    width: 96,
+    width: 64,
   },
   imageFrame: {
     alignItems: 'center',
-    backgroundColor: colors.paper,
+    backgroundColor: colors.canvas,
     borderColor: colors.brand,
-    borderRadius: 68,
+    borderRadius: 20,
     borderWidth: 1,
     height: 128,
     justifyContent: 'center',

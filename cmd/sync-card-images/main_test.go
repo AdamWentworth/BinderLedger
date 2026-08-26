@@ -93,6 +93,17 @@ func TestInspectImage(t *testing.T) {
 	}
 }
 
+func TestInspectImageAllowsSmallVerifiedCardSource(t *testing.T) {
+	card := image.NewRGBA(image.Rect(0, 0, 180, 255))
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, card, &jpeg.Options{Quality: 85}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectImage(encoded.Bytes()); err != nil {
+		t.Fatalf("180x255 card image rejected: %v", err)
+	}
+}
+
 func TestImageFilename(t *testing.T) {
 	item := target{
 		CardID:   "pokemon-base-set-2-mr-mime",

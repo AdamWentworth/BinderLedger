@@ -34,7 +34,7 @@ import (
 
 const (
 	maximumImageBytes  = 12 << 20
-	minimumImageWidth  = 200
+	minimumImageWidth  = 175
 	minimumImageHeight = 250
 	defaultDelay       = 500 * time.Millisecond
 )

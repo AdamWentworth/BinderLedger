@@ -74,6 +74,12 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/justtcg-audit/package-lock.json
+      - run: npm ci
+        working-directory: tools/justtcg-audit
+      - run: npm run lint
+        working-directory: tools/justtcg-audit
       - run: npm test
         working-directory: tools/justtcg-audit
 

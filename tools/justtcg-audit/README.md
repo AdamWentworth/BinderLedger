@@ -1,15 +1,17 @@
 # BinderLedger JustTCG Audit
 
-Small, dependency-free tools used to evaluate and collect JustTCG coverage for
-BinderLedger. The initial scope is English Pokemon cards released from the
-original era through the end of the EX era, excluding Diamond & Pearl.
+Small tools used to evaluate and collect JustTCG coverage for BinderLedger. The
+runtime collector has no third-party dependencies. The initial scope is English
+Pokemon cards released from the original era through the end of the EX era,
+excluding Diamond & Pearl.
 
 ## Setup
 
-Requires Node.js 20.6 or newer. No `npm install` is needed.
+Requires Node.js 20.19 or newer.
 
 ```bash
 cd ~/src/BinderLedger/tools/justtcg-audit
+npm ci
 ln -s ../../.env .env
 ```
 
@@ -31,6 +33,7 @@ npm run sample
 npm run collect-base
 npm run collect-kanto
 npm run collect-machamp
+npm run lint
 npm test
 ```
 
@@ -63,6 +66,18 @@ Do not use `--fresh` casually during the full audit because it consumes quota.
 Generated JSON and Markdown live in `output/`. API responses are cached under
 `.cache/`; both directories are intentionally excluded from version control.
 
+Run `npm run lint` and `npm test` before changing collection logic.
+
 The proposed scope is date-based. Review `output/set-discovery.md`, then use
 `manualIncludeSetIds` and `manualExcludeSetIds` in `config/scope.json` to handle
 promos, trainer kits, POP series, or incorrectly dated provider sets.
+
+## Structure
+
+- `cli.mjs` validates runtime configuration and dispatches commands.
+- `probe-commands.mjs` owns discovery, sampling, and coverage audits.
+- `collection-commands.mjs` owns Base, Kanto, and legacy collection workflows.
+- `collection-service.mjs` owns reusable pagination, history retrieval, and
+  resumable collection persistence.
+- `collection-analysis.mjs`, `collection-targets.mjs`, and `reporting.mjs`
+  contain testable analysis, scope definitions, and output formatting.

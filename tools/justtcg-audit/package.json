@@ -13,9 +13,13 @@
     "collect-machamp": "node --env-file=.env src/cli.mjs collect-machamp",
     "collect-legacy": "node --env-file=.env src/cli.mjs collect-legacy",
     "audit": "node --env-file=.env src/cli.mjs audit",
+    "lint": "eslint src test",
     "test": "node --test"
   },
+  "devDependencies": {
+    "eslint": "10.9.1"
+  },
   "engines": {
-    "node": ">=20.6"
+    "node": ">=20.19"
   }
 }

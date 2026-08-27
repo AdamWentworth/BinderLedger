@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/jpeg"
+	"net/http"
 	"testing"
 )
 
@@ -21,9 +23,43 @@ func TestValidateSourceURL(t *testing.T) {
 	for _, value := range []string{
 		"http://product-images.tcgplayer.com/42444.jpg",
 		"https://example.com/42444.jpg",
+		"https://storage.googleapis.com.evil.example/images.pricecharting.com/abc123/1600.jpg",
+		"https://user@storage.googleapis.com/images.pricecharting.com/abc123/1600.jpg",
+		"https://storage.googleapis.com:444/images.pricecharting.com/abc123/1600.jpg",
 	} {
 		if err := validateSourceURL(value); err == nil {
 			t.Fatalf("untrusted URL %q accepted", value)
+		}
+	}
+}
+
+func TestDownloadRejectsUntrustedInitialURL(t *testing.T) {
+	if _, err := download(context.Background(), http.DefaultClient, "https://example.com/card.jpg"); err == nil {
+		t.Fatal("download accepted an untrusted initial URL")
+	}
+}
+
+func TestExtractPriceChartingImageURL(t *testing.T) {
+	body := []byte(`
+		<img src="https://example.com/not-a-card.jpg" />
+		<img class="photo" src="https://storage.googleapis.com/images.pricecharting.com/abc123/60.jpg" />
+	`)
+
+	got, ok := extractPriceChartingImageURL(body)
+	if !ok || got != "https://storage.googleapis.com/images.pricecharting.com/abc123/60.jpg" {
+		t.Fatalf("extractPriceChartingImageURL() = (%q, %v)", got, ok)
+	}
+}
+
+func TestExtractPriceChartingImageURLRejectsDeceptiveHosts(t *testing.T) {
+	for _, value := range []string{
+		"https://example.com/https://storage.googleapis.com/images.pricecharting.com/abc123/1600.jpg",
+		"https://storage.googleapis.com.evil.example/images.pricecharting.com/abc123/1600.jpg",
+		"https://storage.googleapis.com/images.pricecharting.com/abc123/1600.jpg?next=https://evil.example",
+	} {
+		body := []byte(`<img src="` + value + `" />`)
+		if got, ok := extractPriceChartingImageURL(body); ok {
+			t.Fatalf("deceptive URL %q accepted as %q", value, got)
 		}
 	}
 }

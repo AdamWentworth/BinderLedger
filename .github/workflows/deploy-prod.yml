@@ -94,3 +94,7 @@ jobs:
           BINDERLEDGER_TARGET_SHA: ${{ steps.confirmed.outputs.sha }}
           BINDERLEDGER_DEPLOY_RUN_ID: ${{ github.run_id }}
         run: bash ops/prod/scripts/deploy-runner.sh
+
+      - name: Log out of GHCR
+        if: always() && steps.revision.outputs.should_deploy == 'true'
+        run: docker logout ghcr.io

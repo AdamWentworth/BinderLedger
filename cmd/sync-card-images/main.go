@@ -396,12 +396,14 @@ func findPriceChartingTargets(
 }
 
 var (
-	priceChartingRowPattern    = regexp.MustCompile(`(?is)<tr\b[^>]*>.*?</tr>`)
-	priceChartingHrefPattern   = regexp.MustCompile(`(?is)<td\s+class="image".*?<a\s+href="(https://www\.pricecharting\.com/game/[^"]+)"`)
-	priceChartingImagePattern  = regexp.MustCompile(`(?is)https://storage\.googleapis\.com/images\.pricecharting\.com/[a-z0-9]+/(?:60|240|1600)\.jpg`)
-	priceChartingTitlePattern  = regexp.MustCompile(`(?is)<td\s+class="title"[^>]*>.*?<a\s+href="[^"]+">\s*([^<]+?)\s*</a>`)
-	priceChartingNumberPattern = regexp.MustCompile(`#([0-9]+)(?:\D|$)`)
-	priceChartingSizePattern   = regexp.MustCompile(`/(?:60|240|1600)\.jpg$`)
+	priceChartingRowPattern             = regexp.MustCompile(`(?is)<tr\b[^>]*>.*?</tr>`)
+	priceChartingHrefPattern            = regexp.MustCompile(`(?is)<td\s+class="image".*?<a\s+href="(https://www\.pricecharting\.com/game/[^"]+)"`)
+	priceChartingImageTagPattern        = regexp.MustCompile(`(?is)<img\b[^>]*>`)
+	priceChartingSourceAttributePattern = regexp.MustCompile(`(?is)\bsrc\s*=\s*"([^"]+)"`)
+	priceChartingImagePathPattern       = regexp.MustCompile(`^/images\.pricecharting\.com/[a-z0-9]+/(?:60|240|1600)\.jpg$`)
+	priceChartingTitlePattern           = regexp.MustCompile(`(?is)<td\s+class="title"[^>]*>.*?<a\s+href="[^"]+">\s*([^<]+?)\s*</a>`)
+	priceChartingNumberPattern          = regexp.MustCompile(`#([0-9]+)(?:\D|$)`)
+	priceChartingSizePattern            = regexp.MustCompile(`/(?:60|240|1600)\.jpg$`)
 )
 
 func resolvePriceChartingSet(
@@ -524,11 +526,11 @@ func resolvePriceChartingPage(
 	if err != nil {
 		return nil, fmt.Errorf("fetch PriceCharting product page: %w", err)
 	}
-	match := priceChartingImagePattern.Find(body)
-	if len(match) == 0 {
+	imageURL, ok := extractPriceChartingImageURL(body)
+	if !ok {
 		return nil, errors.New("PriceCharting product page has no main image")
 	}
-	imageURL := highResolutionPriceChartingURL(string(match))
+	imageURL = highResolutionPriceChartingURL(imageURL)
 	for index := range targets {
 		targets[index].SourceName = "PriceCharting"
 		targets[index].SourcePageURL = pageURL
@@ -568,9 +570,9 @@ func parsePriceChartingItems(body []byte) []priceChartingItem {
 	items := make([]priceChartingItem, 0, len(rows))
 	for _, row := range rows {
 		hrefMatch := priceChartingHrefPattern.FindSubmatch(row)
-		imageMatch := priceChartingImagePattern.Find(row)
+		imageURL, hasImage := extractPriceChartingImageURL(row)
 		titleMatch := priceChartingTitlePattern.FindSubmatch(row)
-		if len(hrefMatch) != 2 || len(imageMatch) == 0 || len(titleMatch) != 2 {
+		if len(hrefMatch) != 2 || !hasImage || len(titleMatch) != 2 {
 			continue
 		}
 		title := strings.TrimSpace(html.UnescapeString(string(titleMatch[1])))
@@ -586,10 +588,36 @@ func parsePriceChartingItems(body []byte) []priceChartingItem {
 			Number:   number,
 			Title:    title,
 			PageURL:  html.UnescapeString(string(hrefMatch[1])),
-			ImageURL: html.UnescapeString(string(imageMatch)),
+			ImageURL: imageURL,
 		})
 	}
 	return items
+}
+
+func extractPriceChartingImageURL(body []byte) (string, bool) {
+	for _, imageTag := range priceChartingImageTagPattern.FindAll(body, -1) {
+		match := priceChartingSourceAttributePattern.FindSubmatch(imageTag)
+		if len(match) != 2 {
+			continue
+		}
+		candidate := strings.TrimSpace(html.UnescapeString(string(match[1])))
+		if isPriceChartingImageURL(candidate) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func isPriceChartingImageURL(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	return err == nil &&
+		parsed.Scheme == "https" &&
+		parsed.User == nil &&
+		strings.EqualFold(parsed.Hostname(), "storage.googleapis.com") &&
+		parsed.Port() == "" &&
+		parsed.RawQuery == "" &&
+		parsed.Fragment == "" &&
+		priceChartingImagePathPattern.MatchString(parsed.Path)
 }
 
 func catalogCardNumber(value string) (int, error) {
@@ -613,6 +641,9 @@ func validateSourceURL(rawURL string) error {
 	if parsed.Scheme != "https" {
 		return errors.New("image URL must use HTTPS")
 	}
+	if parsed.User != nil || parsed.Port() != "" {
+		return errors.New("image URL must not contain credentials or a custom port")
+	}
 	host := strings.ToLower(parsed.Hostname())
 	if _, trusted := trustedImageHosts[host]; !trusted {
 		return fmt.Errorf("image host %q is not trusted", host)
@@ -621,6 +652,9 @@ func validateSourceURL(rawURL string) error {
 }
 
 func download(ctx context.Context, client *http.Client, sourceURL string) (downloadedImage, error) {
+	if err := validateSourceURL(sourceURL); err != nil {
+		return downloadedImage{}, fmt.Errorf("validate image URL: %w", err)
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return downloadedImage{}, err

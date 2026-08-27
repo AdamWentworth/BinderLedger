@@ -177,7 +177,13 @@ func TestInspectImageAllowsSmallVerifiedCardSource(t *testing.T) {
 
 func TestInspectImageTrimsLightSquareBorder(t *testing.T) {
 	canvas := image.NewRGBA(image.Rect(0, 0, 400, 400))
-	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+	draw.Draw(
+		canvas,
+		canvas.Bounds(),
+		&image.Uniform{C: color.RGBA{R: 235, G: 235, B: 233, A: 255}},
+		image.Point{},
+		draw.Src,
+	)
 	draw.Draw(
 		canvas,
 		image.Rect(80, 10, 320, 390),

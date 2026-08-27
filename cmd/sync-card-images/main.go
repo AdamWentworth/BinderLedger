@@ -795,7 +795,7 @@ func isLightNeutral(value color.Color) bool {
 	r := int(red >> 8)
 	g := int(green >> 8)
 	b := int(blue >> 8)
-	return r >= 235 && g >= 235 && b >= 235 && max(r, g, b)-min(r, g, b) <= 15
+	return r >= 225 && g >= 225 && b >= 225 && max(r, g, b)-min(r, g, b) <= 20
 }
 
 func imageFilename(item target, extension string) string {

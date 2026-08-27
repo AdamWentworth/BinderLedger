@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"html"
 	"image"
-	_ "image/jpeg"
-	_ "image/png"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"log/slog"
 	"net/http"
@@ -35,7 +37,7 @@ import (
 const (
 	maximumImageBytes  = 12 << 20
 	minimumImageWidth  = 175
-	minimumImageHeight = 250
+	minimumImageHeight = 245
 	defaultDelay       = 500 * time.Millisecond
 )
 
@@ -694,7 +696,13 @@ func inspectImage(data []byte) (downloadedImage, error) {
 	}
 	aspect := float64(configuration.Width) / float64(configuration.Height)
 	if aspect < 0.55 || aspect > 0.85 {
-		return downloadedImage{}, fmt.Errorf("image aspect ratio %.3f is not card-like", aspect)
+		normalized, width, height, ok := trimLightImageBorder(data, mimeType)
+		if !ok {
+			return downloadedImage{}, fmt.Errorf("image aspect ratio %.3f is not card-like", aspect)
+		}
+		data = normalized
+		configuration.Width = width
+		configuration.Height = height
 	}
 	digest := sha256.Sum256(data)
 	return downloadedImage{
@@ -704,6 +712,90 @@ func inspectImage(data []byte) (downloadedImage, error) {
 		Width:     configuration.Width,
 		Height:    configuration.Height,
 	}, nil
+}
+
+func trimLightImageBorder(data []byte, mimeType string) ([]byte, int, int, bool) {
+	source, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, 0, false
+	}
+	bounds := source.Bounds()
+	if bounds.Dx() < minimumImageWidth || bounds.Dy() < minimumImageHeight {
+		return nil, 0, 0, false
+	}
+	for _, point := range []image.Point{
+		bounds.Min,
+		{X: bounds.Max.X - 1, Y: bounds.Min.Y},
+		{X: bounds.Min.X, Y: bounds.Max.Y - 1},
+		{X: bounds.Max.X - 1, Y: bounds.Max.Y - 1},
+	} {
+		if !isLightNeutral(source.At(point.X, point.Y)) {
+			return nil, 0, 0, false
+		}
+	}
+
+	minimumColumnPixels := max(4, bounds.Dy()/100)
+	minimumRowPixels := max(4, bounds.Dx()/100)
+	left, right := bounds.Max.X, bounds.Min.X-1
+	top, bottom := bounds.Max.Y, bounds.Min.Y-1
+	for x := bounds.Min.X; x < bounds.Max.X; x++ {
+		count := 0
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			if !isLightNeutral(source.At(x, y)) {
+				count++
+			}
+		}
+		if count >= minimumColumnPixels {
+			left = min(left, x)
+			right = max(right, x)
+		}
+	}
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		count := 0
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if !isLightNeutral(source.At(x, y)) {
+				count++
+			}
+		}
+		if count >= minimumRowPixels {
+			top = min(top, y)
+			bottom = max(bottom, y)
+		}
+	}
+	if right < left || bottom < top {
+		return nil, 0, 0, false
+	}
+
+	cropBounds := image.Rect(0, 0, right-left+1, bottom-top+1)
+	aspect := float64(cropBounds.Dx()) / float64(cropBounds.Dy())
+	if cropBounds.Dx() < minimumImageWidth || cropBounds.Dy() < minimumImageHeight || aspect < 0.55 || aspect > 0.85 {
+		return nil, 0, 0, false
+	}
+	cropped := image.NewRGBA(cropBounds)
+	draw.Draw(cropped, cropBounds, source, image.Point{X: left, Y: top}, draw.Src)
+
+	var encoded bytes.Buffer
+	switch mimeType {
+	case "image/jpeg":
+		if err := jpeg.Encode(&encoded, cropped, &jpeg.Options{Quality: 95}); err != nil {
+			return nil, 0, 0, false
+		}
+	case "image/png":
+		if err := png.Encode(&encoded, cropped); err != nil {
+			return nil, 0, 0, false
+		}
+	default:
+		return nil, 0, 0, false
+	}
+	return encoded.Bytes(), cropBounds.Dx(), cropBounds.Dy(), true
+}
+
+func isLightNeutral(value color.Color) bool {
+	red, green, blue, _ := value.RGBA()
+	r := int(red >> 8)
+	g := int(green >> 8)
+	b := int(blue >> 8)
+	return r >= 235 && g >= 235 && b >= 235 && max(r, g, b)-min(r, g, b) <= 15
 }
 
 func imageFilename(item target, extension string) string {

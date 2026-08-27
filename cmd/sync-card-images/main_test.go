@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/jpeg"
 	"testing"
 )
@@ -164,13 +165,49 @@ func TestInspectImage(t *testing.T) {
 }
 
 func TestInspectImageAllowsSmallVerifiedCardSource(t *testing.T) {
-	card := image.NewRGBA(image.Rect(0, 0, 180, 255))
+	card := image.NewRGBA(image.Rect(0, 0, 180, 249))
 	var encoded bytes.Buffer
 	if err := jpeg.Encode(&encoded, card, &jpeg.Options{Quality: 85}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := inspectImage(encoded.Bytes()); err != nil {
-		t.Fatalf("180x255 card image rejected: %v", err)
+		t.Fatalf("180x249 card image rejected: %v", err)
+	}
+}
+
+func TestInspectImageTrimsLightSquareBorder(t *testing.T) {
+	canvas := image.NewRGBA(image.Rect(0, 0, 400, 400))
+	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+	draw.Draw(
+		canvas,
+		image.Rect(80, 10, 320, 390),
+		&image.Uniform{C: color.RGBA{R: 220, G: 170, B: 20, A: 255}},
+		image.Point{},
+		draw.Src,
+	)
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, canvas, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := inspectImage(encoded.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Width < 230 || result.Width > 250 || result.Height < 370 || result.Height > 390 {
+		t.Fatalf("unexpected trimmed dimensions: %dx%d", result.Width, result.Height)
+	}
+}
+
+func TestInspectImageRejectsUnrecoverableSquareImage(t *testing.T) {
+	canvas := image.NewRGBA(image.Rect(0, 0, 400, 400))
+	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.Black}, image.Point{}, draw.Src)
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, canvas, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectImage(encoded.Bytes()); err == nil {
+		t.Fatal("unrecoverable square image accepted")
 	}
 }
 

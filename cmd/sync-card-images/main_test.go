@@ -69,6 +69,76 @@ func TestCatalogCardNumber(t *testing.T) {
 	}
 }
 
+func TestPriceChartingItemMatchesTarget(t *testing.T) {
+	tests := []struct {
+		name   string
+		title  string
+		target target
+		want   bool
+	}{
+		{
+			name:  "unlimited regular",
+			title: "Ampharos #1",
+			target: target{
+				Edition: "Unlimited",
+				Finish:  "Holofoil",
+			},
+			want: true,
+		},
+		{
+			name:  "reject first edition for unlimited",
+			title: "Ampharos [1st Edition] #1",
+			target: target{
+				Edition: "Unlimited",
+				Finish:  "Holofoil",
+			},
+		},
+		{
+			name:  "first edition",
+			title: "Ampharos [1st Edition] #1",
+			target: target{
+				Edition: "First Edition",
+				Finish:  "Holofoil",
+			},
+			want: true,
+		},
+		{
+			name:  "reverse holo",
+			title: "Dark Blastoise [Reverse Holo] #4",
+			target: target{
+				Edition: "Unlimited",
+				Finish:  "Reverse Holofoil",
+			},
+			want: true,
+		},
+		{
+			name:  "reject reverse holo for regular",
+			title: "Dark Blastoise [Reverse Holo] #4",
+			target: target{
+				Edition: "Unlimited",
+				Finish:  "Holofoil",
+			},
+		},
+		{
+			name:  "reject unrelated qualifier",
+			title: "Dark Blastoise [Reverse Holo] [Error] #4",
+			target: target{
+				Edition: "Unlimited",
+				Finish:  "Reverse Holofoil",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			item := priceChartingItem{Title: test.title}
+			if got := priceChartingItemMatchesTarget(item, test.target); got != test.want {
+				t.Fatalf("priceChartingItemMatchesTarget(%q) = %v, want %v", test.title, got, test.want)
+			}
+		})
+	}
+}
+
 func TestInspectImage(t *testing.T) {
 	card := image.NewRGBA(image.Rect(0, 0, 300, 420))
 	for y := 0; y < 420; y++ {

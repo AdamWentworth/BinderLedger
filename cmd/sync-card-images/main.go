@@ -86,6 +86,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string) error {
 	flags := flag.NewFlagSet("sync-card-images", flag.ContinueOnError)
 	setID := flags.String("set-id", "", "catalog set ID to synchronize")
 	edition := flags.String("edition", "", "exact catalog edition to synchronize from PriceCharting")
+	finish := flags.String("finish", "", "optional exact catalog finish to synchronize from PriceCharting")
 	cardID := flags.String("card-id", "", "optional exact catalog card ID")
 	priceChartingSet := flags.String("pricecharting-set", "", "PriceCharting console slug for exact-printing images")
 	sourcePageURL := flags.String("source-page-url", "", "PriceCharting product page for a single exact card")
@@ -96,6 +97,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string) error {
 	}
 	*setID = strings.TrimSpace(*setID)
 	*edition = strings.TrimSpace(*edition)
+	*finish = strings.TrimSpace(*finish)
 	*cardID = strings.TrimSpace(*cardID)
 	*priceChartingSet = strings.TrimSpace(*priceChartingSet)
 	*sourcePageURL = strings.TrimSpace(*sourcePageURL)
@@ -139,7 +141,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string) error {
 		if *sourcePageURL != "" && *cardID == "" {
 			return errors.New("-card-id is required with -source-page-url")
 		}
-		targets, cardCount, err = findPriceChartingTargets(ctx, db, *setID, *edition, *cardID)
+		targets, cardCount, err = findPriceChartingTargets(ctx, db, *setID, *edition, *finish, *cardID)
 		if err != nil {
 			return err
 		}
@@ -163,6 +165,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string) error {
 		"card image sync planned",
 		"set_id", *setID,
 		"edition", *edition,
+		"finish", *finish,
 		"source", func() string {
 			if priceChartingMode {
 				return "PriceCharting"
@@ -321,7 +324,7 @@ func findTargets(ctx context.Context, db *pgxpool.Pool, setID string) ([]target,
 func findPriceChartingTargets(
 	ctx context.Context,
 	db *pgxpool.Pool,
-	setID, edition, cardID string,
+	setID, edition, finish, cardID string,
 ) ([]target, int, error) {
 	var cardCount int
 	if err := db.QueryRow(ctx, `SELECT count(*) FROM catalog_cards WHERE set_id = $1`, setID).Scan(&cardCount); err != nil {
@@ -343,7 +346,8 @@ func findPriceChartingTargets(
 		JOIN catalog_card_variants variant ON variant.card_id = card.id
 		WHERE card.set_id = $1
 		  AND variant.edition = $2
-		  AND ($3 = '' OR card.id = $3)
+		  AND ($3 = '' OR variant.finish = $3)
+		  AND ($4 = '' OR card.id = $4)
 		  AND NOT EXISTS (
 			SELECT 1
 			FROM catalog_printing_images image
@@ -353,7 +357,7 @@ func findPriceChartingTargets(
 			  AND image.language = variant.language
 		  )
 		ORDER BY 3, 2, 5, 6
-	`, setID, edition, cardID)
+	`, setID, edition, finish, cardID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query missing PriceCharting images: %w", err)
 	}
@@ -448,29 +452,29 @@ func resolvePriceChartingSet(
 		return nil, fmt.Errorf("PriceCharting set %q returned no card images", setSlug)
 	}
 
-	regularByNumber := make(map[int][]priceChartingItem)
-	for _, item := range items {
-		if strings.Contains(item.Title, "[") {
-			continue
-		}
-		regularByNumber[item.Number] = append(regularByNumber[item.Number], item)
-	}
 	for index := range targets {
 		number, err := catalogCardNumber(targets[index].CardNumber)
 		if err != nil {
 			return nil, fmt.Errorf("card %s: %w", targets[index].CardID, err)
 		}
-		matches := regularByNumber[number]
+		matches := make([]priceChartingItem, 0, 1)
+		for _, item := range items {
+			if item.Number == number && priceChartingItemMatchesTarget(item, targets[index]) {
+				matches = append(matches, item)
+			}
+		}
 		if len(matches) != 1 {
 			titles := make([]string, 0, len(matches))
 			for _, match := range matches {
 				titles = append(titles, match.Title)
 			}
 			return nil, fmt.Errorf(
-				"card %s number %d matched %d regular PriceCharting items: %s",
+				"card %s number %d matched %d exact PriceCharting items for %s / %s: %s",
 				targets[index].CardID,
 				number,
 				len(matches),
+				targets[index].Edition,
+				targets[index].Finish,
 				strings.Join(titles, ", "),
 			)
 		}
@@ -479,6 +483,29 @@ func resolvePriceChartingSet(
 		targets[index].SourceImageURL = highResolutionPriceChartingURL(matches[0].ImageURL)
 	}
 	return targets, nil
+}
+
+var priceChartingQualifierPattern = regexp.MustCompile(`\[([^\]]+)\]`)
+
+func priceChartingItemMatchesTarget(item priceChartingItem, target target) bool {
+	wantsFirstEdition := strings.EqualFold(strings.TrimSpace(target.Edition), "First Edition")
+	wantsReverseHolo := strings.EqualFold(strings.TrimSpace(target.Finish), "Reverse Holofoil")
+	foundFirstEdition := false
+	foundReverseHolo := false
+
+	for _, qualifier := range priceChartingQualifierPattern.FindAllStringSubmatch(item.Title, -1) {
+		value := strings.ToLower(strings.TrimSpace(qualifier[1]))
+		switch value {
+		case "1st edition":
+			foundFirstEdition = true
+		case "reverse holo":
+			foundReverseHolo = true
+		default:
+			return false
+		}
+	}
+
+	return foundFirstEdition == wantsFirstEdition && foundReverseHolo == wantsReverseHolo
 }
 
 func resolvePriceChartingPage(

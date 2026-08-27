@@ -33,7 +33,7 @@ describe('Expo branding configuration', () => {
 
   it('keeps every platform mapped to the intended branding assets', () => {
     expect(config.expo.icon).toBe('./assets/images/binderledger-icon-circle.png');
-    expect(config.expo.ios.icon).toBe('./assets/images/binderledger-icon-ios.png');
+    expect(config.expo.ios.icon).toBe('./assets/images/binderledger-icon-circle.png');
     expect(config.expo.android.adaptiveIcon.foregroundImage).toBe(
       './assets/images/binderledger-icon-circle.png',
     );

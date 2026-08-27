@@ -8,7 +8,7 @@
     "scheme": "binderledger",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/images/binderledger-icon-ios.png",
+      "icon": "./assets/images/binderledger-icon-circle.png",
       "bundleIdentifier": "com.adamwentworth.binderledger"
     },
     "android": {

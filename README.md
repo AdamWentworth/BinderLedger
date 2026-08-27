@@ -189,6 +189,11 @@ npm run export:web
 npm run test:e2e
 ```
 
+Portfolio screenshots and walkthrough videos can be regenerated with
+`npm run capture:demo:media`; see
+[the showcase-media guide](docs/showcase-media.md) for the read-only workflow
+and Phlosion-compatible output layout.
+
 Backend and worker checks:
 
 ```bash

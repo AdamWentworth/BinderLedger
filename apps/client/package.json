@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
+    "@types/node": "26.2.0",
     "@types/react": "~19.2.4",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
@@ -54,6 +55,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
+    "capture:demo:media": "playwright test --config demo-media.playwright.config.ts",
     "doctor": "expo-doctor",
     "ios": "expo start --ios",
     "web": "expo start --web",

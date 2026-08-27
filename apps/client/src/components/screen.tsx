@@ -1,6 +1,5 @@
 import { PropsWithChildren, ReactNode, useEffect, useRef } from 'react';
 import {
-  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandLockup } from '@/components/brand-lockup';
 import { ConnectionStatus } from '@/components/connection-status';
 import { colors, contentMaxWidth, spacing } from '@/constants/theme';
 import { useHydratedWidth } from '@/hooks/use-hydrated-width';
@@ -49,16 +49,7 @@ export function Screen({
         keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
           <View style={styles.topBar}>
-            <View style={styles.brand}>
-              <Image
-                resizeMode="cover"
-                source={require('@/assets/images/binderledger-mark.png')}
-                style={styles.brandMark}
-              />
-              <Text style={styles.brandName}>
-                Binder<Text style={styles.brandNameAccent}>Ledger</Text>
-              </Text>
-            </View>
+            <BrandLockup />
             <ConnectionStatus />
           </View>
 
@@ -110,25 +101,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     minHeight: Platform.OS === 'web' ? 72 : 62,
-  },
-  brand: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 10,
-  },
-  brandMark: {
-    borderRadius: 8,
-    height: 42,
-    width: 28,
-  },
-  brandName: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  brandNameAccent: {
-    color: colors.brass,
   },
   headingRow: {
     alignItems: 'flex-end',

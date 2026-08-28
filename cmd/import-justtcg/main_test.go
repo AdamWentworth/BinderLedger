@@ -97,8 +97,17 @@ func TestProviderVariantExcluded(t *testing.T) {
 	if providerVariantExcluded("pokemon-aquapolis-lugia-secret-rare", "Holofoil") {
 		t.Fatal("real Aquapolis Lugia holo should remain importable")
 	}
-	if providerVariantExcluded("pokemon-aquapolis-kingdra-148-secret-rare", "Reverse Holofoil") {
-		t.Fatal("other provider-backed Aquapolis reverse holos should remain importable")
+	for _, cardID := range []string{
+		"pokemon-aquapolis-kingdra-148-secret-rare",
+		"pokemon-aquapolis-lugia-secret-rare",
+		"pokemon-aquapolis-nidoking-150-secret-rare",
+	} {
+		if !providerVariantExcluded(cardID, "Reverse Holofoil") {
+			t.Fatalf("Aquapolis Crystal reverse holo %s should be excluded", cardID)
+		}
+	}
+	if providerVariantExcluded("pokemon-aquapolis-tyranitar-rare", "Reverse Holofoil") {
+		t.Fatal("numbered Aquapolis reverse holos should remain importable")
 	}
 }
 

@@ -666,7 +666,17 @@ func providerCardExcluded(cardID string) bool {
 
 func providerVariantExcluded(cardID, printing string) bool {
 	_, finish := normalizePrinting(printing)
-	return cardID == "pokemon-aquapolis-lugia-secret-rare" && finish == "Reverse Holofoil"
+	if finish != "Reverse Holofoil" {
+		return false
+	}
+	// Aquapolis Crystal secret rares are holo-only. The provider has
+	// intermittently exposed empty or mislabeled reverse-holo variants.
+	_, crystal := map[string]struct{}{
+		"pokemon-aquapolis-kingdra-148-secret-rare":  {},
+		"pokemon-aquapolis-lugia-secret-rare":        {},
+		"pokemon-aquapolis-nidoking-150-secret-rare": {},
+	}[cardID]
+	return crystal
 }
 
 func catalogSetName(setID, providerName string) string {

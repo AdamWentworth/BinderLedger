@@ -47,6 +47,24 @@ dependencies change:
 npx eas-cli@latest build --platform android --profile development
 ```
 
+For checkpoint testing that must work while the development workstation is
+offline, install the standalone `preview` APK:
+
+```bash
+npx eas-cli@latest build --platform android --profile preview
+```
+
+The preview build uses the EAS `preview` environment and update channel. Publish
+compatible TypeScript, styling, and asset changes without rebuilding the APK:
+
+```bash
+npx eas-cli@latest update --channel preview --environment preview --message "Describe the checkpoint"
+```
+
+The production host remains responsible for the API and application data; the
+installed phone runs the native frontend bundle and checks Expo's update service
+for compatible preview checkpoints.
+
 Before pushing:
 
 ```bash

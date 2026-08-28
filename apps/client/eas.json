@@ -9,7 +9,16 @@
         "buildType": "apk"
       },
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "development"
+    },
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "preview",
+      "distribution": "internal",
+      "environment": "preview"
     }
   }
 }

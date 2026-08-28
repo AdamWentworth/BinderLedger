@@ -12,7 +12,7 @@
       "bundleIdentifier": "com.adamwentworth.binderledger"
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#06182F",
         "foregroundImage": "./assets/images/binderledger-icon-circle.png"
@@ -21,7 +21,10 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA"
-      ]
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "output": "static",
@@ -61,7 +64,8 @@
             "buildArchs": [
               "arm64-v8a"
             ],
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "usesCleartextTraffic": true
           }
         }
       ]
@@ -75,6 +79,9 @@
         "projectId": "45908809-1cea-47e6-bd90-3a0a94a23f7e"
       }
     },
-    "owner": "adamwentworth"
+    "owner": "adamwentworth",
+    "updates": {
+      "url": "https://u.expo.dev/45908809-1cea-47e6-bd90-3a0a94a23f7e"
+    }
   }
 }

@@ -206,6 +206,29 @@ it cannot run inside Expo Go. To create a replacement Android development APK:
 npx eas-cli@latest build --platform android --profile development
 ```
 
+### Checkpoint Testing on Android
+
+The `preview` profile creates a standalone internal APK. It embeds the current
+frontend, targets the trusted production API through the EAS `preview`
+environment, and does not require Metro or a development workstation after
+installation. Its Android build explicitly permits the trusted LAN's current
+HTTP API; do not distribute it for use on untrusted networks.
+
+```bash
+npx eas-cli@latest build --platform android --profile preview
+```
+
+Publish later non-native frontend checkpoints to the installed app without
+rebuilding the APK:
+
+```bash
+npx eas-cli@latest update --channel preview --environment preview --message "Describe the checkpoint"
+```
+
+The app downloads a compatible update after launch and applies it on a later
+cold start. Native dependency, permission, Expo configuration, or runtime
+changes still require a new APK and an app-version increment.
+
 > [!WARNING]
 > When the configured API is production, watchlist mutations, scan uploads,
 > and confirmations change production data. Use an isolated stack for backend,

@@ -789,6 +789,9 @@ func normalizePrinting(printing string) (string, string) {
 }
 
 func pokemonTCGSetImages(setName string) (string, string) {
+	if strings.TrimSpace(setName) == "Best of Promos" {
+		return "", "https://images.pokemontcg.io/bp/symbol.png"
+	}
 	setID := map[string]string{
 		"Base Set":                   "base1",
 		"Base Set (Shadowless)":      "base1",

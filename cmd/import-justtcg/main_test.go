@@ -67,6 +67,14 @@ func TestPokemonTCGSetImages(t *testing.T) {
 		t.Fatalf("Jungle symbol = %v", symbol)
 	}
 
+	logo, symbol = pokemonTCGSetImages("Best of Promos")
+	if logo != "" {
+		t.Fatalf("Best of Promos logo = %q, want empty value", logo)
+	}
+	if symbol != "https://images.pokemontcg.io/bp/symbol.png" {
+		t.Fatalf("Best of Promos symbol = %q", symbol)
+	}
+
 	logo, symbol = pokemonTCGSetImages("Unknown Set")
 	if logo != "" || symbol != "" {
 		t.Fatalf("unknown set images = (%q, %q), want empty values", logo, symbol)

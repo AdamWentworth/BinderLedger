@@ -1,6 +1,29 @@
-# 📒 BinderLedger — Legacy Trading Card Collection & Market Tracker
+<p align="center">
+  <img src="apps/client/assets/images/binderledger-mark-header.png" alt="BinderLedger card-back mark" width="88">
+  <br>
+  <img src="apps/client/assets/images/binderledger-wordmark-header.png" alt="BinderLedger" width="420">
+</p>
 
-[![CI](https://github.com/AdamWentworth/BinderLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/AdamWentworth/BinderLedger/actions/workflows/ci.yml)
+<h1 align="center">Legacy Trading Card Collection &amp; Market Tracker</h1>
+
+<p align="center">
+  Exact-printing catalog intelligence, collection tools, market history, and
+  assisted recognition for classic Pokémon cards—across web, iOS, and Android.
+</p>
+
+<p align="center">
+  <a href="https://docs.expo.dev/"><img alt="Expo 57" src="https://img.shields.io/badge/Expo-57-000020?logo=expo&amp;logoColor=white"></a>
+  <a href="https://reactnative.dev/"><img alt="React Native 0.86" src="https://img.shields.io/badge/React_Native-0.86-20232A?logo=react&amp;logoColor=61DAFB"></a>
+  <a href="https://www.typescriptlang.org/"><img alt="TypeScript 6" src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&amp;logoColor=white"></a>
+  <a href="https://go.dev/"><img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&amp;logoColor=white"></a>
+  <a href="https://www.postgresql.org/"><img alt="PostgreSQL 17" src="https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&amp;logoColor=white"></a>
+  <a href="https://www.python.org/"><img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&amp;logoColor=white"></a>
+  <a href="https://www.docker.com/"><img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&amp;logoColor=white"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/AdamWentworth/BinderLedger/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/AdamWentworth/BinderLedger/actions/workflows/ci.yml/badge.svg"></a>
+</p>
 
 BinderLedger is a condition-aware catalog, collection, and market tracker for
 legacy trading cards. Its initial scope is English Pokémon cards from the
@@ -34,6 +57,39 @@ resource-conscious self-hosted deployment.
   upsert idempotently, and stay inside configured provider budgets.
 - **Small-server operations** — constrained Docker services, health checks,
   scheduled backups, and commit-addressed deployments.
+
+---
+
+## 🖼️ Product Tour
+
+The showcase below is generated from the real Expo web client with the
+repository's read-only Playwright capture workflow. Click any image to inspect
+it at full resolution.
+
+<table>
+  <tr>
+    <td width="66%">
+      <strong>Exact-printing catalog on desktop</strong><br><br>
+      <a href="docs/assets/readme/catalog-desktop.png">
+        <img src="docs/assets/readme/catalog-desktop.png" alt="BinderLedger exact-printing card catalog on desktop">
+      </a>
+    </td>
+    <td width="34%">
+      <strong>Printing details on mobile</strong><br><br>
+      <a href="docs/assets/readme/catalog-card-details-mobile.png">
+        <img src="docs/assets/readme/catalog-card-details-mobile.png" alt="BinderLedger card printing details on mobile">
+      </a>
+    </td>
+  </tr>
+</table>
+
+**Condition-aware market intelligence**
+
+[![BinderLedger market overview with price history and dollar movement](docs/assets/readme/market-overview-desktop.png)](docs/assets/readme/market-overview-desktop.png)
+
+Screenshots are deliberately versioned showcase selections; the generated
+capture directory remains ignored. Regeneration instructions live in the
+[showcase-media guide](docs/showcase-media.md).
 
 ---
 

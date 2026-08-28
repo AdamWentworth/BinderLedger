@@ -27,8 +27,17 @@ apps/client/.artifacts/demo-media/binderledger/
 ```
 
 The output directory is intentionally ignored by Git. Review the generated
-media before copying selected assets into
-`Phlosion/public/products/binderledger/demo/`.
+media before copying selected assets into either of these versioned showcase
+locations:
+
+```text
+docs/assets/readme/                         # public repository README
+Phlosion/public/products/binderledger/demo/ # portfolio product page
+```
+
+The capture command never overwrites either destination automatically. This
+keeps an incidental data refresh or an unfinished UI state from silently
+changing a public-facing showcase.
 
 ## Capture Selection
 

@@ -764,7 +764,7 @@ func inspectImage(data []byte) (downloadedImage, error) {
 	}
 	aspect := float64(configuration.Width) / float64(configuration.Height)
 	if aspect < 0.55 || aspect > 0.85 {
-		normalized, width, height, ok := trimLightImageBorder(data, mimeType)
+		normalized, width, height, ok := trimImageBorder(data, mimeType)
 		if !ok {
 			return downloadedImage{}, fmt.Errorf("image aspect ratio %.3f is not card-like", aspect)
 		}
@@ -782,7 +782,7 @@ func inspectImage(data []byte) (downloadedImage, error) {
 	}, nil
 }
 
-func trimLightImageBorder(data []byte, mimeType string) ([]byte, int, int, bool) {
+func trimImageBorder(data []byte, mimeType string) ([]byte, int, int, bool) {
 	source, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, 0, 0, false
@@ -791,13 +791,27 @@ func trimLightImageBorder(data []byte, mimeType string) ([]byte, int, int, bool)
 	if bounds.Dx() < minimumImageWidth || bounds.Dy() < minimumImageHeight {
 		return nil, 0, 0, false
 	}
+	for _, isBackground := range []func(color.Color) bool{isLightNeutral, isDarkNeutral} {
+		if cropped, width, height, ok := trimImageBorderWithBackground(source, mimeType, isBackground); ok {
+			return cropped, width, height, true
+		}
+	}
+	return nil, 0, 0, false
+}
+
+func trimImageBorderWithBackground(
+	source image.Image,
+	mimeType string,
+	isBackground func(color.Color) bool,
+) ([]byte, int, int, bool) {
+	bounds := source.Bounds()
 	for _, point := range []image.Point{
 		bounds.Min,
 		{X: bounds.Max.X - 1, Y: bounds.Min.Y},
 		{X: bounds.Min.X, Y: bounds.Max.Y - 1},
 		{X: bounds.Max.X - 1, Y: bounds.Max.Y - 1},
 	} {
-		if !isLightNeutral(source.At(point.X, point.Y)) {
+		if !isBackground(source.At(point.X, point.Y)) {
 			return nil, 0, 0, false
 		}
 	}
@@ -809,7 +823,7 @@ func trimLightImageBorder(data []byte, mimeType string) ([]byte, int, int, bool)
 	for x := bounds.Min.X; x < bounds.Max.X; x++ {
 		count := 0
 		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			if !isLightNeutral(source.At(x, y)) {
+			if !isBackground(source.At(x, y)) {
 				count++
 			}
 		}
@@ -821,7 +835,7 @@ func trimLightImageBorder(data []byte, mimeType string) ([]byte, int, int, bool)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		count := 0
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			if !isLightNeutral(source.At(x, y)) {
+			if !isBackground(source.At(x, y)) {
 				count++
 			}
 		}
@@ -864,6 +878,14 @@ func isLightNeutral(value color.Color) bool {
 	g := int(green >> 8)
 	b := int(blue >> 8)
 	return r >= 225 && g >= 225 && b >= 225 && max(r, g, b)-min(r, g, b) <= 20
+}
+
+func isDarkNeutral(value color.Color) bool {
+	red, green, blue, _ := value.RGBA()
+	r := int(red >> 8)
+	g := int(green >> 8)
+	b := int(blue >> 8)
+	return r <= 150 && g <= 150 && b <= 150 && max(r, g, b)-min(r, g, b) <= 45
 }
 
 func imageFilename(item target, extension string) string {

@@ -290,6 +290,36 @@ func TestInspectImageTrimsLightSquareBorder(t *testing.T) {
 	}
 }
 
+func TestInspectImageTrimsDarkLandscapeBackground(t *testing.T) {
+	canvas := image.NewRGBA(image.Rect(0, 0, 800, 600))
+	draw.Draw(
+		canvas,
+		canvas.Bounds(),
+		&image.Uniform{C: color.RGBA{R: 45, G: 47, B: 46, A: 255}},
+		image.Point{},
+		draw.Src,
+	)
+	draw.Draw(
+		canvas,
+		image.Rect(210, 20, 590, 580),
+		&image.Uniform{C: color.RGBA{R: 215, G: 170, B: 25, A: 255}},
+		image.Point{},
+		draw.Src,
+	)
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, canvas, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := inspectImage(encoded.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Width < 370 || result.Width > 390 || result.Height < 550 || result.Height > 570 {
+		t.Fatalf("unexpected dark-background trim: %dx%d", result.Width, result.Height)
+	}
+}
+
 func TestInspectImageRejectsUnrecoverableSquareImage(t *testing.T) {
 	canvas := image.NewRGBA(image.Rect(0, 0, 400, 400))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.Black}, image.Point{}, draw.Src)

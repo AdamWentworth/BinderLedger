@@ -21,10 +21,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA"
-      ],
-      "runtimeVersion": {
-        "policy": "appVersion"
-      }
+      ]
     },
     "web": {
       "output": "static",
@@ -82,6 +79,9 @@
     "owner": "adamwentworth",
     "updates": {
       "url": "https://u.expo.dev/45908809-1cea-47e6-bd90-3a0a94a23f7e"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }

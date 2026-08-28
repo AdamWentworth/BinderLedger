@@ -13,8 +13,8 @@ type AppConfig = {
     android: {
       versionCode: number;
       adaptiveIcon: { backgroundColor: string; foregroundImage: string };
-      runtimeVersion: { policy: string };
     };
+    runtimeVersion: { policy: string };
     updates: { url: string };
     web: { favicon: string };
     plugins: ExpoPlugin[];
@@ -60,7 +60,7 @@ describe('Expo branding configuration', () => {
   });
 
   it('keeps checkpoint builds on an installable preview update channel', () => {
-    expect(config.expo.android.runtimeVersion.policy).toBe('appVersion');
+    expect(config.expo.runtimeVersion.policy).toBe('appVersion');
     expect(config.expo.updates.url).toBe(
       'https://u.expo.dev/45908809-1cea-47e6-bd90-3a0a94a23f7e',
     );

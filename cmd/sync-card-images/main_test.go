@@ -83,7 +83,7 @@ func TestParsePriceChartingItems(t *testing.T) {
 		t.Fatalf("item count = %d, want 1", len(items))
 	}
 	item := items[0]
-	if item.Number != 1 || item.Title != "Ampharos #1" {
+	if item.Number != "1" || item.Title != "Ampharos #1" {
 		t.Fatalf("unexpected parsed item: %+v", item)
 	}
 	if got := highResolutionPriceChartingURL(item.ImageURL); got != "https://storage.googleapis.com/images.pricecharting.com/abc123/1600.jpg" {
@@ -92,17 +92,39 @@ func TestParsePriceChartingItems(t *testing.T) {
 }
 
 func TestCatalogCardNumber(t *testing.T) {
-	for value, want := range map[string]int{
-		"001/111": 1,
-		"75/75":   75,
+	for value, want := range map[string]string{
+		"001/111":  "1",
+		"75/75":    "75",
+		"050a/147": "50a",
+		"H01/H32":  "h1",
 	} {
 		got, err := catalogCardNumber(value)
 		if err != nil || got != want {
-			t.Fatalf("catalogCardNumber(%q) = (%d, %v), want %d", value, got, err, want)
+			t.Fatalf("catalogCardNumber(%q) = (%q, %v), want %q", value, got, err, want)
 		}
 	}
 	if _, err := catalogCardNumber("SWSH001"); err == nil {
 		t.Fatal("non-numeric catalog number accepted")
+	}
+}
+
+func TestParsePriceChartingAlphanumericNumbers(t *testing.T) {
+	body := []byte(`
+		<tr id="product-123" data-product="123">
+			<td class="image"><div>
+				<a href="https://www.pricecharting.com/game/pokemon-aquapolis/golduck-50a" title="123">
+					<img class="photo" src="https://storage.googleapis.com/images.pricecharting.com/abc123/60.jpg" />
+				</a>
+			</div></td>
+			<td class="title" title="123">
+				<a href="/game/pokemon-aquapolis/golduck-50a">Golduck #50a</a>
+			</td>
+		</tr>
+	`)
+
+	items := parsePriceChartingItems(body)
+	if len(items) != 1 || items[0].Number != "50a" {
+		t.Fatalf("unexpected parsed items: %+v", items)
 	}
 }
 

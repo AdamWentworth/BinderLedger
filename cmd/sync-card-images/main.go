@@ -22,7 +22,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -60,7 +59,7 @@ type target struct {
 }
 
 type priceChartingItem struct {
-	Number   int
+	Number   string
 	Title    string
 	PageURL  string
 	ImageURL string
@@ -402,8 +401,9 @@ var (
 	priceChartingSourceAttributePattern = regexp.MustCompile(`(?is)\bsrc\s*=\s*"([^"]+)"`)
 	priceChartingImagePathPattern       = regexp.MustCompile(`^/images\.pricecharting\.com/[a-z0-9]+/(?:60|240|1600)\.jpg$`)
 	priceChartingTitlePattern           = regexp.MustCompile(`(?is)<td\s+class="title"[^>]*>.*?<a\s+href="[^"]+">\s*([^<]+?)\s*</a>`)
-	priceChartingNumberPattern          = regexp.MustCompile(`#([0-9]+)(?:\D|$)`)
+	priceChartingNumberPattern          = regexp.MustCompile(`(?i)#([a-z]?[0-9]+[a-z]?)(?:[^a-z0-9]|$)`)
 	priceChartingSizePattern            = regexp.MustCompile(`/(?:60|240|1600)\.jpg$`)
+	catalogCardNumberPattern            = regexp.MustCompile(`(?i)^([a-z]?)([0-9]+)([a-z]?)$`)
 )
 
 func resolvePriceChartingSet(
@@ -473,7 +473,7 @@ func resolvePriceChartingSet(
 				titles = append(titles, match.Title)
 			}
 			return nil, fmt.Errorf(
-				"card %s number %d matched %d exact PriceCharting items for %s / %s: %s",
+				"card %s number %s matched %d exact PriceCharting items for %s / %s: %s",
 				targets[index].CardID,
 				number,
 				len(matches),
@@ -580,7 +580,7 @@ func parsePriceChartingItems(body []byte) []priceChartingItem {
 		if len(numberMatches) == 0 {
 			continue
 		}
-		number, err := strconv.Atoi(numberMatches[len(numberMatches)-1][1])
+		number, err := normalizeCardNumber(numberMatches[len(numberMatches)-1][1])
 		if err != nil {
 			continue
 		}
@@ -620,13 +620,25 @@ func isPriceChartingImageURL(rawURL string) bool {
 		priceChartingImagePathPattern.MatchString(parsed.Path)
 }
 
-func catalogCardNumber(value string) (int, error) {
+func catalogCardNumber(value string) (string, error) {
 	first, _, _ := strings.Cut(strings.TrimSpace(value), "/")
-	number, err := strconv.Atoi(strings.TrimLeft(first, "0"))
-	if err != nil || number <= 0 {
-		return 0, fmt.Errorf("catalog number %q is not numeric", value)
+	number, err := normalizeCardNumber(first)
+	if err != nil {
+		return "", fmt.Errorf("catalog number %q is not supported: %w", value, err)
 	}
 	return number, nil
+}
+
+func normalizeCardNumber(value string) (string, error) {
+	parts := catalogCardNumberPattern.FindStringSubmatch(strings.TrimSpace(value))
+	if len(parts) != 4 {
+		return "", errors.New("expected an optional single-letter prefix, digits, and an optional single-letter suffix")
+	}
+	digits := strings.TrimLeft(parts[2], "0")
+	if digits == "" {
+		return "", errors.New("number must be greater than zero")
+	}
+	return strings.ToLower(parts[1]) + digits + strings.ToLower(parts[3]), nil
 }
 
 func highResolutionPriceChartingURL(value string) string {

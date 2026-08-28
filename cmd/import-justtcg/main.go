@@ -507,6 +507,9 @@ func importFile(ctx context.Context, pool databasePool, filename string) (import
 		}
 
 		for _, variant := range card.Variants {
+			if providerVariantExcluded(card.ID, variant.Printing) {
+				continue
+			}
 			edition, finish := normalizePrinting(variant.Printing)
 			targetCardID, storedEdition := catalogVariantTarget(data.Set.ID, card.ID, edition)
 			_, err := tx.Exec(ctx, `
@@ -659,6 +662,11 @@ func tcgplayerImageURL(productID *int64) string {
 func providerCardExcluded(cardID string) bool {
 	_, excluded := excludedProviderCardIDs[cardID]
 	return excluded
+}
+
+func providerVariantExcluded(cardID, printing string) bool {
+	_, finish := normalizePrinting(printing)
+	return cardID == "pokemon-aquapolis-lugia-secret-rare" && finish == "Reverse Holofoil"
 }
 
 func catalogSetName(setID, providerName string) string {

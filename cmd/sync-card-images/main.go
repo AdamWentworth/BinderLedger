@@ -461,12 +461,7 @@ func resolvePriceChartingSet(
 		if err != nil {
 			return nil, fmt.Errorf("card %s: %w", targets[index].CardID, err)
 		}
-		matches := make([]priceChartingItem, 0, 1)
-		for _, item := range items {
-			if item.Number == number && priceChartingItemMatchesTarget(item, targets[index]) {
-				matches = append(matches, item)
-			}
-		}
+		matches := matchingPriceChartingItems(items, number, targets[index])
 		if len(matches) != 1 {
 			titles := make([]string, 0, len(matches))
 			for _, match := range matches {
@@ -487,6 +482,33 @@ func resolvePriceChartingSet(
 		targets[index].SourceImageURL = highResolutionPriceChartingURL(matches[0].ImageURL)
 	}
 	return targets, nil
+}
+
+func matchingPriceChartingItems(items []priceChartingItem, number string, target target) []priceChartingItem {
+	matches := make([]priceChartingItem, 0, 1)
+	for _, item := range items {
+		if item.Number == number && priceChartingItemMatchesTarget(item, target) {
+			matches = append(matches, item)
+		}
+	}
+	if len(matches) > 0 || !strings.EqualFold(strings.TrimSpace(target.Finish), "Reverse Holofoil") {
+		return matches
+	}
+
+	// PriceCharting occasionally combines otherwise distinct Aquapolis dot-code
+	// variants under the shared numeric card number for their reverse holo entry.
+	// Prefer an exact suffix match whenever one exists; only fall back when the
+	// catalog number has a suffix and the provider exposes one shared match.
+	baseNumber := strings.TrimRightFunc(number, unicode.IsLetter)
+	if baseNumber == number || baseNumber == "" {
+		return matches
+	}
+	for _, item := range items {
+		if item.Number == baseNumber && priceChartingItemMatchesTarget(item, target) {
+			matches = append(matches, item)
+		}
+	}
+	return matches
 }
 
 var priceChartingQualifierPattern = regexp.MustCompile(`\[([^\]]+)\]`)

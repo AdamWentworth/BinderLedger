@@ -198,6 +198,33 @@ func TestPriceChartingItemMatchesTarget(t *testing.T) {
 	}
 }
 
+func TestMatchingPriceChartingItemsFallsBackForSharedDotCodeReverse(t *testing.T) {
+	items := []priceChartingItem{
+		{Number: "74", Title: "Drowzee [Reverse Holo] #74"},
+		{Number: "74a", Title: "Drowzee #74a"},
+		{Number: "74b", Title: "Drowzee #74b"},
+	}
+	target := target{Edition: "Unlimited", Finish: "Reverse Holofoil"}
+
+	matches := matchingPriceChartingItems(items, "74a", target)
+	if len(matches) != 1 || matches[0].Number != "74" {
+		t.Fatalf("unexpected shared reverse matches: %+v", matches)
+	}
+}
+
+func TestMatchingPriceChartingItemsPrefersExactSuffix(t *testing.T) {
+	items := []priceChartingItem{
+		{Number: "50", Title: "Golduck [Reverse Holo] #50"},
+		{Number: "50a", Title: "Golduck [Reverse Holo] #50a"},
+	}
+	target := target{Edition: "Unlimited", Finish: "Reverse Holofoil"}
+
+	matches := matchingPriceChartingItems(items, "50a", target)
+	if len(matches) != 1 || matches[0].Number != "50a" {
+		t.Fatalf("exact suffix was not preferred: %+v", matches)
+	}
+}
+
 func TestInspectImage(t *testing.T) {
 	card := image.NewRGBA(image.Rect(0, 0, 300, 420))
 	for y := 0; y < 420; y++ {

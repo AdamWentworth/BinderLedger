@@ -90,6 +90,18 @@ func TestProviderCardExcluded(t *testing.T) {
 	}
 }
 
+func TestProviderVariantExcluded(t *testing.T) {
+	if !providerVariantExcluded("pokemon-aquapolis-lugia-secret-rare", "Reverse Holofoil") {
+		t.Fatal("synthetic Aquapolis Lugia reverse holo should be excluded")
+	}
+	if providerVariantExcluded("pokemon-aquapolis-lugia-secret-rare", "Holofoil") {
+		t.Fatal("real Aquapolis Lugia holo should remain importable")
+	}
+	if providerVariantExcluded("pokemon-aquapolis-kingdra-148-secret-rare", "Reverse Holofoil") {
+		t.Fatal("other provider-backed Aquapolis reverse holos should remain importable")
+	}
+}
+
 func TestCatalogSetIdentity(t *testing.T) {
 	if got := catalogSetName(baseSetShadowlessID, "Base Set (Shadowless)"); got != "Base Set Shadowless" {
 		t.Fatalf("catalogSetName() = %q, want Base Set Shadowless", got)

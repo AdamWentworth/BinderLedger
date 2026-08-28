@@ -50,7 +50,7 @@ export default defineConfig({
     : {
         command:
           'node node_modules/expo/bin/cli export --platform web --clear ' +
-          '&& node e2e/demo-media-server.mjs',
+          '&& node e2e/demo-media-server.mts',
         env: webServerEnv,
         reuseExistingServer: reuseServer,
         timeout: Number(process.env.BINDERLEDGER_DEMO_MEDIA_SERVER_TIMEOUT_MS ?? 180_000),

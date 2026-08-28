@@ -367,8 +367,6 @@ in the [production runbook](ops/prod/README.md).
 - Provider content is not redistributed as a raw dataset or substitute API.
 - Media rights and provider plans must be reviewed before wider distribution.
 
-Report security issues privately through the process in [SECURITY.md](SECURITY.md).
-
 ---
 
 ## 📚 Documentation
@@ -381,8 +379,6 @@ Report security issues privately through the process in [SECURITY.md](SECURITY.m
 | [Recognition pipeline](docs/card-recognition-pipeline.md) | Scan processing and candidate verification |
 | [Production runbook](ops/prod/README.md) | Deployment, timers, runtime limits, and backups |
 | [Disaster recovery](ops/prod/disaster-recovery.md) | Replacement-host restoration procedure |
-| [Security policy](SECURITY.md) | Private reporting and supported deployment boundary |
-
 ---
 
 ## 🧭 Roadmap

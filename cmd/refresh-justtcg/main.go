@@ -18,6 +18,7 @@ import (
 
 	"github.com/AdamWentworth/BinderLedger/internal/config"
 	"github.com/AdamWentworth/BinderLedger/internal/database"
+	"github.com/AdamWentworth/BinderLedger/internal/providerquota"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -31,6 +32,8 @@ const (
 	maximumDailyRequestBudget    = 95
 	defaultDailyRequestReserve   = 5
 	defaultMonthlyRequestReserve = 100
+	defaultMonthlyRequestLimit   = 1000
+	defaultMonthlyResetDay       = 23
 	defaultRequestDelay          = 6500 * time.Millisecond
 	defaultRefreshHistoryWindow  = "30d"
 	minimumRequestDelay          = 6000 * time.Millisecond
@@ -94,6 +97,19 @@ type usageMetadata struct {
 type batchResponse struct {
 	Data     []providerCard `json:"data"`
 	Metadata usageMetadata  `json:"_metadata"`
+}
+
+type providerRateLimitError struct {
+	detail     string
+	retryAfter time.Duration
+}
+
+func (err *providerRateLimitError) Error() string {
+	return fmt.Sprintf("%s: %s", errRateLimited, err.detail)
+}
+
+func (err *providerRateLimitError) Unwrap() error {
+	return errRateLimited
 }
 
 type importStats struct {
@@ -193,6 +209,45 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	monthlyLimit, err := positiveInteger(
+		"JUSTTCG_MONTHLY_REQUEST_LIMIT",
+		defaultMonthlyRequestLimit,
+	)
+	if err != nil {
+		return err
+	}
+	if monthlyReserve >= monthlyLimit {
+		return errors.New("JUSTTCG_MONTHLY_REQUEST_RESERVE must be lower than JUSTTCG_MONTHLY_REQUEST_LIMIT")
+	}
+	monthlyResetDay, err := positiveInteger(
+		"JUSTTCG_MONTHLY_RESET_DAY",
+		defaultMonthlyResetDay,
+	)
+	if err != nil {
+		return err
+	}
+	if monthlyResetDay > 28 {
+		return errors.New("JUSTTCG_MONTHLY_RESET_DAY must be between 1 and 28")
+	}
+	configuredBlockedUntil, err := optionalTimestamp("JUSTTCG_QUOTA_BLOCKED_UNTIL")
+	if err != nil {
+		return err
+	}
+	quotaStateFile := valueOrDefault(
+		"JUSTTCG_QUOTA_STATE_FILE",
+		"data/justtcg-quota.json",
+	)
+	quotaLedger, err := providerquota.New(providerquota.Config{
+		Filename:        quotaStateFile,
+		Provider:        providerName,
+		MonthlyLimit:    monthlyLimit,
+		MonthlyReserve:  monthlyReserve,
+		MonthlyResetDay: monthlyResetDay,
+		BlockedUntil:    configuredBlockedUntil,
+	})
+	if err != nil {
+		return fmt.Errorf("configure JustTCG quota ledger: %w", err)
+	}
 	historyWindow, err := priceHistoryWindow(
 		"JUSTTCG_REFRESH_HISTORY_DURATION",
 		defaultRefreshHistoryWindow,
@@ -227,7 +282,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	requestsAvailable := dailyBudget - requestsUsed
+	quotaStatus, err := quotaLedger.Status()
+	if err != nil {
+		return fmt.Errorf("read JustTCG monthly quota: %w", err)
+	}
+	requestsAvailable := min(dailyBudget-requestsUsed, quotaStatus.RequestsRemaining)
 	if *statusOnly {
 		targets, err := dueTargets(ctx, db, 1_000_000)
 		if err != nil {
@@ -245,6 +304,33 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			"catalog_sets", setCount,
 			"legacy_target_sets", legacyTargetSetCount,
 			"cards_per_request", freeTierBatchSize,
+			"monthly_request_limit", quotaStatus.RequestLimit,
+			"monthly_request_reserve", quotaStatus.RequestReserve,
+			"monthly_request_attempts", quotaStatus.RequestAttempts,
+			"monthly_requests_remaining", quotaStatus.RequestsRemaining,
+			"quota_cycle_ends_at", quotaStatus.CycleEnd,
+			"quota_blocked", quotaStatus.Blocked,
+			"quota_blocked_until", quotaStatus.BlockedUntil,
+		)
+		return nil
+	}
+	if quotaStatus.Blocked {
+		logger.Info(
+			"JustTCG requests paused by the shared quota ledger",
+			"blocked_until", quotaStatus.BlockedUntil,
+			"reason", quotaStatus.BlockReason,
+			"monthly_request_attempts", quotaStatus.RequestAttempts,
+			"monthly_request_limit", quotaStatus.RequestLimit,
+		)
+		return nil
+	}
+	if quotaStatus.RequestsRemaining <= 0 {
+		logger.Info(
+			"JustTCG local monthly budget exhausted",
+			"cycle_ends_at", quotaStatus.CycleEnd,
+			"monthly_request_attempts", quotaStatus.RequestAttempts,
+			"monthly_request_limit", quotaStatus.RequestLimit,
+			"monthly_request_reserve", quotaStatus.RequestReserve,
 		)
 		return nil
 	}
@@ -279,17 +365,33 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		end := min(start+freeTierBatchSize, len(targets))
 		lookups := targetLookups(targets[start:end])
 
+		if _, err := quotaLedger.ReserveRequest(); err != nil {
+			if errors.Is(err, providerquota.ErrBlocked) || errors.Is(err, providerquota.ErrExhausted) {
+				logger.Info("JustTCG shared quota stopped the refresh", "reason", err)
+				break
+			}
+			return fmt.Errorf("reserve JustTCG request: %w", err)
+		}
 		if err := recordRequest(ctx, db, usageDay); err != nil {
 			return err
 		}
 		requestsMade++
 		response, err := client.batch(ctx, lookups)
 		if errors.Is(err, errRateLimited) {
-			logger.Warn("JustTCG stopped the refresh at its provider rate limit")
+			var rateLimit *providerRateLimitError
+			if errors.As(err, &rateLimit) {
+				if _, blockErr := quotaLedger.BlockFromProviderResponse(rateLimit.detail, rateLimit.retryAfter); blockErr != nil {
+					return fmt.Errorf("record JustTCG provider quota block: %w", blockErr)
+				}
+			}
+			logger.Warn("JustTCG stopped the refresh at its provider rate limit", "error", err)
 			break
 		}
 		if err != nil {
 			return err
+		}
+		if _, err := quotaLedger.ReconcileProviderUsage(response.Metadata.APIRequestsUsed); err != nil {
+			return fmt.Errorf("reconcile JustTCG provider usage: %w", err)
 		}
 
 		stats, err := saveBatch(ctx, db, lookups, response.Data, time.Now().UTC())
@@ -760,7 +862,12 @@ func (client *justTCGClient) batch(ctx context.Context, lookups []batchLookup) (
 		return batchResponse{}, fmt.Errorf("read JustTCG response: %w", err)
 	}
 	if response.StatusCode == http.StatusTooManyRequests {
-		return batchResponse{}, errRateLimited
+		detail := providerErrorDetail(responseBody)
+		retryAfter := time.Duration(0)
+		if seconds, parseErr := strconv.Atoi(response.Header.Get("Retry-After")); parseErr == nil && seconds > 0 {
+			retryAfter = time.Duration(seconds) * time.Second
+		}
+		return batchResponse{}, &providerRateLimitError{detail: detail, retryAfter: retryAfter}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return batchResponse{}, fmt.Errorf(
@@ -801,6 +908,25 @@ func quotaReserveReached(metadata usageMetadata, dailyReserve, monthlyReserve in
 		metadata.APIRequestsRemaining <= monthlyReserve
 }
 
+func providerErrorDetail(responseBody []byte) string {
+	var body struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(responseBody, &body); err == nil {
+		if strings.TrimSpace(body.Error) != "" {
+			return strings.TrimSpace(body.Error)
+		}
+		if strings.TrimSpace(body.Message) != "" {
+			return strings.TrimSpace(body.Message)
+		}
+	}
+	if detail := strings.TrimSpace(string(responseBody)); detail != "" {
+		return detail
+	}
+	return "provider rate limit"
+}
+
 func durationFromMilliseconds(name string, fallback time.Duration) (time.Duration, error) {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
@@ -835,6 +961,18 @@ func nonnegativeInteger(name string, fallback int) (int, error) {
 		return 0, fmt.Errorf("%s must be a nonnegative integer", name)
 	}
 	return parsed, nil
+}
+
+func optionalTimestamp(name string) (*time.Time, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, fmt.Errorf("%s must be an RFC3339 timestamp: %w", name, err)
+	}
+	return &parsed, nil
 }
 
 func priceHistoryWindow(name string, fallback string) (string, error) {

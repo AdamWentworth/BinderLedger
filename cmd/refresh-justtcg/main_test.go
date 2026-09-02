@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -84,6 +85,36 @@ func TestClientBatchUsesOfficialV1BatchShape(t *testing.T) {
 	}
 	if got := len(response.Data[0].Variants[0].PriceHistory); got != 1 {
 		t.Fatalf("history points = %d, want 1", got)
+	}
+}
+
+func TestClientBatchPreservesProviderQuotaDetailWithoutRetry(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusTooManyRequests)
+		_, _ = writer.Write([]byte(`{"error":"Total request limit exceeded"}`))
+	}))
+	defer server.Close()
+
+	client := &justTCGClient{
+		apiKey:        "test-key",
+		baseURL:       server.URL,
+		httpClient:    server.Client(),
+		delay:         minimumRequestDelay,
+		historyWindow: "30d",
+	}
+	_, err := client.batch(context.Background(), []batchLookup{{CardID: "card-uuid"}})
+	var quotaError *providerRateLimitError
+	if !errors.As(err, &quotaError) {
+		t.Fatalf("batch error = %v, want providerRateLimitError", err)
+	}
+	if quotaError.detail != "Total request limit exceeded" {
+		t.Fatalf("quota detail = %q", quotaError.detail)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
 	}
 }
 

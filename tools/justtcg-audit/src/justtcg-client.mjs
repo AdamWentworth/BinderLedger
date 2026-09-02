@@ -30,6 +30,7 @@ export class JustTcgClient {
     dailyRequestReserve = 5,
     monthlyRequestReserve = 100,
     maximumNetworkRequests = Number.POSITIVE_INFINITY,
+    quotaLedger = null,
   }) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -38,6 +39,7 @@ export class JustTcgClient {
     this.dailyRequestReserve = dailyRequestReserve;
     this.monthlyRequestReserve = monthlyRequestReserve;
     this.maximumNetworkRequests = maximumNetworkRequests;
+    this.quotaLedger = quotaLedger;
     this.lastNetworkRequestAt = 0;
     this.latestMetadata = null;
     this.networkRequests = 0;
@@ -126,6 +128,16 @@ export class JustTcgClient {
     for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
       this.#assertQuotaAvailable();
       await this.#throttle();
+      if (this.quotaLedger) {
+        try {
+          await this.quotaLedger.reserveRequest();
+        } catch (error) {
+          if (error.name === "QuotaLedgerError") {
+            throw new JustTcgQuotaError(error.message);
+          }
+          throw error;
+        }
+      }
       this.lastNetworkRequestAt = Date.now();
       this.networkRequests += 1;
 
@@ -156,10 +168,20 @@ export class JustTcgClient {
 
       if (response.ok) {
         this.#rememberMetadata(body._metadata);
+        await this.quotaLedger?.reconcileProviderUsage(body._metadata?.apiRequestsUsed);
         return body;
       }
 
-      if ((response.status === 429 || response.status >= 500) && attempt < maximumAttempts) {
+      const detail = body.error || body.message || response.statusText;
+      if (response.status === 429) {
+        await this.quotaLedger?.blockFromProviderResponse(
+          detail,
+          response.headers.get("retry-after"),
+        );
+        throw new JustTcgQuotaError(`JustTCG rate limit reached: ${detail}`);
+      }
+
+      if (response.status >= 500 && attempt < maximumAttempts) {
         const retryAfter = Number(response.headers.get("retry-after"));
         const delay = Number.isFinite(retryAfter)
           ? retryAfter * 1000
@@ -168,15 +190,11 @@ export class JustTcgClient {
         continue;
       }
 
-      const detail = body.error || body.message || response.statusText;
       if (response.status === 401 || response.status === 403) {
         throw new JustTcgError(
           `JustTCG rejected the API key (${response.status}). Check JUSTTCG_API_KEY in .env.`,
           { status: response.status, code: body.code },
         );
-      }
-      if (response.status === 429) {
-        throw new JustTcgQuotaError(`JustTCG rate limit reached: ${detail}`);
       }
       throw new JustTcgError(`JustTCG returned ${response.status}: ${detail}`, {
         status: response.status,

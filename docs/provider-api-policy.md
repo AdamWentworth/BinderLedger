@@ -43,12 +43,21 @@ and it must always be equal to or stricter than the provider's current terms.
 
 The collector caches every successful request, checks provider usage before the
 next call, and treats forced refresh as an explicit quota-consuming action.
+Production enforces a shared, persistent 1,000-request billing-cycle ledger for
+both catalog expansion and current-price refresh. Every network attempt is
+reserved before it is made, provider-reported usage can only raise the local
+count, and the ledger retains a 25-request safety reserve. The billing cycle
+resets on the configured account renewal day (currently the 23rd).
 Catalog expansion and current-price rotation have separate budgets so they
 cannot silently multiply traffic. The historical collector uses a persistent
 cache and exits when its approved catalog scope is complete. During initial
 catalog expansion, production assigns the free plan's daily allowance to
-history collection while retaining one daily and monthly request as a hard
-safety margin. Current-price rotation remains paused until expansion completes.
+history collection while retaining the configured daily and monthly safety
+reserves. Historical expansion is capped at 30 attempts per scheduled run,
+and current-price rotation remains paused until expansion completes. A provider
+quota response is never retried: total/monthly exhaustion pauses calls through
+the next configured billing-cycle boundary, while daily exhaustion pauses until
+the next UTC day.
 
 - [Rate limits](https://justtcg.com/docs/rate-limits)
 - [Pricing and plan limits](https://justtcg.com/pricing)

@@ -91,6 +91,12 @@ under the configured persistent storage root, allowing quota-safe resume after
 restarts. Budgets and reserves live in the private production environment and
 must follow [the provider policy](../../docs/provider-api-policy.md).
 
+Both JustTCG jobs share `/mnt/storage/binderledger/justtcg-collector/justtcg-quota.json`.
+The ledger counts attempts before sending them, survives containers and deploys,
+and prevents scheduled or manual runs from exceeding the configured 1,000-call
+billing-cycle limit. `JUSTTCG_QUOTA_BLOCKED_UNTIL` can impose a one-time pause
+without disabling either timer.
+
 ## Backups
 
 `binderledger-backup-local.timer` creates a daily PostgreSQL dump. The optional

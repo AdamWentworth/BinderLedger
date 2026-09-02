@@ -19,10 +19,13 @@ The repository root `.env` contains the JustTCG key and is linked into this
 directory. The environment file, API cache, and generated reports are ignored
 by Git.
 
-The Free plan permits 10 requests per minute. The collector therefore requires
-at least 6 seconds between requests, defaults to 6.5 seconds, and stops before
-the final daily requests. See `docs/provider-api-policy.md` for the complete
-quota and data-use policy.
+The configured plan permits 10 requests per minute and 1,000 per billing cycle,
+which renews on the 23rd. The collector therefore requires at least 6 seconds
+between requests, defaults to 6.5 seconds, and shares a persistent attempt
+ledger with the Go refresh worker. Production retains a 25-request monthly
+reserve and limits historical expansion to 30 attempts per run. A quota `429`
+is never retried. See `docs/provider-api-policy.md` for the complete quota and
+data-use policy.
 
 ## Commands
 
@@ -75,6 +78,8 @@ promos, trainer kits, POP series, or incorrectly dated provider sets.
 ## Structure
 
 - `cli.mjs` validates runtime configuration and dispatches commands.
+- `quota-ledger.mjs` enforces the persistent billing-cycle budget before any
+  uncached network request.
 - `probe-commands.mjs` owns discovery, sampling, and coverage audits.
 - `collection-commands.mjs` owns Base, Kanto, and legacy collection workflows.
 - `collection-service.mjs` owns reusable pagination, history retrieval, and

@@ -5,6 +5,7 @@ import { createCollectionCommands } from "./collection-commands.mjs";
 import { createCollectionService } from "./collection-service.mjs";
 import { createProbeCommands } from "./probe-commands.mjs";
 import { JustTcgClient, JustTcgQuotaError } from "./justtcg-client.mjs";
+import { JustTcgQuotaLedger } from "./quota-ledger.mjs";
 
 const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputDirectory = path.resolve(
@@ -58,6 +59,31 @@ if (!Number.isInteger(monthlyRequestReserve) || monthlyRequestReserve < 1) {
   process.exit(1);
 }
 
+const monthlyRequestLimit = Number(process.env.JUSTTCG_MONTHLY_REQUEST_LIMIT ?? 1000);
+if (!Number.isInteger(monthlyRequestLimit) || monthlyRequestLimit < 1) {
+  console.error("JUSTTCG_MONTHLY_REQUEST_LIMIT must be a positive integer.");
+  process.exit(1);
+}
+if (monthlyRequestReserve >= monthlyRequestLimit) {
+  console.error("JUSTTCG_MONTHLY_REQUEST_RESERVE must be lower than JUSTTCG_MONTHLY_REQUEST_LIMIT.");
+  process.exit(1);
+}
+
+const monthlyResetDay = Number(process.env.JUSTTCG_MONTHLY_RESET_DAY ?? 23);
+if (!Number.isInteger(monthlyResetDay) || monthlyResetDay < 1 || monthlyResetDay > 28) {
+  console.error("JUSTTCG_MONTHLY_RESET_DAY must be an integer from 1 through 28.");
+  process.exit(1);
+}
+
+const configuredBlockedUntilValue = process.env.JUSTTCG_QUOTA_BLOCKED_UNTIL?.trim();
+const configuredBlockedUntil = configuredBlockedUntilValue
+  ? new Date(configuredBlockedUntilValue)
+  : null;
+if (configuredBlockedUntil && Number.isNaN(configuredBlockedUntil.getTime())) {
+  console.error("JUSTTCG_QUOTA_BLOCKED_UNTIL must be an ISO-8601 timestamp.");
+  process.exit(1);
+}
+
 const maximumNetworkRequests = Number(
   process.env.JUSTTCG_MAX_NETWORK_REQUESTS ?? Number.POSITIVE_INFINITY,
 );
@@ -65,6 +91,16 @@ if (!(maximumNetworkRequests > 0)) {
   console.error("JUSTTCG_MAX_NETWORK_REQUESTS must be a positive number.");
   process.exit(1);
 }
+
+const quotaLedger = new JustTcgQuotaLedger({
+  filename: path.resolve(
+    process.env.JUSTTCG_QUOTA_STATE_FILE ?? path.join(outputDirectory, "justtcg-quota.json"),
+  ),
+  monthlyRequestLimit,
+  monthlyRequestReserve,
+  monthlyResetDay,
+  configuredBlockedUntil,
+});
 
 const client = new JustTcgClient({
   apiKey,
@@ -74,6 +110,7 @@ const client = new JustTcgClient({
   dailyRequestReserve,
   monthlyRequestReserve,
   maximumNetworkRequests,
+  quotaLedger,
 });
 
 const services = createCollectionService({ client, fresh, outputDirectory });

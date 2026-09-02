@@ -117,3 +117,33 @@ test("client enforces a per-run network request budget", async () => {
     await rm(cacheDirectory, { recursive: true, force: true });
   }
 });
+
+test("client does not retry provider quota responses", async () => {
+  let requests = 0;
+  const server = createServer((request, response) => {
+    requests += 1;
+    response.statusCode = 429;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ error: "Total request limit exceeded" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const cacheDirectory = await mkdtemp(path.join(tmpdir(), "binderledger-justtcg-"));
+
+  try {
+    const client = new JustTcgClient({
+      apiKey: "test-key",
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      cacheDirectory,
+      requestIntervalMs: 0,
+    });
+    await assert.rejects(
+      client.get("/quota", {}, { cache: false }),
+      /Total request limit exceeded/,
+    );
+    assert.equal(requests, 1);
+  } finally {
+    server.close();
+    await rm(cacheDirectory, { recursive: true, force: true });
+  }
+});

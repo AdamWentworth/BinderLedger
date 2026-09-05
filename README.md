@@ -149,7 +149,6 @@ cmd/backfill-pkmnprices/     Controlled API fallback worker
 internal/                    API, catalog, market, scan, and DB packages
 services/vision/             OpenCV/Tesseract recognition worker
 tools/justtcg-audit/         Discovery and historical collection tools
-ops/prod/                    Compose, runner deployment, timers, and recovery
 docs/                        Architecture, policy, and workflow notes
 ```
 
@@ -367,15 +366,18 @@ small trust surface:
 
 1. Pushes to `main` run GitHub-hosted CI.
 2. CI builds and security-scans four immutable, private GHCR images.
-3. A dedicated production runner pulls the exact successful commit images.
-4. The runner validates Compose, runs migrations, and recreates services.
-5. API, web, vision, and container smoke checks must pass before the deployment
+3. CI dispatches the approved full commit SHA to the private HomeOps repository.
+4. HomeOps validates current `main`, verifies every image revision, resolves
+   immutable digests, and schedules its private production runner.
+5. The runner validates private Compose controls, runs migrations, and recreates
+   services.
+6. API, web, vision, and container smoke checks must pass before the deployment
    is recorded.
 
 The production host compiles no application images. GHCR packages are private
-deployment artifacts rather than source repositories, and the deployment
-workflow has read-only source and package permissions. Operational details are
-in the [production runbook](ops/prod/README.md).
+deployment artifacts rather than source repositories. Production Compose,
+rollback logic, schedules, backup controls, and recovery instructions are held
+in the private HomeOps repository rather than this public application repo.
 
 ---
 
@@ -400,8 +402,6 @@ in the [production runbook](ops/prod/README.md).
 | [Development handoff](docs/development-handoff.md) | Frontend-only workstation setup and production boundary |
 | [Provider API policy](docs/provider-api-policy.md) | Collection, quota, caching, and distribution rules |
 | [Recognition pipeline](docs/card-recognition-pipeline.md) | Scan processing and candidate verification |
-| [Production runbook](ops/prod/README.md) | Deployment, timers, runtime limits, and backups |
-| [Disaster recovery](ops/prod/disaster-recovery.md) | Replacement-host restoration procedure |
 ---
 
 ## 🧭 Roadmap

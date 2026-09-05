@@ -60,17 +60,19 @@ daily observations on demand.
 
 ## Deployment Posture
 
-Production uses the dedicated PostgreSQL service in
-`ops/prod/docker-compose.yml`, with persistent data under
-`/mnt/storage/binderledger`. The optional root Compose file provides an isolated
-development database for explicit backend work. The primary development
-machine normally runs only Expo and targets the private-LAN production API.
+Production uses a dedicated PostgreSQL service controlled by the private
+HomeOps repository, with persistent data under `/mnt/storage/binderledger`.
+The optional root Compose file provides an isolated development database for
+explicit backend work. The primary development machine normally runs only Expo
+and targets the private-LAN production API.
 
 The API, vision worker, and static Expo web export run as hardened containers.
 Systemd timers launch quota-aware collector jobs and backups. GitHub-hosted CI
-builds and scans immutable SHA-tagged GHCR images; the dedicated production
-runner then pulls that exact successful image set, applies migrations, and
-completes health checks before recording the deployment.
+builds and scans immutable SHA-tagged GHCR images, then dispatches the approved
+full commit SHA to private HomeOps. HomeOps validates current `main`, verifies
+the embedded image revisions, resolves immutable digests, and schedules its
+private production runner to apply migrations and complete health checks before
+recording the deployment.
 
 Metro runs only on the primary frontend development machine, where hot reload
 serves both the browser and the BinderLedger native development client.

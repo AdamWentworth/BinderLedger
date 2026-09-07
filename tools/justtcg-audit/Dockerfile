@@ -1,4 +1,4 @@
-FROM golang:1.26.6-bookworm AS importer-build
+FROM golang:1.26.8-bookworm AS importer-build
 
 WORKDIR /src
 COPY go.mod go.sum ./

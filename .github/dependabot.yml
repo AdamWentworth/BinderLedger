@@ -1,71 +1,155 @@
 version: 2
 
+# Routine version updates are intentionally conservative. Dependabot security
+# updates remain enabled and are not excluded by the version-update rules below.
 updates:
-  - package-ecosystem: gomod
-    directory: /
+  - package-ecosystem: "gomod"
+    directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
     groups:
-      go-dependencies:
+      go-minor-and-patch:
+        applies-to: "version-updates"
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  - package-ecosystem: npm
-    directory: /apps/client
+  - package-ecosystem: "npm"
+    directory: "/apps/client"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 2
     groups:
-      expo-client:
+      expo-sdk:
+        applies-to: "version-updates"
+        patterns:
+          - "@expo/*"
+          - "expo"
+          - "expo-*"
+          - "react"
+          - "react-dom"
+          - "react-native"
+          - "react-native-*"
+        update-types: ["minor", "patch"]
+      client-dependencies:
+        applies-to: "version-updates"
         patterns: ["*"]
+        exclude-patterns:
+          - "@expo/*"
+          - "expo"
+          - "expo-*"
+          - "react"
+          - "react-dom"
+          - "react-native"
+          - "react-native-*"
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  - package-ecosystem: npm
-    directory: /tools/justtcg-audit
+  - package-ecosystem: "npm"
+    directory: "/tools/justtcg-audit"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
     groups:
-      collector-dependencies:
+      collector-minor-and-patch:
+        applies-to: "version-updates"
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  - package-ecosystem: pip
-    directory: /services/vision
+  - package-ecosystem: "pip"
+    directory: "/services/vision"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
     groups:
-      vision-dependencies:
+      vision-minor-and-patch:
+        applies-to: "version-updates"
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  - package-ecosystem: docker
-    directory: /
+  - package-ecosystem: "docker"
+    directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      core-images:
+        applies-to: "version-updates"
+        patterns: ["*"]
+    ignore:
+      # Go release-line upgrades are intentional project changes. Patch the
+      # current line automatically, but do not jump from 1.x to 1.(x+1).
+      - dependency-name: "golang"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
 
-  - package-ecosystem: docker
-    directory: /apps/client
+  - package-ecosystem: "docker"
+    directory: "/apps/client"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      client-images:
+        applies-to: "version-updates"
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "nginx"
+        update-types: ["version-update:semver-major"]
 
-  - package-ecosystem: docker
-    directory: /services/vision
+  - package-ecosystem: "docker"
+    directory: "/services/vision"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      vision-images:
+        applies-to: "version-updates"
+        patterns: ["*"]
+    ignore:
+      # Python treats 3.12 -> 3.13 as a language/runtime upgrade even though
+      # it is a SemVer-minor change.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
 
-  - package-ecosystem: docker
-    directory: /tools/justtcg-audit
+  - package-ecosystem: "docker"
+    directory: "/tools/justtcg-audit"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      collector-images:
+        applies-to: "version-updates"
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "golang"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
 
-  - package-ecosystem: github-actions
-    directory: /
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: "monthly"
+    open-pull-requests-limit: 1
     groups:
       github-actions:
+        applies-to: "version-updates"
         patterns: ["*"]

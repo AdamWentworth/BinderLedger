@@ -1,9 +1,25 @@
 const http = require('node:http');
 const https = require('node:https');
+const path = require('node:path');
 const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 const apiTarget = process.env.EXPO_PUBLIC_API_URL;
+const queryStringShim = path.resolve(__dirname, 'src/shims/query-string.ts');
+
+// Expo Router 57 imports query-string as a CommonJS namespace. query-string 9
+// fixes CVE-2026-45822 but exposes a default ESM export, so adapt that boundary
+// until Expo Router updates its dependency and import style upstream.
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    moduleName === 'query-string' &&
+    path.resolve(context.originModulePath) !== queryStringShim
+  ) {
+    return { filePath: queryStringShim, type: 'sourceFile' };
+  }
+
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 if (apiTarget) {
   const target = new URL(apiTarget);

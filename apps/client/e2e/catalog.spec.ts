@@ -33,6 +33,9 @@ const listing = {
 };
 
 test('browses the catalog and opens the shared card detail overlay', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     let body: unknown;
@@ -97,7 +100,10 @@ test('browses the catalog and opens the shared card detail overlay', async ({ pa
     await route.fulfill({ body: JSON.stringify(body), contentType: 'application/json' });
   });
 
-  await page.goto('/');
+  // Exercise Expo Router's query parser so the pinned query-string security
+  // override cannot drift into a runtime-incompatible release unnoticed.
+  await page.goto('/?source=security%20check');
+  expect(pageErrors).toEqual([]);
   await expect(page).toHaveTitle('Catalog · BinderLedger');
   await expect(page.locator('link[rel~="icon"]')).toHaveAttribute(
     'href',

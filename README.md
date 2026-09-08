@@ -402,6 +402,7 @@ in the private HomeOps repository rather than this public application repo.
 | [Development handoff](docs/development-handoff.md) | Frontend-only workstation setup and production boundary |
 | [Provider API policy](docs/provider-api-policy.md) | Collection, quota, caching, and distribution rules |
 | [Recognition pipeline](docs/card-recognition-pipeline.md) | Scan processing and candidate verification |
+| [Condition assessment research](docs/condition-assessment-research.md) | Future photo dataset, labeling, model experiments, and evaluation |
 ---
 
 ## 🧭 Roadmap

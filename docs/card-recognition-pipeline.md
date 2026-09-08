@@ -92,6 +92,10 @@ surface scratches, centering, and image-quality warnings. Later train a model on
 confirmed BinderLedger examples and return a condition range with confidence,
 not a definitive grade.
 
+The [condition assessment research plan](condition-assessment-research.md)
+details the proposed photo protocol, labels, dataset records, model experiments,
+and evaluation process for this later phase.
+
 ## Data To Record
 
 For each recognition attempt, retain:

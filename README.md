@@ -35,7 +35,7 @@ watchlists, historical market views, and assisted card recognition in a
 resource-conscious self-hosted deployment.
 
 > [!IMPORTANT]
-> BinderLedger is an active source-available portfolio project. Its current API
+> BinderLedger is an active portfolio project. Its current API
 > has no user authentication and is designed for a trusted private network, not
 > public internet exposure.
 
@@ -410,6 +410,7 @@ It is not affiliated with, endorsed by, or sponsored by Nintendo, Creatures,
 GAME FREAK, The Pokémon Company, or any data provider. Pokémon and related marks
 belong to their respective owners.
 
-The source is publicly visible but remains source-available under the terms in
-[LICENSE](LICENSE). Repository visibility does not grant redistribution,
-hosting, or reuse rights.
+Original source code and text documentation are licensed under the
+[Apache License 2.0](LICENSE). Pokémon artwork, card imagery, catalog and market
+data, project branding, and other third-party materials are excluded; see
+[NOTICE.md](NOTICE.md).

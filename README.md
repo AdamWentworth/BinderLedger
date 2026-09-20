@@ -62,34 +62,21 @@ resource-conscious self-hosted deployment.
 
 ## 🖼️ Product Tour
 
-The showcase below is generated from the real Expo web client with the
-repository's read-only Playwright capture workflow. Click any image to inspect
-it at full resolution.
+These walkthroughs show the real Expo web client, captured with the app's
+read-only Playwright showcase workflow. Click either animation to view it at
+full size.
 
-<table>
-  <tr>
-    <td width="66%">
-      <strong>Exact-printing catalog on desktop</strong><br><br>
-      <a href="docs/assets/readme/catalog-desktop.png">
-        <img src="docs/assets/readme/catalog-desktop.png" alt="BinderLedger exact-printing card catalog on desktop">
-      </a>
-    </td>
-    <td width="34%">
-      <strong>Printing details on mobile</strong><br><br>
-      <a href="docs/assets/readme/catalog-card-details-mobile.png">
-        <img src="docs/assets/readme/catalog-card-details-mobile.png" alt="BinderLedger card printing details on mobile">
-      </a>
-    </td>
-  </tr>
-</table>
+**Exact-printing catalog**
+
+[![BinderLedger exact-printing catalog walkthrough](docs/assets/readme/catalog-exploration.gif)](docs/assets/readme/catalog-exploration.gif)
 
 **Condition-aware market intelligence**
 
-[![BinderLedger market overview with price history and dollar movement](docs/assets/readme/market-overview-desktop.png)](docs/assets/readme/market-overview-desktop.png)
+[![BinderLedger market overview with price history and dollar movement](docs/assets/readme/market-exploration.gif)](docs/assets/readme/market-exploration.gif)
 
-Screenshots are deliberately versioned showcase selections; the generated
-capture directory remains ignored. Regeneration instructions live in the
-[showcase-media guide](docs/showcase-media.md).
+The optimized animations are derived from the versioned Phlosion walkthrough
+captures; the generated capture directory remains ignored. Regeneration
+instructions live in the [showcase-media guide](docs/showcase-media.md).
 
 ---
 

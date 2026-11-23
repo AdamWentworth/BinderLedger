@@ -2,7 +2,7 @@ module github.com/AdamWentworth/BinderLedger
 
 go 1.26.0
 
-toolchain go1.26.6
+toolchain go1.26.11
 
 require (
 	github.com/jackc/pgx/v5 v5.9.2
@@ -16,7 +16,7 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
